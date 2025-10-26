@@ -231,3 +231,7 @@ go test ./pkg/client -v
 ## Examples
 
 See `client_test.go` for comprehensive usage examples.
+
+## License
+
+Apache License 2.0

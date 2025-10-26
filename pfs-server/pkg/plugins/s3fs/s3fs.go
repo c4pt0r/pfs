@@ -571,17 +571,17 @@ USAGE:
 EXAMPLES:
 
   # Basic file operations
-  $ pfs mkdir /s3fs/documents
-  $ echo "Important data" | pfs write /s3fs/documents/report.txt
-  $ pfs cat /s3fs/documents/report.txt
+  pfs:/> mkdir /s3fs/documents
+  pfs:/> echo "Important data" > /s3fs/documents/report.txt
+  pfs:/> cat /s3fs/documents/report.txt
   Important data
 
   # List contents
-  $ pfs ls /s3fs/documents
+  pfs:/> ls /s3fs/documents
   report.txt
 
   # Move/rename
-  $ pfs mv /s3fs/documents/report.txt /s3fs/documents/report-2024.txt
+  pfs:/> mv /s3fs/documents/report.txt /s3fs/documents/report-2024.txt
 
 NOTES:
   - S3 doesn't have real directories; they are simulated with "/" in object keys

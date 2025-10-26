@@ -402,13 +402,13 @@ STREAMING SUPPORT:
 
 EXAMPLES:
   # Standard file operations
-  $ mkdir /proxyfs/remote/data
-  $ echo "hello" > /proxyfs/remote/data/file.txt
-  $ cat /proxyfs/remote/data/file.txt
+  pfs:/> mkdir /proxyfs/remote/data
+  pfs:/> echo "hello" > /proxyfs/remote/data/file.txt
+  pfs:/> cat /proxyfs/remote/data/file.txt
   hello
-  $ ls /proxyfs/remote/data
+  pfs:/> ls /proxyfs/remote/data
 
-  # Streaming operations
+  # Streaming operations (outside REPL)
   $ pfs cat --stream /proxyfs/remote/streamfs/logs
   $ cat video.mp4 | pfs write --stream /proxyfs/remote/streamfs/video
 

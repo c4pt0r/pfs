@@ -428,3 +428,7 @@ func main() {
     log.Fatal(http.ListenAndServe(":8080", mux))
 }
 ```
+
+## License
+
+Apache License 2.0

@@ -104,8 +104,8 @@ def start_repl(api_base_url: str):
    / __ \/ ____/ ___/
   / /_/ / /_   \__ \
  / ____/ __/  ___/ /
-/_/   /_/    /____/""")
-        console.print()
+/_/   /_/    /____/
+""")
         console.print(f"Connected to pfs server at {api_base_url}")
         console.print("press 'help' or '?' for help")
         print()

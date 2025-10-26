@@ -785,19 +785,19 @@ USAGE:
 EXAMPLES:
 
   # Create directory structure
-  $ pfs mkdir /sqlfs/data
-  $ pfs mkdir /sqlfs/data/logs
+  pfs:/> mkdir /sqlfs/data
+  pfs:/> mkdir /sqlfs/data/logs
 
   # Write files
-  $ echo "Configuration data" | pfs write /sqlfs/data/config.txt
-  $ echo "Log entry" | pfs write /sqlfs/data/logs/app.log
+  pfs:/> echo "Configuration data" > /sqlfs/data/config.txt
+  pfs:/> echo "Log entry" > /sqlfs/data/logs/app.log
 
   # Read files
-  $ pfs cat /sqlfs/data/config.txt
+  pfs:/> cat /sqlfs/data/config.txt
   Configuration data
 
   # List directory
-  $ pfs ls /sqlfs/data
+  pfs:/> ls /sqlfs/data
   config.txt
   logs/
 

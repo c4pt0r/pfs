@@ -102,14 +102,14 @@ FILES:
 
 EXAMPLES:
   # Enqueue a message
-  $ echo "task-123" > /queuefs/enqueue
+  pfs:/> echo "task-123" > /queuefs/enqueue
 
   # Check queue size
-  $ cat /queuefs/size
+  pfs:/> cat /queuefs/size
   1
 
   # Dequeue a message
-  $ cat /queuefs/dequeue
+  pfs:/> cat /queuefs/dequeue
   {"id":"...","data":"task-123","timestamp":"..."}
 `
 }

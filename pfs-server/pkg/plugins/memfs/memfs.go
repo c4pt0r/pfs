@@ -86,12 +86,12 @@ USAGE:
     chmod 755 /path/to/file
 
 EXAMPLES:
-  $ mkdir /memfs/data
-  $ echo "hello" > /memfs/data/file.txt
-  $ cat /memfs/data/file.txt
+  pfs:/> mkdir /memfs/data
+  pfs:/> echo "hello" > /memfs/data/file.txt
+  pfs:/> cat /memfs/data/file.txt
   hello
-  $ ls /memfs/data
-  $ mv /memfs/data/file.txt /memfs/data/renamed.txt
+  pfs:/> ls /memfs/data
+  pfs:/> mv /memfs/data/file.txt /memfs/data/renamed.txt
 
 VERSION: 1.0.0
 AUTHOR: VFS Server

@@ -95,20 +95,20 @@ STRUCTURE:
 
 EXAMPLES:
   # Set a value
-  $ echo "hello world" > /kvfs/keys/mykey
+  pfs:/> echo "hello world" > /kvfs/keys/mykey
 
   # Get a value
-  $ cat /kvfs/keys/mykey
+  pfs:/> cat /kvfs/keys/mykey
   hello world
 
   # List all keys
-  $ ls /kvfs/keys
+  pfs:/> ls /kvfs/keys
 
   # Delete a key
-  $ rm /kvfs/keys/mykey
+  pfs:/> rm /kvfs/keys/mykey
 
   # Rename a key
-  $ mv /kvfs/keys/oldname /kvfs/keys/newname
+  pfs:/> mv /kvfs/keys/oldname /kvfs/keys/newname
 `
 }
 

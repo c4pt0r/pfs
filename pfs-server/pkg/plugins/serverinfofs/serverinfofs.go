@@ -66,15 +66,15 @@ FILES:
 
 EXAMPLES:
   # Check server version
-  $ cat /serverinfofs/version
+  pfs:/> cat /serverinfofs/version
   1.0.0
 
   # Check uptime
-  $ cat /serverinfofs/uptime
+  pfs:/> cat /serverinfofs/uptime
   Server uptime: 5m30s
 
   # Get complete info
-  $ cat /serverinfofs/server_info
+  pfs:/> cat /serverinfofs/server_info
   {
     "version": "1.0.0",
     "uptime": "5m30s",

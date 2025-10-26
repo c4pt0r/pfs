@@ -676,3 +676,7 @@ make test
 # Install to $GOPATH/bin
 make install
 ```
+
+## License
+
+Apache License 2.0
