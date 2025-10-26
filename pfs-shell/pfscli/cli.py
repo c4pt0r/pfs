@@ -1,16 +1,14 @@
 """Main CLI Entry Point"""
 
 import sys
+import os
+import tempfile
 import click
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 from prompt_toolkit.completion import Completer, Completion
 from rich.console import Console
-from rich.panel import Panel
-from rich.text import Text
-import os
-import tempfile
 
 from .client import PFSClient, PFSClientError
 from .commands import CommandHandler
@@ -177,9 +175,9 @@ def start_repl(api_base_url: str):
 @click.version_option(version="1.0.0", prog_name="pfs")
 @click.option(
     "--pfs-api-baseurl",
-    default="http://localhost:8080/api/v1",
-    help="PFS API base URL",
-    show_default=True,
+    default=lambda: os.environ.get("PFS_API_URL", "http://localhost:8080/api/v1"),
+    help="PFS API base URL (can also set via PFS_API_URL environment variable)",
+    show_default="http://localhost:8080/api/v1",
 )
 @click.pass_context
 def main(ctx, pfs_api_baseurl):

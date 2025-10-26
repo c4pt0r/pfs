@@ -566,7 +566,7 @@ uv run pfs --pfs-api-baseurl http://localhost:9000/api/v1 sh
 uv run pfs --pfs-api-baseurl https://pfs.example.com/api/v1 sh
 
 # Using environment variable
-export PFS_API_BASEURL=http://localhost:8080/api/v1
+export PFS_API_URL=http://localhost:8080/api/v1
 uv run pfs sh
 
 # Direct command with custom server
