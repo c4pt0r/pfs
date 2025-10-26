@@ -20,6 +20,7 @@ Highly inspired by Plan9
   - **SQLFS** - Database-backed file system (SQLite/TiDB)
   - **ProxyFS** - Federation/proxy to remote PFS servers
   - **S3FS** - Amazon S3 as a file system
+  - **LocalFS** - Mount local directories into PFS
 
 ## Quick Start
 
@@ -77,10 +78,10 @@ uv run pfs cat /queuefs/size
 │  │  KVFS       │    │  StreamFS  │     │   S3FS       │ │    │
 │  │  /kvfs      │    │  /streamfs │     │  /s3fs/*     │ │    │
 │  └─────────────┘    └────────────┘     └──────────────┘ │    │
-│  ┌─────────────┐    ┌────────────┐                      │    │
-│  │  SQLFS      │    │ ServerInfo │                      │    │
-│  │  /sqlfs     │    │ /serverinfo│                      │    │
-│  └─────────────┘    └────────────┘                      │    │
+│  ┌─────────────┐    ┌────────────┐     ┌──────────────┐ │    │
+│  │  SQLFS      │    │ ServerInfo │     │   LocalFS    │ │    │
+│  │  /sqlfs     │    │ /serverinfo│     │  /local      │ │    │
+│  └─────────────┘    └────────────┘     └──────────────┘ │    │
 └─────────────────────────────────────────────────────────┼────┘
                                                           │
                     HTTP Federation (ProxyFS)             │
@@ -164,6 +165,19 @@ plugins:
       path: /remote/server2
       config:
         base_url: "http://server2.example.com:8080/api/v1"
+
+  # Multiple LocalFS instances
+  localfs_home:
+    enabled: true
+    path: /home
+    config:
+      local_dir: /Users/username
+
+  localfs_data:
+    enabled: true
+    path: /data
+    config:
+      local_dir: /var/data
 ```
 
 See [config.example.yaml](config.example.yaml) for complete examples.
@@ -444,6 +458,79 @@ pfs:/> download /s3/mybucket/documents/file.pdf /local/file.pdf
 pfs:/> ls /s3/mybucket
 ```
 
+### LocalFS - Local File System Mount
+
+Mount local directories into PFS for direct access:
+
+**Configuration:**
+```yaml
+localfs:
+  enabled: true
+  path: /local
+  config:
+    local_dir: /path/to/local/directory  # Path to mount
+
+# Multiple local mounts
+localfs_home:
+  enabled: true
+  path: /home
+  config:
+    local_dir: /Users/username
+
+localfs_data:
+  enabled: true
+  path: /data
+  config:
+    local_dir: /var/data
+```
+
+**Features:**
+- Direct access to local file system
+- No data copying - files are accessed in place
+- Preserves file permissions and timestamps
+- Supports all standard file operations
+- Efficient for large files
+
+**Examples:**
+```bash
+# List local directory
+pfs:/> ls /local
+
+# Read local file
+pfs:/> cat /local/config.txt
+
+# Write to local file
+pfs:/> echo "data" > /local/output.txt
+
+# Create directory
+pfs:/> mkdir /local/newdir
+
+# Copy from memfs to local
+pfs:/> cp /memfs/temp.txt /local/backup.txt
+```
+
+**cURL Examples:**
+```bash
+# List directory
+curl "http://localhost:8080/api/v1/directories?path=/local"
+
+# Read file
+curl "http://localhost:8080/api/v1/files?path=/local/file.txt"
+
+# Write file
+curl -X PUT "http://localhost:8080/api/v1/files?path=/local/output.txt" -d "content"
+
+# Create directory
+curl -X POST "http://localhost:8080/api/v1/directories?path=/local/newdir"
+```
+
+**Use Cases:**
+- Access local configuration files
+- Process local data files
+- Integrate with existing file-based workflows
+- Development and testing with local data
+- Backup and sync operations
+
 ### MemFS - In-Memory File System
 
 Fast in-memory storage for temporary files:
@@ -646,6 +733,7 @@ pfs-server/
 │   │   ├── sqlfs/               # Database-backed FS
 │   │   ├── proxyfs/             # Remote proxy
 │   │   ├── s3fs/                # Amazon S3
+│   │   ├── localfs/             # Local file system mount
 │   │   ├── serverinfofs/        # Server info
 │   │   └── hellofs/             # Example plugin
 │   ├── handlers/
