@@ -48,6 +48,28 @@ plugins:
     path: /streamfs
 
   # ============================================================================
+  # LocalFS - Local File System Mount
+  # ============================================================================
+  localfs:
+    enabled: true
+    path: /local/tmp
+    config:
+      local_dir: /tmp # Path to the local directory to mount
+
+  # Example: Multiple local mounts (uncomment to use)
+  # localfs_home:
+  #   enabled: false
+  #   path: /home
+  #   config:
+  #     local_dir: /Users/username  # Mount home directory
+
+  # localfs_data:
+  #   enabled: false
+  #   path: /data
+  #   config:
+  #     local_dir: /var/data  # Mount data directory
+
+  # ============================================================================
   # SQLFS - Database-backed File System (Multiple Instances)
   # ============================================================================
   sqlfs:
@@ -116,7 +138,10 @@ plugins:
 # └── sqlfs/         (database-backed filesystem - SQLite)
 #
 # If additional instances are enabled:
+# ├── local/         (local file system mount)
 # ├── sqlfs_tidb/    (database-backed filesystem - TiDB)
+# ├── s3fs/
+# │   └── aws/       (AWS S3 storage)
 # └── proxyfs/
 #     ├── remote1/   (remote PFS server 1)
 #     └── remote2/   (remote PFS server 2)
@@ -130,9 +155,18 @@ plugins:
 #   pfs cat /streamfs/video
 #   pfs write /sqlfs/data/config.txt "data"
 #
+# Access local file system (when enabled):
+#   pfs ls /local
+#   pfs cat /local/file.txt
+#   pfs write /local/newfile.txt "content"
+#
 # Access remote endpoints (when enabled):
 #   pfs ls /proxyfs/remote1
 #   pfs cat /proxyfs/remote1/hello.txt
+#
+# Access S3 storage (when enabled):
+#   pfs ls /s3fs/aws
+#   pfs write /s3fs/aws/data.txt "cloud data"
 #
 # Multiple SQLFS instances (when enabled):
 #   pfs write /sqlfs/local-data.txt "local"

@@ -13,6 +13,7 @@ import (
 	"github.com/c4pt0r/pfs-server/pkg/plugin"
 	"github.com/c4pt0r/pfs-server/pkg/plugins/hellofs"
 	"github.com/c4pt0r/pfs-server/pkg/plugins/kvfs"
+	"github.com/c4pt0r/pfs-server/pkg/plugins/localfs"
 	"github.com/c4pt0r/pfs-server/pkg/plugins/memfs"
 	"github.com/c4pt0r/pfs-server/pkg/plugins/proxyfs"
 	"github.com/c4pt0r/pfs-server/pkg/plugins/queuefs"
@@ -37,6 +38,7 @@ var availablePlugins = map[string]PluginFactory{
 	"s3fs":         func(configFile string) plugin.ServicePlugin { return s3fs.NewS3FSPlugin() },
 	"streamfs":     func(configFile string) plugin.ServicePlugin { return streamfs.NewStreamFSPlugin() },
 	"sqlfs":        func(configFile string) plugin.ServicePlugin { return sqlfs.NewSQLFSPlugin() },
+	"localfs":      func(configFile string) plugin.ServicePlugin { return localfs.NewLocalFSPlugin() },
 }
 
 func main() {
