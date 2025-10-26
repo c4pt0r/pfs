@@ -5,6 +5,3 @@ PFS (Plugable File System)
 
 A tribute to Plan9
 
-## License
-
-Apache License 2.0
