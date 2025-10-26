@@ -1,0 +1,167 @@
+package main
+
+import (
+	"flag"
+	"fmt"
+	"net/http"
+	"path/filepath"
+	"runtime"
+
+	"github.com/c4pt0r/pfs-server/pkg/config"
+	"github.com/c4pt0r/pfs-server/pkg/handlers"
+	"github.com/c4pt0r/pfs-server/pkg/mountablefs"
+	"github.com/c4pt0r/pfs-server/pkg/plugin"
+	"github.com/c4pt0r/pfs-server/pkg/plugins/hellofs"
+	"github.com/c4pt0r/pfs-server/pkg/plugins/kvfs"
+	"github.com/c4pt0r/pfs-server/pkg/plugins/memfs"
+	"github.com/c4pt0r/pfs-server/pkg/plugins/proxyfs"
+	"github.com/c4pt0r/pfs-server/pkg/plugins/queuefs"
+	"github.com/c4pt0r/pfs-server/pkg/plugins/s3fs"
+	"github.com/c4pt0r/pfs-server/pkg/plugins/serverinfofs"
+	"github.com/c4pt0r/pfs-server/pkg/plugins/sqlfs"
+	"github.com/c4pt0r/pfs-server/pkg/plugins/streamfs"
+	log "github.com/sirupsen/logrus"
+)
+
+// PluginFactory is a function that creates a new plugin instance
+type PluginFactory func(configFile string) plugin.ServicePlugin
+
+// availablePlugins maps plugin names to their factory functions
+var availablePlugins = map[string]PluginFactory{
+	"serverinfofs": func(configFile string) plugin.ServicePlugin { return serverinfofs.NewServerInfoFSPlugin() },
+	"memfs":        func(configFile string) plugin.ServicePlugin { return memfs.NewMemFSPlugin() },
+	"queuefs":      func(configFile string) plugin.ServicePlugin { return queuefs.NewQueueFSPlugin() },
+	"kvfs":         func(configFile string) plugin.ServicePlugin { return kvfs.NewKVFSPlugin() },
+	"hellofs":      func(configFile string) plugin.ServicePlugin { return hellofs.NewHelloFSPlugin() },
+	"proxyfs":      func(configFile string) plugin.ServicePlugin { return proxyfs.NewProxyFSPlugin("") },
+	"s3fs":         func(configFile string) plugin.ServicePlugin { return s3fs.NewS3FSPlugin() },
+	"streamfs":     func(configFile string) plugin.ServicePlugin { return streamfs.NewStreamFSPlugin() },
+	"sqlfs":        func(configFile string) plugin.ServicePlugin { return sqlfs.NewSQLFSPlugin() },
+}
+
+func main() {
+	configFile := flag.String("c", "config.yaml", "Path to configuration file")
+	addr := flag.String("addr", "", "Server listen address (will override addr in config file)")
+	flag.Parse()
+
+	// Load configuration
+	cfg, err := config.LoadConfig(*configFile)
+	if err != nil {
+		log.Fatalf("Failed to load config file: %v", err)
+	}
+
+	// Configure logrus
+	logLevel := log.InfoLevel
+	if cfg.Server.LogLevel != "" {
+		if level, err := log.ParseLevel(cfg.Server.LogLevel); err == nil {
+			logLevel = level
+		}
+	}
+	log.SetFormatter(&log.TextFormatter{
+		FullTimestamp: true,
+		CallerPrettyfier: func(f *runtime.Frame) (string, string) {
+			filename := filepath.Base(f.File)
+			return "", fmt.Sprintf(" %s:%d\t", filename, f.Line)
+		},
+	})
+	log.SetReportCaller(true)
+	log.SetLevel(logLevel)
+
+	// Determine server address
+	serverAddr := cfg.Server.Address
+	if *addr != "" {
+		serverAddr = *addr // Command line override
+	}
+	if serverAddr == "" {
+		serverAddr = ":8080" // Default
+	}
+
+	// Create mountable file system
+	mfs := mountablefs.NewMountableFS()
+
+	// Register plugin factories for dynamic mounting
+	for pluginName, factory := range availablePlugins {
+		// Capture factory in local variable to avoid closure issues
+		f := factory
+		mfs.RegisterPluginFactory(pluginName, func() plugin.ServicePlugin {
+			return f("")
+		})
+	}
+
+	// mountPlugin initializes and mounts a plugin asynchronously
+	mountPlugin := func(pluginName, instanceName, mountPath string, pluginConfig map[string]interface{}) {
+		// Get plugin factory
+		factory, ok := availablePlugins[pluginName]
+		if !ok {
+			log.Warnf("  Unknown plugin: %s, skipping instance '%s'", pluginName, instanceName)
+			return
+		}
+
+		// Create plugin instance
+		p := factory(*configFile)
+
+		// Mount asynchronously
+		go func() {
+			// Initialize plugin
+			if err := p.Initialize(pluginConfig); err != nil {
+				log.Errorf("Failed to initialize %s instance '%s': %v", pluginName, instanceName, err)
+				return
+			}
+
+			// Mount plugin
+			if err := mfs.Mount(mountPath, p); err != nil {
+				log.Errorf("Failed to mount %s instance '%s' at %s: %v", pluginName, instanceName, mountPath, err)
+				return
+			}
+
+			// Log success
+			log.Infof("  %s instance '%s' mounted at %s", pluginName, instanceName, mountPath)
+		}()
+	}
+
+	// Mount all enabled plugins
+	log.Info("Mounting plugin filesytems...")
+	for pluginName, pluginCfg := range cfg.Plugins {
+		// Normalize to instance array (convert single instance to array of one)
+		instances := pluginCfg.Instances
+		if len(instances) == 0 {
+			// Single instance mode: treat as array with one instance
+			instances = []config.PluginInstance{
+				{
+					Name:    pluginName, // Use plugin name as instance name
+					Enabled: pluginCfg.Enabled,
+					Path:    pluginCfg.Path,
+					Config:  pluginCfg.Config,
+				},
+			}
+		}
+
+		// Mount all instances
+		for _, instance := range instances {
+			if !instance.Enabled {
+				log.Infof("  %s instance '%s' is disabled, skipping", pluginName, instance.Name)
+				continue
+			}
+
+			mountPlugin(pluginName, instance.Name, instance.Path, instance.Config)
+		}
+	}
+
+	// Create handlers
+	handler := handlers.NewHandler(mfs)
+	pluginHandler := handlers.NewPluginHandler(mfs)
+
+	// Setup routes
+	mux := http.NewServeMux()
+	handler.SetupRoutes(mux)
+	pluginHandler.SetupRoutes(mux)
+
+	// Wrap with logging middleware
+	loggedMux := handlers.LoggingMiddleware(mux)
+	// Start server
+	log.Infof("Starting PFS server on %s", serverAddr)
+
+	if err := http.ListenAndServe(serverAddr, loggedMux); err != nil {
+		log.Fatal(err)
+	}
+}

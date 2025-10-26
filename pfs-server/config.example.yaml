@@ -1,0 +1,139 @@
+# PFS Server Configuration File
+
+server:
+  address: ":8080"
+  log_level: info # Options: debug, info, warn, error
+
+# ============================================================================
+# Plugin Configurations
+# ============================================================================
+# Plugins can be defined as:
+# 1. Single instance: { enabled, path, config }
+# 2. Multiple instances: array of { name, enabled, path, config }
+
+plugins:
+  serverinfofs:
+    enabled: true
+    path: /serverinfofs
+    config:
+      version: "1.0.0"
+
+  memfs:
+    enabled: true
+    path: /memfs
+    config:
+      init_dirs:
+        - /home
+        - /tmp
+
+  queuefs:
+    enabled: true
+    path: /queuefs
+    config: {}
+
+  kvfs:
+    enabled: true
+    path: /kvfs
+    config:
+      initial_data:
+        welcome: "Hello from VFS Server!"
+        version: "1.0.0"
+
+  hellofs:
+    enabled: true
+    path: /hellofs
+
+  streamfs:
+    enabled: true
+    path: /streamfs
+
+  # ============================================================================
+  # SQLFS - Database-backed File System (Multiple Instances)
+  # ============================================================================
+  sqlfs:
+    # SQLite instance for local development
+    - name: local
+      enabled: true
+      path: /sqlfs
+      config:
+        backend: sqlite
+        db_path: sqlfs.db
+        cache_enabled: true
+        cache_max_size: 1000
+        cache_ttl_seconds: 5
+
+    # TiDB instance for production (disabled by default)
+    - name: tidb
+      enabled: true
+      path: /sqlfs_tidb
+      config:
+        backend: tidb
+        dsn: "xxx:yyy@tcp(zzz:4000)/sqlfs?charset=utf8mb4&parseTime=True&tls=tidb"
+        cache_enabled: true
+        cache_max_size: 1000
+        cache_ttl_seconds: 5
+
+  # ============================================================================
+  # ProxyFS - Remote PFS Proxy (Multiple Instances)
+  # ============================================================================
+  proxyfs:
+    # Remote server 1 (disabled by default)
+    - name: remote1
+      enabled: false
+      path: /proxyfs/remote1
+      config:
+        base_url: "http://localhost:9090/api/v1"
+
+    # Remote server 2 (disabled by default)
+    - name: remote2
+      enabled: false
+      path: /proxyfs/remote2
+      config:
+        base_url: "http://another-server:8080/api/v1"
+
+  s3fs:
+    - name: aws
+      enabled: true
+      path: /s3fs/aws
+      config:
+        region: us-west-1
+        bucket: bucket-name
+        access_key_id: key_id
+        secret_access_key: secret
+        prefix: pfs/ # Optional: all keys will be prefixed with "pfs/"
+
+# ============================================================================
+# File System Structure
+# ============================================================================
+# With current enabled plugins:
+# /
+# ├── serverinfofs/  (server information)
+# ├── memfs/         (in-memory filesystem)
+# ├── queuefs/       (message queue)
+# ├── kvfs/          (key-value store)
+# ├── hellofs/       (hello world plugin)
+# ├── streamfs/      (streaming data)
+# └── sqlfs/         (database-backed filesystem - SQLite)
+#
+# If additional instances are enabled:
+# ├── sqlfs_tidb/    (database-backed filesystem - TiDB)
+# └── proxyfs/
+#     ├── remote1/   (remote PFS server 1)
+#     └── remote2/   (remote PFS server 2)
+
+# ============================================================================
+# Usage Examples
+# ============================================================================
+#
+# Access local plugins:
+#   pfs ls /memfs
+#   pfs cat /streamfs/video
+#   pfs write /sqlfs/data/config.txt "data"
+#
+# Access remote endpoints (when enabled):
+#   pfs ls /proxyfs/remote1
+#   pfs cat /proxyfs/remote1/hello.txt
+#
+# Multiple SQLFS instances (when enabled):
+#   pfs write /sqlfs/local-data.txt "local"
+#   pfs write /sqlfs_tidb/prod-data.txt "production"

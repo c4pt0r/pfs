@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pfs-cli"
+version = "1.0.0"
+description = "Interactive client for pfs server"
+readme = "README.md"
+requires-python = ">=3.8"
+authors = [
+    { name = "pfs authors" }
+]
+dependencies = [
+    "requests>=2.31.0",
+    "prompt-toolkit>=3.0.0",
+    "rich>=13.0.0",
+    "click>=8.0.0",
+]
+
+[project.scripts]
+pfs = "pfscli.cli:main"
+pfs-cli = "pfscli.cli:main"
+
+[tool.uv]
+dev-dependencies = []
+
+[tool.hatch.build.targets.wheel]
+packages = ["pfscli"]

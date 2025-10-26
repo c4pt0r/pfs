@@ -30,3 +30,13 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+
+# config files
+
+config.yaml
+build/
+
+# python staging files
+*.pyc
+__pycache__/
