@@ -50,6 +50,17 @@ jobs:
           go-version: '1.25.1'
           cache-dependency-path: pfs-server/go.sum
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install uv
+        shell: bash
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
       - name: Get version info
         id: version
         shell: bash
@@ -65,6 +76,28 @@ jobs:
           CGO_ENABLED: 0
         run: |
           go build -ldflags="-s -w -X main.version=${{ steps.version.outputs.date }}-${{ steps.version.outputs.short_sha }}" -o ../build/pfs-server-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.os == 'windows' && '.exe' || '' }} ./cmd/server
+
+      - name: Build pfs-shell (portable)
+        if: matrix.arch == 'amd64' || (matrix.os == 'darwin' && matrix.arch == 'arm64')
+        working-directory: pfs-shell
+        shell: bash
+        run: |
+          # Build portable distribution
+          python3 build.py
+
+          # Create archive name
+          ARCHIVE_NAME="pfs-shell-${{ matrix.os }}-${{ matrix.arch }}"
+
+          # Package the portable distribution
+          if [ "${{ matrix.os }}" = "windows" ]; then
+            # For Windows, create zip
+            cd dist
+            powershell Compress-Archive -Path pfs-portable -DestinationPath "../../build/${ARCHIVE_NAME}.zip"
+          else
+            # For Unix, create tar.gz
+            cd dist
+            tar -czf "../../build/${ARCHIVE_NAME}.tar.gz" pfs-portable/
+          fi
 
       - name: Create archive (Unix)
         if: matrix.os != 'windows'
@@ -87,6 +120,8 @@ jobs:
           path: |
             build/pfs-${{ matrix.os }}-${{ matrix.arch }}-*.tar.gz
             build/pfs-${{ matrix.os }}-${{ matrix.arch }}-*.zip
+            build/pfs-shell-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
+            build/pfs-shell-${{ matrix.os }}-${{ matrix.arch }}.zip
           retention-days: 90
 
   create-release:
@@ -135,8 +170,15 @@ jobs:
 
             Automated daily build from commit ${{ github.sha }}
 
+            ### 📦 What's Included
+
+            This release contains:
+            - **pfs-server**: Go binary (server)
+            - **pfs-shell**: Python portable CLI client (requires Python 3.10+, includes all dependencies)
+
             ### Downloads
-            Choose the appropriate binary for your platform:
+
+            #### Server Binaries
 
             - **Linux AMD64**: `pfs-linux-amd64-${{ steps.version.outputs.date }}.tar.gz`
             - **Linux ARM64**: `pfs-linux-arm64-${{ steps.version.outputs.date }}.tar.gz`
@@ -145,19 +187,77 @@ jobs:
             - **Windows AMD64**: `pfs-windows-amd64-${{ steps.version.outputs.date }}.zip`
             - **Windows ARM64**: `pfs-windows-arm64-${{ steps.version.outputs.date }}.zip`
 
+            #### CLI Client (Portable, Python 3.10+ required)
+
+            - **Linux AMD64**: `pfs-shell-linux-amd64.tar.gz`
+            - **macOS AMD64**: `pfs-shell-darwin-amd64.tar.gz`
+            - **macOS ARM64**: `pfs-shell-darwin-arm64.tar.gz`
+            - **Windows AMD64**: `pfs-shell-windows-amd64.zip`
+
             ### Installation
 
-            **Linux/macOS:**
+            #### Quick Install (All-in-One)
+
             ```bash
+            curl -fsSL https://raw.githubusercontent.com/c4pt0r/pfs/master/install.sh | sh
+            ```
+
+            This will install both server and client to `~/.local/bin/`.
+
+            #### Manual Installation
+
+            **Server (Linux/macOS):**
+            ```bash
+            # Extract
             tar -xzf pfs-<os>-<arch>-${{ steps.version.outputs.date }}.tar.gz
-            chmod +x pfs-server-*
-            ./pfs-server-<os>-<arch>
+
+            # Make executable
+            chmod +x pfs-server-<os>-<arch>
+
+            # Move to bin directory
+            mv pfs-server-<os>-<arch> ~/.local/bin/pfs-server
+
+            # Run server
+            pfs-server
+            ```
+
+            **Client (Linux/macOS):**
+            ```bash
+            # Extract
+            tar -xzf pfs-shell-<os>-<arch>.tar.gz
+
+            # Run directly
+            ./pfs-portable/pfs --help
+
+            # Or install to system
+            cd pfs-portable && ./install.sh
             ```
 
             **Windows:**
             ```powershell
-            Expand-Archive pfs-windows-<arch>-${{ steps.version.outputs.date }}.zip
-            .\pfs-server-windows-<arch>.exe
+            # Extract server
+            Expand-Archive pfs-windows-amd64-${{ steps.version.outputs.date }}.zip
+
+            # Extract client
+            Expand-Archive pfs-shell-windows-amd64.zip
+
+            # Run server
+            .\pfs-server-windows-amd64.exe
+
+            # Run client
+            .\pfs-portable\pfs.bat --help
+            ```
+
+            ### Quick Start
+
+            ```bash
+            # Start the server
+            pfs-server
+
+            # In another terminal, use CLI
+            pfs shell
+            pfs ls /
+            pfs tree /
             ```
           files: release/*
           draft: false

@@ -13,6 +13,7 @@ from rich.console import Console
 from .client import PFSClient, PFSClientError
 from .commands import CommandHandler
 from . import cli_commands
+from .version import get_version_string, __version__
 
 console = Console()
 
@@ -104,6 +105,7 @@ def start_repl(api_base_url: str):
  / ____/ __/  ___/ /
 /_/   /_/    /____/
 """)
+        console.print(f"[dim]{get_version_string()}[/dim]")
         console.print(f"Connected to pfs server at {api_base_url}")
         console.print("press 'help' or '?' for help")
         print()
@@ -172,7 +174,7 @@ def start_repl(api_base_url: str):
 
 
 @click.group()
-@click.version_option(version="1.0.0", prog_name="pfs")
+@click.version_option(version=get_version_string(), prog_name="pfs")
 @click.option(
     "--pfs-api-baseurl",
     default=lambda: os.environ.get("PFS_API_URL", "http://localhost:8080/api/v1"),
