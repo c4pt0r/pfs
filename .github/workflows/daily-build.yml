@@ -1,0 +1,164 @@
+name: Daily Build
+
+on:
+  schedule:
+    # Run at 00:00 UTC every day
+    - cron: '0 0 * * *'
+  workflow_dispatch: # Allow manual trigger
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build for ${{ matrix.os }}-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          # Linux builds
+          - os: linux
+            arch: amd64
+            runner: ubuntu-latest
+          - os: linux
+            arch: arm64
+            runner: ubuntu-latest
+
+          # macOS builds
+          - os: darwin
+            arch: amd64
+            runner: macos-latest
+          - os: darwin
+            arch: arm64
+            runner: macos-latest
+
+          # Windows builds
+          - os: windows
+            arch: amd64
+            runner: windows-latest
+          - os: windows
+            arch: arm64
+            runner: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.1'
+          cache-dependency-path: pfs-server/go.sum
+
+      - name: Get version info
+        id: version
+        shell: bash
+        run: |
+          echo "date=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
+          echo "short_sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Build pfs-server
+        working-directory: pfs-server
+        env:
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+          CGO_ENABLED: 0
+        run: |
+          go build -ldflags="-s -w -X main.version=${{ steps.version.outputs.date }}-${{ steps.version.outputs.short_sha }}" -o ../build/pfs-server-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.os == 'windows' && '.exe' || '' }} ./cmd/server
+
+      - name: Create archive (Unix)
+        if: matrix.os != 'windows'
+        working-directory: build
+        run: |
+          tar -czf pfs-${{ matrix.os }}-${{ matrix.arch }}-${{ steps.version.outputs.date }}.tar.gz pfs-server-${{ matrix.os }}-${{ matrix.arch }}*
+
+      - name: Create archive (Windows)
+        if: matrix.os == 'windows'
+        working-directory: build
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem -Filter "pfs-*-${{ matrix.os }}-${{ matrix.arch }}*"
+          Compress-Archive -Path $files -DestinationPath "pfs-${{ matrix.os }}-${{ matrix.arch }}-${{ steps.version.outputs.date }}.zip"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pfs-${{ matrix.os }}-${{ matrix.arch }}
+          path: |
+            build/pfs-${{ matrix.os }}-${{ matrix.arch }}-*.tar.gz
+            build/pfs-${{ matrix.os }}-${{ matrix.arch }}-*.zip
+          retention-days: 90
+
+  create-release:
+    name: Create Daily Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get version info
+        id: version
+        run: |
+          echo "date=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
+          echo "tag=daily-$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Display structure of downloaded files
+        run: ls -R release-artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release
+          find release-artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" \) -exec cp {} release/ \;
+
+      - name: Delete existing daily release
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete ${{ steps.version.outputs.tag }} --yes --cleanup-tag
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: Daily Build ${{ steps.version.outputs.date }}
+          body: |
+            ## Daily Build - ${{ steps.version.outputs.date }}
+
+            Automated daily build from commit ${{ github.sha }}
+
+            ### Downloads
+            Choose the appropriate binary for your platform:
+
+            - **Linux AMD64**: `pfs-linux-amd64-${{ steps.version.outputs.date }}.tar.gz`
+            - **Linux ARM64**: `pfs-linux-arm64-${{ steps.version.outputs.date }}.tar.gz`
+            - **macOS AMD64**: `pfs-darwin-amd64-${{ steps.version.outputs.date }}.tar.gz`
+            - **macOS ARM64 (Apple Silicon)**: `pfs-darwin-arm64-${{ steps.version.outputs.date }}.tar.gz`
+            - **Windows AMD64**: `pfs-windows-amd64-${{ steps.version.outputs.date }}.zip`
+            - **Windows ARM64**: `pfs-windows-arm64-${{ steps.version.outputs.date }}.zip`
+
+            ### Installation
+
+            **Linux/macOS:**
+            ```bash
+            tar -xzf pfs-<os>-<arch>-${{ steps.version.outputs.date }}.tar.gz
+            chmod +x pfs-server-*
+            ./pfs-server-<os>-<arch>
+            ```
+
+            **Windows:**
+            ```powershell
+            Expand-Archive pfs-windows-<arch>-${{ steps.version.outputs.date }}.zip
+            .\pfs-server-windows-<arch>.exe
+            ```
+          files: release/*
+          draft: false
+          prerelease: true
