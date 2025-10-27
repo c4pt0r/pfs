@@ -66,7 +66,7 @@ func (fs *HelloFS) Stat(path string) (*filesystem.FileInfo, error) {
 			Mode:    0444,
 			ModTime: time.Now(),
 			IsDir:   false,
-			Meta:    map[string]string{filesystem.MetaKeyPluginName: PluginName},
+			Meta:    filesystem.MetaData{Name: PluginName, Type: "file"},
 		}, nil
 	}
 	if path == "/" {
@@ -76,7 +76,7 @@ func (fs *HelloFS) Stat(path string) (*filesystem.FileInfo, error) {
 			Mode:    0555,
 			ModTime: time.Now(),
 			IsDir:   true,
-			Meta:    map[string]string{filesystem.MetaKeyPluginName: PluginName},
+			Meta:    filesystem.MetaData{Name: PluginName, Type: "directory"},
 		}, nil
 	}
 	return nil, errors.New("file not found")
@@ -91,7 +91,7 @@ func (fs *HelloFS) ReadDir(path string) ([]filesystem.FileInfo, error) {
 				Mode:    0444,
 				ModTime: time.Now(),
 				IsDir:   false,
-				Meta:    map[string]string{filesystem.MetaKeyPluginName: PluginName},
+				Meta:    filesystem.MetaData{Name: PluginName, Type: "file"},
 			},
 		}, nil
 	}

@@ -95,9 +95,11 @@ func (pfs *ProxyFS) ReadDir(path string) ([]filesystem.FileInfo, error) {
 			Mode:    0o200,            // write-only
 			ModTime: files[0].ModTime, // Use same time as first file
 			IsDir:   false,
-			Meta: map[string]string{
-				"type":        "control",
-				"description": "Write to this file to reload proxy connection",
+			Meta: filesystem.MetaData{
+				Type: "control",
+				Content: map[string]string{
+					"description": "Write to this file to reload proxy connection",
+				},
 			},
 		}
 		files = append(files, reloadFile)
@@ -115,10 +117,12 @@ func (pfs *ProxyFS) Stat(path string) (*filesystem.FileInfo, error) {
 			Mode:    0o200, // write-only
 			ModTime: time.Now(),
 			IsDir:   false,
-			Meta: map[string]string{
-				"type":        "control",
-				"description": "Write to this file to reload proxy connection",
-				"remote-url":  pfs.baseURL,
+			Meta: filesystem.MetaData{
+				Type: "control",
+				Content: map[string]string{
+					"description": "Write to this file to reload proxy connection",
+					"remote-url":  pfs.baseURL,
+				},
 			},
 		}, nil
 	}
@@ -130,10 +134,10 @@ func (pfs *ProxyFS) Stat(path string) (*filesystem.FileInfo, error) {
 	}
 
 	// Add remote URL to metadata
-	if stat.Meta == nil {
-		stat.Meta = make(map[string]string)
+	if stat.Meta.Content == nil {
+		stat.Meta.Content = make(map[string]string)
 	}
-	stat.Meta["remote-url"] = pfs.baseURL
+	stat.Meta.Content["remote-url"] = pfs.baseURL
 
 	return stat, nil
 }

@@ -5,11 +5,12 @@ import (
 	"time"
 )
 
-// Common Meta keys used across all plugins
-const (
-	MetaKeyPluginName = "plugin-name" // Plugin name that provides this file/directory
-	MetaKeyType       = "type"        // Type classification of the file/directory
-)
+// MetaData represents structured metadata for files and directories
+type MetaData struct {
+	Name    string            // Plugin name or identifier
+	Type    string            // Type classification of the file/directory
+	Content map[string]string // Additional extensible metadata
+}
 
 // FileInfo represents file metadata similar to os.FileInfo
 type FileInfo struct {
@@ -18,7 +19,7 @@ type FileInfo struct {
 	Mode    uint32
 	ModTime time.Time
 	IsDir   bool
-	Meta    map[string]string // Extensible metadata for additional information (e.g., plugin name, file type, etc.)
+	Meta    MetaData // Structured metadata for additional information
 }
 
 // FileSystem defines the interface for a POSIX-like file system

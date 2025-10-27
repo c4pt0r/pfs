@@ -34,12 +34,12 @@ type SuccessResponse struct {
 
 // FileInfoResponse represents file info response
 type FileInfoResponse struct {
-	Name    string            `json:"name"`
-	Size    int64             `json:"size"`
-	Mode    uint32            `json:"mode"`
-	ModTime string            `json:"modTime"`
-	IsDir   bool              `json:"isDir"`
-	Meta    map[string]string `json:"meta,omitempty"` // Optional metadata
+	Name    string                `json:"name"`
+	Size    int64                 `json:"size"`
+	Mode    uint32                `json:"mode"`
+	ModTime string                `json:"modTime"`
+	IsDir   bool                  `json:"isDir"`
+	Meta    filesystem.MetaData   `json:"meta,omitempty"` // Structured metadata
 }
 
 // ListResponse represents directory listing response

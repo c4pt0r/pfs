@@ -541,8 +541,8 @@ func (fs *SQLFS) ReadDir(path string) ([]filesystem.FileInfo, error) {
 			Mode:    mode,
 			ModTime: time.Unix(modTime, 0),
 			IsDir:   isDir == 1,
-			Meta: map[string]string{
-				filesystem.MetaKeyPluginName: PluginName,
+			Meta: filesystem.MetaData{
+				Name: PluginName,
 			},
 		})
 	}
@@ -590,9 +590,9 @@ func (fs *SQLFS) Stat(path string) (*filesystem.FileInfo, error) {
 		Mode:    mode,
 		ModTime: time.Unix(modTime, 0),
 		IsDir:   isDir == 1,
-		Meta: map[string]string{
-			filesystem.MetaKeyPluginName: PluginName,
-			"backend":                    fs.backend.GetDriverName(),
+		Meta: filesystem.MetaData{
+			Name: PluginName,
+			Type: fs.backend.GetDriverName(),
 		},
 	}, nil
 }

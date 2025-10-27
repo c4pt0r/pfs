@@ -298,9 +298,9 @@ func (fs *LocalFS) ReadDir(path string) ([]filesystem.FileInfo, error) {
 			Mode:    uint32(entryInfo.Mode()),
 			ModTime: entryInfo.ModTime(),
 			IsDir:   entry.IsDir(),
-			Meta: map[string]string{
-				filesystem.MetaKeyPluginName: PluginName,
-				filesystem.MetaKeyType:       "local",
+			Meta: filesystem.MetaData{
+				Name: PluginName,
+				Type: "local",
 			},
 		})
 	}
@@ -329,10 +329,12 @@ func (fs *LocalFS) Stat(path string) (*filesystem.FileInfo, error) {
 		Mode:    uint32(info.Mode()),
 		ModTime: info.ModTime(),
 		IsDir:   info.IsDir(),
-		Meta: map[string]string{
-			filesystem.MetaKeyPluginName: PluginName,
-			filesystem.MetaKeyType:       "local",
-			"local_path":                  localPath,
+		Meta: filesystem.MetaData{
+			Name: PluginName,
+			Type: "local",
+			Content: map[string]string{
+				"local_path": localPath,
+			},
 		},
 	}, nil
 }

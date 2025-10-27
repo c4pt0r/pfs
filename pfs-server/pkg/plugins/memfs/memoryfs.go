@@ -280,14 +280,9 @@ func (mfs *MemoryFS) ReadDir(path string) ([]filesystem.FileInfo, error) {
 
 	var infos []filesystem.FileInfo
 	for _, child := range node.Children {
-		meta := make(map[string]string)
-		if mfs.pluginName != "" {
-			meta[filesystem.MetaKeyPluginName] = mfs.pluginName
-		}
+		metaType := MetaValueFile
 		if child.IsDir {
-			meta[filesystem.MetaKeyType] = MetaValueDir
-		} else {
-			meta[filesystem.MetaKeyType] = MetaValueFile
+			metaType = MetaValueDir
 		}
 
 		infos = append(infos, filesystem.FileInfo{
@@ -296,7 +291,10 @@ func (mfs *MemoryFS) ReadDir(path string) ([]filesystem.FileInfo, error) {
 			Mode:    child.Mode,
 			ModTime: child.ModTime,
 			IsDir:   child.IsDir,
-			Meta:    meta,
+			Meta: filesystem.MetaData{
+				Name: mfs.pluginName,
+				Type: metaType,
+			},
 		})
 	}
 
@@ -313,14 +311,9 @@ func (mfs *MemoryFS) Stat(path string) (*filesystem.FileInfo, error) {
 		return nil, err
 	}
 
-	meta := make(map[string]string)
-	if mfs.pluginName != "" {
-		meta[filesystem.MetaKeyPluginName] = mfs.pluginName
-	}
+	metaType := MetaValueFile
 	if node.IsDir {
-		meta[filesystem.MetaKeyType] = MetaValueDir
-	} else {
-		meta[filesystem.MetaKeyType] = MetaValueFile
+		metaType = MetaValueDir
 	}
 
 	return &filesystem.FileInfo{
@@ -329,7 +322,10 @@ func (mfs *MemoryFS) Stat(path string) (*filesystem.FileInfo, error) {
 		Mode:    node.Mode,
 		ModTime: node.ModTime,
 		IsDir:   node.IsDir,
-		Meta:    meta,
+		Meta: filesystem.MetaData{
+			Name: mfs.pluginName,
+			Type: metaType,
+		},
 	}, nil
 }
 

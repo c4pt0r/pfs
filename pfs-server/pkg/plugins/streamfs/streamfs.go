@@ -331,11 +331,13 @@ func (sf *StreamFile) GetInfo() filesystem.FileInfo {
 		Mode:    0644,
 		ModTime: sf.modTime,
 		IsDir:   false,
-		Meta: map[string]string{
-			filesystem.MetaKeyPluginName: PluginName,
-			filesystem.MetaKeyType:       "stream",
-			"total_written":              fmt.Sprintf("%d", sf.offset),
-			"active_readers":             fmt.Sprintf("%d", len(sf.readers)),
+		Meta: filesystem.MetaData{
+			Name: PluginName,
+			Type: "stream",
+			Content: map[string]string{
+				"total_written":  fmt.Sprintf("%d", sf.offset),
+				"active_readers": fmt.Sprintf("%d", len(sf.readers)),
+			},
 		},
 	}
 }
@@ -453,9 +455,9 @@ func (sfs *StreamFS) ReadDir(path string) ([]filesystem.FileInfo, error) {
 		Mode:    0444,
 		ModTime: time.Now(),
 		IsDir:   false,
-		Meta: map[string]string{
-			filesystem.MetaKeyPluginName: PluginName,
-			filesystem.MetaKeyType:       "doc",
+		Meta: filesystem.MetaData{
+			Name: PluginName,
+			Type: "doc",
 		},
 	}
 
@@ -475,8 +477,8 @@ func (sfs *StreamFS) Stat(path string) (*filesystem.FileInfo, error) {
 			Mode:    0755,
 			ModTime: time.Now(),
 			IsDir:   true,
-			Meta: map[string]string{
-				filesystem.MetaKeyPluginName: PluginName,
+			Meta: filesystem.MetaData{
+				Name: PluginName,
 			},
 		}
 		return info, nil
@@ -490,9 +492,9 @@ func (sfs *StreamFS) Stat(path string) (*filesystem.FileInfo, error) {
 			Mode:    0444,
 			ModTime: time.Now(),
 			IsDir:   false,
-			Meta: map[string]string{
-				filesystem.MetaKeyPluginName: PluginName,
-				filesystem.MetaKeyType:       "doc",
+			Meta: filesystem.MetaData{
+				Name: PluginName,
+				Type: "doc",
 			},
 		}
 		return info, nil

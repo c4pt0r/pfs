@@ -226,7 +226,7 @@ func (qfs *queueFS) ReadDir(path string) ([]filesystem.FileInfo, error) {
 			Mode:    0444, // read-only
 			ModTime: now,
 			IsDir:   false,
-			Meta:    map[string]string{filesystem.MetaKeyPluginName: PluginName, filesystem.MetaKeyType: "doc"},
+			Meta:    filesystem.MetaData{Name: PluginName, Type: "doc"},
 		},
 		{
 			Name:    "enqueue",
@@ -234,7 +234,7 @@ func (qfs *queueFS) ReadDir(path string) ([]filesystem.FileInfo, error) {
 			Mode:    0222, // write-only
 			ModTime: now,
 			IsDir:   false,
-			Meta:    map[string]string{filesystem.MetaKeyPluginName: PluginName, filesystem.MetaKeyType: MetaValueQueueControl},
+			Meta:    filesystem.MetaData{Name: PluginName, Type: MetaValueQueueControl},
 		},
 		{
 			Name:    "dequeue",
@@ -242,7 +242,7 @@ func (qfs *queueFS) ReadDir(path string) ([]filesystem.FileInfo, error) {
 			Mode:    0444, // read-only
 			ModTime: now,
 			IsDir:   false,
-			Meta:    map[string]string{filesystem.MetaKeyPluginName: PluginName, filesystem.MetaKeyType: MetaValueQueueControl},
+			Meta:    filesystem.MetaData{Name: PluginName, Type: MetaValueQueueControl},
 		},
 		{
 			Name:    "peek",
@@ -250,7 +250,7 @@ func (qfs *queueFS) ReadDir(path string) ([]filesystem.FileInfo, error) {
 			Mode:    0444,        // read-only
 			ModTime: peekModTime, // Use last enqueue time for poll offset tracking
 			IsDir:   false,
-			Meta:    map[string]string{filesystem.MetaKeyPluginName: PluginName, filesystem.MetaKeyType: MetaValueQueueControl},
+			Meta:    filesystem.MetaData{Name: PluginName, Type: MetaValueQueueControl},
 		},
 		{
 			Name:    "size",
@@ -258,7 +258,7 @@ func (qfs *queueFS) ReadDir(path string) ([]filesystem.FileInfo, error) {
 			Mode:    0444, // read-only
 			ModTime: time.Now(),
 			IsDir:   false,
-			Meta:    map[string]string{filesystem.MetaKeyPluginName: PluginName, filesystem.MetaKeyType: MetaValueQueueStatus},
+			Meta:    filesystem.MetaData{Name: PluginName, Type: MetaValueQueueStatus},
 		},
 		{
 			Name:    "clear",
@@ -266,7 +266,7 @@ func (qfs *queueFS) ReadDir(path string) ([]filesystem.FileInfo, error) {
 			Mode:    0222, // write-only
 			ModTime: time.Now(),
 			IsDir:   false,
-			Meta:    map[string]string{filesystem.MetaKeyPluginName: PluginName, filesystem.MetaKeyType: MetaValueQueueControl},
+			Meta:    filesystem.MetaData{Name: PluginName, Type: MetaValueQueueControl},
 		},
 	}
 
@@ -281,7 +281,7 @@ func (qfs *queueFS) Stat(path string) (*filesystem.FileInfo, error) {
 			Mode:    0755,
 			ModTime: time.Now(),
 			IsDir:   true,
-			Meta:    map[string]string{filesystem.MetaKeyPluginName: PluginName},
+			Meta:    filesystem.MetaData{Name: PluginName},
 		}, nil
 	}
 
@@ -321,7 +321,7 @@ func (qfs *queueFS) Stat(path string) (*filesystem.FileInfo, error) {
 		Mode:    mode,
 		ModTime: modTime,
 		IsDir:   false,
-		Meta:    map[string]string{filesystem.MetaKeyPluginName: PluginName, filesystem.MetaKeyType: fileType},
+		Meta:    filesystem.MetaData{Name: PluginName, Type: fileType},
 	}, nil
 }
 

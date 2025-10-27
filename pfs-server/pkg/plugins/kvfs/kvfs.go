@@ -250,9 +250,9 @@ func (kvfs *kvFS) ReadDir(path string) ([]filesystem.FileInfo, error) {
 				Mode:    0444,
 				ModTime: time.Now(),
 				IsDir:   false,
-				Meta: map[string]string{
-					filesystem.MetaKeyPluginName: PluginName,
-					filesystem.MetaKeyType:       "doc",
+				Meta: filesystem.MetaData{
+					Name: PluginName,
+					Type: "doc",
 				},
 			},
 			{
@@ -261,9 +261,9 @@ func (kvfs *kvFS) ReadDir(path string) ([]filesystem.FileInfo, error) {
 				Mode:    0755,
 				ModTime: time.Now(),
 				IsDir:   true,
-				Meta: map[string]string{
-					filesystem.MetaKeyPluginName: PluginName,
-					filesystem.MetaKeyType:       MetaValueDir,
+				Meta: filesystem.MetaData{
+					Name: PluginName,
+					Type: MetaValueDir,
 				},
 			},
 		}, nil
@@ -282,9 +282,9 @@ func (kvfs *kvFS) ReadDir(path string) ([]filesystem.FileInfo, error) {
 				Mode:    0644,
 				ModTime: time.Now(),
 				IsDir:   false,
-				Meta: map[string]string{
-					filesystem.MetaKeyPluginName: PluginName,
-					filesystem.MetaKeyType:       MetaValueFile,
+				Meta: filesystem.MetaData{
+					Name: PluginName,
+					Type: MetaValueFile,
 				},
 			})
 		}
@@ -303,9 +303,9 @@ func (kvfs *kvFS) Stat(path string) (*filesystem.FileInfo, error) {
 			Mode:    0755,
 			ModTime: time.Now(),
 			IsDir:   true,
-			Meta: map[string]string{
-				filesystem.MetaKeyPluginName: PluginName,
-				filesystem.MetaKeyType:       MetaValueDir,
+			Meta: filesystem.MetaData{
+				Name: PluginName,
+				Type: MetaValueDir,
 			},
 		}, nil
 	}
@@ -318,9 +318,9 @@ func (kvfs *kvFS) Stat(path string) (*filesystem.FileInfo, error) {
 			Mode:    0444,
 			ModTime: time.Now(),
 			IsDir:   false,
-			Meta: map[string]string{
-				filesystem.MetaKeyPluginName: PluginName,
-				filesystem.MetaKeyType:       "doc",
+			Meta: filesystem.MetaData{
+				Name: PluginName,
+				Type: "doc",
 			},
 		}, nil
 	}
@@ -348,9 +348,9 @@ func (kvfs *kvFS) Stat(path string) (*filesystem.FileInfo, error) {
 		Mode:    0644,
 		ModTime: time.Now(),
 		IsDir:   false,
-		Meta: map[string]string{
-			filesystem.MetaKeyPluginName: PluginName,
-			filesystem.MetaKeyType:       MetaValueFile,
+		Meta: filesystem.MetaData{
+			Name: PluginName,
+			Type: MetaValueFile,
 		},
 	}, nil
 }

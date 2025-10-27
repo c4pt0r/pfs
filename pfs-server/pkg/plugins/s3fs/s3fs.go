@@ -279,9 +279,9 @@ func (fs *S3FS) ReadDir(path string) ([]filesystem.FileInfo, error) {
 			Mode:    0644,
 			ModTime: obj.LastModified,
 			IsDir:   obj.IsDir,
-			Meta: map[string]string{
-				filesystem.MetaKeyPluginName: PluginName,
-				filesystem.MetaKeyType:       "s3",
+			Meta: filesystem.MetaData{
+				Name: PluginName,
+				Type: "s3",
 			},
 		})
 	}
@@ -304,11 +304,14 @@ func (fs *S3FS) Stat(path string) (*filesystem.FileInfo, error) {
 			Mode:    0755,
 			ModTime: time.Now(),
 			IsDir:   true,
-			Meta: map[string]string{
-				filesystem.MetaKeyPluginName: PluginName,
-				"region":                      fs.client.region,
-				"bucket":                      fs.client.bucket,
-				"prefix":                      fs.client.prefix,
+			Meta: filesystem.MetaData{
+				Name: PluginName,
+				Type: "s3",
+				Content: map[string]string{
+					"region": fs.client.region,
+					"bucket": fs.client.bucket,
+					"prefix": fs.client.prefix,
+				},
 			},
 		}, nil
 	}
@@ -322,12 +325,14 @@ func (fs *S3FS) Stat(path string) (*filesystem.FileInfo, error) {
 			Mode:    0644,
 			ModTime: aws.ToTime(head.LastModified),
 			IsDir:   false,
-			Meta: map[string]string{
-				filesystem.MetaKeyPluginName: PluginName,
-				filesystem.MetaKeyType:       "s3",
-				"region":                      fs.client.region,
-				"bucket":                      fs.client.bucket,
-				"prefix":                      fs.client.prefix,
+			Meta: filesystem.MetaData{
+				Name: PluginName,
+				Type: "s3",
+				Content: map[string]string{
+					"region": fs.client.region,
+					"bucket": fs.client.bucket,
+					"prefix": fs.client.prefix,
+				},
 			},
 		}, nil
 	}
@@ -345,11 +350,14 @@ func (fs *S3FS) Stat(path string) (*filesystem.FileInfo, error) {
 			Mode:    0755,
 			ModTime: time.Now(),
 			IsDir:   true,
-			Meta: map[string]string{
-				filesystem.MetaKeyPluginName: PluginName,
-				"region":                      fs.client.region,
-				"bucket":                      fs.client.bucket,
-				"prefix":                      fs.client.prefix,
+			Meta: filesystem.MetaData{
+				Name: PluginName,
+				Type: "s3",
+				Content: map[string]string{
+					"region": fs.client.region,
+					"bucket": fs.client.bucket,
+					"prefix": fs.client.prefix,
+				},
 			},
 		}, nil
 	}

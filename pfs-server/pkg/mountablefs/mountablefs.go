@@ -314,9 +314,9 @@ func (mfs *MountableFS) ReadDir(path string) ([]filesystem.FileInfo, error) {
 					Mode:    0755,
 					ModTime: time.Now(),
 					IsDir:   true,
-					Meta: map[string]string{
-						filesystem.MetaKeyPluginName: "rootfs",
-						filesystem.MetaKeyType:       MetaValueMountPoint,
+					Meta: filesystem.MetaData{
+						Name: "rootfs",
+						Type: MetaValueMountPoint,
 					},
 				})
 			}
@@ -359,7 +359,9 @@ func (mfs *MountableFS) ReadDir(path string) ([]filesystem.FileInfo, error) {
 					Mode:    0755,
 					ModTime: time.Now(),
 					IsDir:   true,
-					Meta:    map[string]string{filesystem.MetaKeyType: MetaValueMountPoint},
+					Meta: filesystem.MetaData{
+						Type: MetaValueMountPoint,
+					},
 				})
 			}
 		}
@@ -386,7 +388,9 @@ func (mfs *MountableFS) Stat(path string) (*filesystem.FileInfo, error) {
 			Mode:    0755,
 			ModTime: time.Now(),
 			IsDir:   true,
-			Meta:    map[string]string{filesystem.MetaKeyType: MetaValueRoot},
+			Meta: filesystem.MetaData{
+				Type: MetaValueRoot,
+			},
 		}, nil
 	}
 
@@ -437,7 +441,9 @@ func (mfs *MountableFS) Stat(path string) (*filesystem.FileInfo, error) {
 				Mode:    0755,
 				ModTime: time.Now(),
 				IsDir:   true,
-				Meta:    map[string]string{filesystem.MetaKeyType: MetaValueMountPoint},
+				Meta: filesystem.MetaData{
+					Type: MetaValueMountPoint,
+				},
 			}, nil
 		}
 	}

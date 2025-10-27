@@ -232,7 +232,7 @@ func (fs *serverInfoFS) ReadDir(path string) ([]filesystem.FileInfo, error) {
 			Mode:    0444,
 			ModTime: now,
 			IsDir:   false,
-			Meta:    map[string]string{"plugin-name": "serverinfofs", "type": "doc"},
+			Meta:    filesystem.MetaData{Name: "serverinfofs", Type: "doc"},
 		},
 		{
 			Name:    "server_info",
@@ -240,7 +240,7 @@ func (fs *serverInfoFS) ReadDir(path string) ([]filesystem.FileInfo, error) {
 			Mode:    0444,
 			ModTime: now,
 			IsDir:   false,
-			Meta:    map[string]string{"plugin-name": "serverinfofs", "type": "info"},
+			Meta:    filesystem.MetaData{Name: "serverinfofs", Type: "info"},
 		},
 		{
 			Name:    "uptime",
@@ -248,7 +248,7 @@ func (fs *serverInfoFS) ReadDir(path string) ([]filesystem.FileInfo, error) {
 			Mode:    0444,
 			ModTime: now,
 			IsDir:   false,
-			Meta:    map[string]string{"plugin-name": "serverinfofs", "type": "info"},
+			Meta:    filesystem.MetaData{Name: "serverinfofs", Type: "info"},
 		},
 		{
 			Name:    "version",
@@ -256,7 +256,7 @@ func (fs *serverInfoFS) ReadDir(path string) ([]filesystem.FileInfo, error) {
 			Mode:    0444,
 			ModTime: now,
 			IsDir:   false,
-			Meta:    map[string]string{"plugin-name": "serverinfofs", "type": "info"},
+			Meta:    filesystem.MetaData{Name: "serverinfofs", Type: "info"},
 		},
 		{
 			Name:    "stats",
@@ -264,7 +264,7 @@ func (fs *serverInfoFS) ReadDir(path string) ([]filesystem.FileInfo, error) {
 			Mode:    0444,
 			ModTime: now,
 			IsDir:   false,
-			Meta:    map[string]string{"plugin-name": "serverinfofs", "type": "info"},
+			Meta:    filesystem.MetaData{Name: "serverinfofs", Type: "info"},
 		},
 	}, nil
 }
@@ -283,7 +283,7 @@ func (fs *serverInfoFS) Stat(path string) (*filesystem.FileInfo, error) {
 			Mode:    0555,
 			ModTime: now,
 			IsDir:   true,
-			Meta:    map[string]string{"plugin-name": "serverinfofs"},
+			Meta:    filesystem.MetaData{Name: "serverinfofs"},
 		}, nil
 	}
 
@@ -304,7 +304,7 @@ func (fs *serverInfoFS) Stat(path string) (*filesystem.FileInfo, error) {
 		Mode:    0444,
 		ModTime: now,
 		IsDir:   false,
-		Meta:    map[string]string{"plugin-name": "serverinfofs", "type": fileType},
+		Meta:    filesystem.MetaData{Name: "serverinfofs", Type: fileType},
 	}, nil
 }
 
