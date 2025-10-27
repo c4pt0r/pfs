@@ -58,8 +58,16 @@ jobs:
       - name: Install uv
         shell: bash
         run: |
-          curl -LsSf https://astral.sh/uv/install.sh | sh
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+          if [ "${{ matrix.os }}" = "windows" ]; then
+            # For Windows, use PowerShell installer
+            powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+            echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+            echo "$HOME/AppData/Roaming/Python/Scripts" >> $GITHUB_PATH
+          else
+            # For Unix
+            curl -LsSf https://astral.sh/uv/install.sh | sh
+            echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+          fi
 
       - name: Get version info
         id: version
@@ -79,9 +87,26 @@ jobs:
 
       - name: Build pfs-shell (portable)
         if: matrix.arch == 'amd64' || (matrix.os == 'darwin' && matrix.arch == 'arm64')
-        working-directory: pfs-shell
         shell: bash
         run: |
+          cd pfs-shell
+
+          # Find uv command
+          if command -v uv &> /dev/null; then
+            UV_CMD="uv"
+          elif [ -f "$HOME/.cargo/bin/uv" ]; then
+            UV_CMD="$HOME/.cargo/bin/uv"
+          else
+            echo "Error: uv not found"
+            exit 1
+          fi
+
+          echo "Using uv: $UV_CMD"
+          $UV_CMD --version
+
+          # Sync dependencies
+          $UV_CMD sync
+
           # Build portable distribution
           python3 build.py
 
