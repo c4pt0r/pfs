@@ -41,10 +41,113 @@ var availablePlugins = map[string]PluginFactory{
 	"localfs":      func(configFile string) plugin.ServicePlugin { return localfs.NewLocalFSPlugin() },
 }
 
+const sampleConfig = `# PFS Server Configuration File
+# This is a sample configuration showing all available options
+
+server:
+  address: ":8080"          # Server listen address
+  log_level: "info"         # Log level: debug, info, warn, error
+
+# Plugin configurations
+plugins:
+  # Server Info Plugin - provides server information and stats
+  serverinfofs:
+    enabled: true
+    path: "/serverinfofs"
+
+  # Memory File System - in-memory file storage
+  memfs:
+    enabled: true
+    path: "/memfs"
+
+  # Queue File System - message queue operations
+  queuefs:
+    enabled: true
+    path: "/queuefs"
+
+  # Key-Value File System - key-value store
+  kvfs:
+    enabled: true
+    path: "/kvfs"
+
+  # Hello File System - example plugin
+  hellofs:
+    enabled: true
+    path: "/hellofs"
+
+  # Stream File System - streaming file operations
+  streamfs:
+    enabled: true
+    path: "/streamfs"
+
+  # Local File System - mount local directories
+  localfs:
+    enabled: false
+    path: "/localfs"
+    config:
+      root_path: "/path/to/local/directory"  # Local directory to mount
+
+  # S3 File System - mount S3 buckets
+  s3fs:
+    enabled: false
+    path: "/s3fs"
+    config:
+      bucket: "your-bucket-name"
+      region: "us-west-2"
+      access_key: "YOUR_ACCESS_KEY"
+      secret_key: "YOUR_SECRET_KEY"
+      endpoint: ""  # Optional: custom S3 endpoint
+
+  # SQL File System - file system backed by SQL database
+  sqlfs:
+    enabled: false
+    # Multi-instance example: mount multiple SQL databases
+    instances:
+      - name: "sqlfs-sqlite"
+        enabled: true
+        path: "/sqlfs/sqlite"
+        config:
+          backend: "sqlite"
+          db_path: "/tmp/pfs-sqlite.db"
+
+      - name: "sqlfs-postgres"
+        enabled: false
+        path: "/sqlfs/postgres"
+        config:
+          backend: "postgres"
+          connection_string: "postgres://user:pass@localhost/dbname?sslmode=disable"
+
+  # Proxy File System - proxy to another PFS server
+  proxyfs:
+    enabled: false
+    # Multi-instance example: proxy multiple remote servers
+    instances:
+      - name: "proxy-remote1"
+        enabled: true
+        path: "/proxy/remote1"
+        config:
+          base_url: "http://remote-server-1:8080/api/v1"
+          remote_path: "/"
+
+      - name: "proxy-remote2"
+        enabled: false
+        path: "/proxy/remote2"
+        config:
+          base_url: "http://remote-server-2:8080/api/v1"
+          remote_path: "/memfs"
+`
+
 func main() {
 	configFile := flag.String("c", "config.yaml", "Path to configuration file")
 	addr := flag.String("addr", "", "Server listen address (will override addr in config file)")
+	printSampleConfig := flag.Bool("print-sample-config", false, "Print a sample configuration file and exit")
 	flag.Parse()
+
+	// Handle --print-sample-config
+	if *printSampleConfig {
+		fmt.Println(sampleConfig)
+		return
+	}
 
 	// Load configuration
 	cfg, err := config.LoadConfig(*configFile)
