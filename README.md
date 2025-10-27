@@ -7,7 +7,7 @@ A tribute to Plan9
 
 ## Installation
 
-### Quick Install pfs-server (Daily Build)
+### Quick Install pfs-{server, shell} (Daily Build)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/c4pt0r/pfs/master/install.sh | sh
@@ -64,3 +64,4 @@ pfs:/> tree  .
 
 12 directories, 21 files
 ```
+
