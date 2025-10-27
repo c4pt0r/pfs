@@ -172,7 +172,7 @@ Example:
         # Calculate size
         total_size = sum(f.stat().st_size for f in portable_dir.rglob('*') if f.is_file())
 
-        print(f"\n✓ Build successful!")
+        print(f"\nBuild successful!")
         print(f"Portable directory: {portable_dir}")
         print(f"Size: {total_size / 1024 / 1024:.2f} MB")
         print(f"\nUsage:")
