@@ -47,21 +47,11 @@ detect_platform() {
     echo "Detected platform: $OS-$ARCH"
 }
 
-# Get the latest daily build tag
+# Get the nightly build tag
 get_latest_tag() {
-    echo "Fetching latest daily build..."
-    LATEST_TAG=$(curl -sL "https://api.github.com/repos/$REPO/releases" | \
-        grep '"tag_name":' | \
-        grep 'daily-' | \
-        head -n 1 | \
-        sed -E 's/.*"tag_name": "([^"]+)".*/\1/')
-
-    if [ -z "$LATEST_TAG" ]; then
-        echo "Error: Could not find latest daily build"
-        exit 1
-    fi
-
-    echo "Latest daily build: $LATEST_TAG"
+    echo "Fetching nightly build..."
+    LATEST_TAG="nightly"
+    echo "Using nightly build"
 }
 
 # Check Python version
@@ -89,7 +79,16 @@ install_server() {
     echo ""
     echo "Installing pfs-server..."
 
-    DATE=$(echo "$LATEST_TAG" | sed 's/daily-//')
+    # Get the date from the nightly release
+    DATE=$(curl -sL "https://api.github.com/repos/$REPO/releases/tags/$LATEST_TAG" | \
+        grep '"name":' | \
+        head -n 1 | \
+        sed -E 's/.*\(([0-9]+)\).*/\1/')
+
+    if [ -z "$DATE" ]; then
+        echo "Error: Could not determine build date from nightly release"
+        exit 1
+    fi
 
     if [ "$OS" = "windows" ]; then
         ARCHIVE="pfs-${OS}-${ARCH}-${DATE}.zip"
