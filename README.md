@@ -3,7 +3,7 @@ PFS (Plugable File System)
 
 "Everything is a file."
 
-A tribute to Plan9
+A tribute to Plan9, but in RESTful APIs
 
 ## Installation
 
@@ -64,4 +64,5 @@ pfs:/> tree  .
 
 12 directories, 21 files
 ```
+
 
