@@ -99,7 +99,7 @@ def start_repl(api_base_url: str):
     # Test connection
     try:
         client.health()
-        console.print(r"""    ____  ___________
+        print(r"""    ____  ___________
    / __ \/ ____/ ___/
   / /_/ / /_   \__ \
  / ____/ __/  ___/ /
