@@ -211,9 +211,9 @@ install_client() {
 
 show_completion() {
     echo ""
-    echo "════════════════════════════════════════"
-    echo "  ✓ Installation completed!"
-    echo "════════════════════════════════════════"
+    echo "----------------------------------"
+    echo "    Installation completed!"
+    echo "----------------------------------"
     echo ""
 
     if [ "$INSTALL_SERVER" = "yes" ]; then
@@ -249,8 +249,11 @@ show_completion() {
 }
 
 main() {
-    echo "PFS Installer"
-    echo "════════════════════════════════════════"
+    echo ""
+    echo "----------------------------------"
+    echo "          PFS Installer           "
+    echo "----------------------------------"
+    echo ""
 
     detect_platform
     get_latest_tag
