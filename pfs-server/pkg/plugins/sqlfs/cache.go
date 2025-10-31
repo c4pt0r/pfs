@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/c4pt0r/pfs-server/pkg/filesystem"
+	"github.com/c4pt0r/pfs/pfs-server/pkg/filesystem"
 )
 
 // CacheEntry represents a cached directory listing

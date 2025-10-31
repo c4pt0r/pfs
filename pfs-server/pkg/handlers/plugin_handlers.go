@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/c4pt0r/pfs-server/pkg/mountablefs"
+	"github.com/c4pt0r/pfs/pfs-server/pkg/mountablefs"
 )
 
 // PluginHandler handles plugin management operations

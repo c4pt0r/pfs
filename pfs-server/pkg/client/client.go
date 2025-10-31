@@ -9,7 +9,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/c4pt0r/pfs-server/pkg/filesystem"
+	"github.com/c4pt0r/pfs/pfs-server/pkg/filesystem"
 )
 
 // Client is a Go client for PFS HTTP API

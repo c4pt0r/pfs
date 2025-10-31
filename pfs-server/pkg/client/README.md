@@ -17,7 +17,7 @@ This package provides a complete Go client implementation for the PFS HTTP API, 
 ## Installation
 
 ```go
-import "github.com/c4pt0r/pfs-server/pkg/client"
+import "github.com/c4pt0r/pfs/pfs-server/pkg/client"
 ```
 
 ## Quick Start
@@ -27,7 +27,7 @@ package main
 
 import (
     "fmt"
-    "github.com/c4pt0r/pfs-server/pkg/client"
+    "github.com/c4pt0r/pfs/pfs-server/pkg/client"
 )
 
 func main() {

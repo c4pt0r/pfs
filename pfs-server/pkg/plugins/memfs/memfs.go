@@ -1,8 +1,8 @@
 package memfs
 
 import (
-	"github.com/c4pt0r/pfs-server/pkg/filesystem"
-	"github.com/c4pt0r/pfs-server/pkg/plugin"
+	"github.com/c4pt0r/pfs/pfs-server/pkg/filesystem"
+	"github.com/c4pt0r/pfs/pfs-server/pkg/plugin"
 )
 
 const (

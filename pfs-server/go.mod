@@ -1,4 +1,4 @@
-module github.com/c4pt0r/pfs-server
+module github.com/c4pt0r/pfs/pfs-server
 
 go 1.25.1
 

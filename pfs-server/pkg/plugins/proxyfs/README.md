@@ -20,7 +20,7 @@ ProxyFS enables PFS federation by allowing one PFS instance to mount and access 
 The ProxyFS plugin is built into the PFS server. Simply import and mount it:
 
 ```go
-import "github.com/c4pt0r/pfs-server/pkg/plugins/proxyfs"
+import "github.com/c4pt0r/pfs/pfs-server/pkg/plugins/proxyfs"
 ```
 
 ## Quick Start
@@ -31,8 +31,8 @@ import "github.com/c4pt0r/pfs-server/pkg/plugins/proxyfs"
 package main
 
 import (
-    "github.com/c4pt0r/pfs-server/pkg/mountablefs"
-    "github.com/c4pt0r/pfs-server/pkg/plugins/proxyfs"
+    "github.com/c4pt0r/pfs/pfs-server/pkg/mountablefs"
+    "github.com/c4pt0r/pfs/pfs-server/pkg/plugins/proxyfs"
 )
 
 func main() {
@@ -396,9 +396,9 @@ import (
     "log"
     "net/http"
 
-    "github.com/c4pt0r/pfs-server/pkg/handlers"
-    "github.com/c4pt0r/pfs-server/pkg/mountablefs"
-    "github.com/c4pt0r/pfs-server/pkg/plugins/proxyfs"
+    "github.com/c4pt0r/pfs/pfs-server/pkg/handlers"
+    "github.com/c4pt0r/pfs/pfs-server/pkg/mountablefs"
+    "github.com/c4pt0r/pfs/pfs-server/pkg/plugins/proxyfs"
 )
 
 func main() {
