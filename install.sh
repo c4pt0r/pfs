@@ -151,13 +151,13 @@ install_client() {
 
     # Only build for supported platforms
     if [ "$OS" = "windows" ]; then
-        if [ "$ARCH" != "amd64" ]; then
+        if [ "$ARCH" != "amd64" ] && [ "$ARCH" != "arm64" ]; then
             echo "Skipping pfs-shell: Not available for $OS-$ARCH"
             return 1
         fi
         SHELL_ARCHIVE="pfs-shell-${OS}-${ARCH}.zip"
     else
-        if [ "$ARCH" != "amd64" ] && ! { [ "$OS" = "darwin" ] && [ "$ARCH" = "arm64" ]; }; then
+        if [ "$ARCH" != "amd64" ] && ! { [ "$OS" = "darwin" ] && [ "$ARCH" = "arm64" ]; } && ! { [ "$OS" = "linux" ] && [ "$ARCH" = "arm64" ]; }; then
             echo "Skipping pfs-shell: Not available for $OS-$ARCH"
             return 1
         fi
