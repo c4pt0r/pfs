@@ -234,49 +234,175 @@ All endpoints are prefixed with `/api/v1/`.
 
 ### QueueFS - Message Queue
 
-Exposes a message queue through virtual files:
+Exposes multiple message queues through virtual files. Each queue is represented as a directory with control files for queue operations.
+
+**Features:**
+- Multiple independent queues in one instance
+- Nested queue directories for organization
+- FIFO (First-In-First-Out) message ordering
+- JSON-formatted message output with ID and timestamp
+- Non-blocking operations (dequeue returns empty object when queue is empty)
+- Thread-safe concurrent access
 
 **File Structure:**
 ```
 /queuefs/
-├── enqueue  (write to enqueue)
-├── dequeue  (read to dequeue)
-├── peek     (read without removing)
-├── size     (read queue size)
-└── clear    (write to clear)
+├── README              (plugin documentation)
+└── <queue_name>/       (each queue is a directory)
+    ├── enqueue         (write-only: add message to queue)
+    ├── dequeue         (read-only: remove and return first message)
+    ├── peek            (read-only: view first message without removing)
+    ├── size            (read-only: get queue size)
+    └── clear           (write-only: remove all messages)
 ```
 
-**Examples:**
+**Basic Usage:**
+
 ```bash
-# Enqueue message
-pfs:/> echo "Task 1" > /queuefs/enqueue
+# Create a queue
+pfs:/> mkdir /queuefs/tasks
 
-# Dequeue message
-pfs:/> cat /queuefs/dequeue
-{"id":"1736936445000000000","data":"Task 1","timestamp":"2025-01-15T10:30:45Z"}
+# Enqueue messages
+pfs:/> echo "Process order #123" > /queuefs/tasks/enqueue
+pfs:/> echo "Send email to user" > /queuefs/tasks/enqueue
+pfs:/> echo "Update inventory" > /queuefs/tasks/enqueue
 
-# Check size
-pfs:/> cat /queuefs/size
-5
+# Check queue size
+pfs:/> cat /queuefs/tasks/size
+3
 
-# Peek at next
-pfs:/> cat /queuefs/peek
+# Peek at next message (without removing)
+pfs:/> cat /queuefs/tasks/peek
+{"id":"1736936445000000000","data":"Process order #123","timestamp":"2025-01-15T10:30:45Z"}
 
-# Clear queue
-pfs:/> echo "" > /queuefs/clear
+# Dequeue messages (removes from queue)
+pfs:/> cat /queuefs/tasks/dequeue
+{"id":"1736936445000000000","data":"Process order #123","timestamp":"2025-01-15T10:30:45Z"}
+
+pfs:/> cat /queuefs/tasks/size
+2
+
+# Clear all remaining messages
+pfs:/> echo "" > /queuefs/tasks/clear
+
+# Delete the queue
+pfs:/> rm -rf /queuefs/tasks
+```
+
+**Multi-Queue Usage:**
+
+```bash
+# Create multiple queues for different purposes
+pfs:/> mkdir /queuefs/orders
+pfs:/> mkdir /queuefs/notifications
+pfs:/> mkdir /queuefs/logs
+
+# Each queue operates independently
+pfs:/> echo "order-456" > /queuefs/orders/enqueue
+pfs:/> echo "User logged in" > /queuefs/notifications/enqueue
+pfs:/> echo "Database connected" > /queuefs/logs/enqueue
+
+# List all queues
+pfs:/> ls /queuefs/
+README  orders  notifications  logs
+
+# Process specific queues
+pfs:/> cat /queuefs/orders/dequeue
+{"id":"1736936450000000000","data":"order-456","timestamp":"2025-01-15T10:30:50Z"}
+```
+
+**Nested Queues:**
+
+```bash
+# Create hierarchical queue organization
+pfs:/> mkdir -p /queuefs/logs/errors
+pfs:/> mkdir -p /queuefs/logs/warnings
+pfs:/> mkdir -p /queuefs/logs/info
+
+# Use nested queues
+pfs:/> echo "Connection timeout" > /queuefs/logs/errors/enqueue
+pfs:/> echo "Slow query detected" > /queuefs/logs/warnings/enqueue
+pfs:/> echo "Service started" > /queuefs/logs/info/enqueue
+
+# List queue hierarchy
+pfs:/> ls /queuefs/logs/
+errors  warnings  info
+
+# Process nested queues
+pfs:/> cat /queuefs/logs/errors/dequeue
+{"id":"1736936460000000000","data":"Connection timeout","timestamp":"2025-01-15T10:31:00Z"}
+```
+
+**Empty Queue Behavior:**
+
+```bash
+# Reading from empty queue returns empty JSON object (no error)
+pfs:/> cat /queuefs/tasks/dequeue
+{}
+
+pfs:/> cat /queuefs/tasks/peek
+{}
+
+pfs:/> cat /queuefs/tasks/size
+0
 ```
 
 **cURL Examples:**
+
 ```bash
-# Enqueue
-curl -X PUT "http://localhost:8080/api/v1/files?path=/queuefs/enqueue" -d "My message"
+# Create queue
+curl -X POST "http://localhost:8080/api/v1/directories?path=/queuefs/myqueue"
 
-# Dequeue
-curl "http://localhost:8080/api/v1/files?path=/queuefs/dequeue"
+# Enqueue messages
+curl -X PUT "http://localhost:8080/api/v1/files?path=/queuefs/myqueue/enqueue" \
+  -d "First message"
 
-# Size
-curl "http://localhost:8080/api/v1/files?path=/queuefs/size"
+curl -X PUT "http://localhost:8080/api/v1/files?path=/queuefs/myqueue/enqueue" \
+  -d "Second message"
+
+# Check size
+curl "http://localhost:8080/api/v1/files?path=/queuefs/myqueue/size"
+# Output: 2
+
+# Peek at next message
+curl "http://localhost:8080/api/v1/files?path=/queuefs/myqueue/peek"
+# Output: {"id":"...","data":"First message","timestamp":"..."}
+
+# Dequeue message
+curl "http://localhost:8080/api/v1/files?path=/queuefs/myqueue/dequeue"
+# Output: {"id":"...","data":"First message","timestamp":"..."}
+
+# Clear queue
+curl -X PUT "http://localhost:8080/api/v1/files?path=/queuefs/myqueue/clear" -d ""
+
+# Delete queue
+curl -X DELETE "http://localhost:8080/api/v1/files?path=/queuefs/myqueue&recursive=true"
 ```
+
+**Use Cases:**
+1. **Task Queues**: Background job processing, async task execution
+2. **Event Processing**: Event-driven architectures, message passing
+3. **Log Aggregation**: Centralized logging with categorized queues
+4. **Workflow Orchestration**: Multi-step processes with queue-based state
+5. **Rate Limiting**: Queue-based request buffering and throttling
+6. **Microservices Communication**: Simple message broker between services
+
+**Message Format:**
+
+All dequeued/peeked messages are returned as JSON:
+```json
+{
+  "id": "1736936445000000000",       // Unique message ID (nanosecond timestamp)
+  "data": "message content",          // Original message text
+  "timestamp": "2025-01-15T10:30:45Z" // ISO 8601 timestamp
+}
+```
+
+**Performance Notes:**
+- In-memory storage (messages not persisted to disk)
+- Thread-safe for concurrent producers/consumers
+- O(1) enqueue, O(1) dequeue operations
+- Suitable for lightweight message passing (consider SQLFS or external MQ for durability)
 
 ### KVFS - Key-Value Store
 
