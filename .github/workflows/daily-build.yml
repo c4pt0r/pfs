@@ -86,7 +86,7 @@ jobs:
           go build -ldflags="-s -w -X main.version=${{ steps.version.outputs.date }}-${{ steps.version.outputs.short_sha }}" -o ../build/pfs-server-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.os == 'windows' && '.exe' || '' }} ./cmd/server
 
       - name: Build pfs-shell (portable)
-        if: matrix.arch == 'amd64' || (matrix.os == 'darwin' && matrix.arch == 'arm64')
+        if: matrix.arch == 'amd64' || matrix.arch == 'arm64'
         shell: bash
         run: |
           cd pfs-shell
