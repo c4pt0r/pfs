@@ -12,6 +12,7 @@ import (
 	"github.com/c4pt0r/pfs/pfs-server/pkg/mountablefs"
 	"github.com/c4pt0r/pfs/pfs-server/pkg/plugin"
 	"github.com/c4pt0r/pfs/pfs-server/pkg/plugins/hellofs"
+	"github.com/c4pt0r/pfs/pfs-server/pkg/plugins/httpfs"
 	"github.com/c4pt0r/pfs/pfs-server/pkg/plugins/kvfs"
 	"github.com/c4pt0r/pfs/pfs-server/pkg/plugins/localfs"
 	"github.com/c4pt0r/pfs/pfs-server/pkg/plugins/memfs"
@@ -34,6 +35,7 @@ var availablePlugins = map[string]PluginFactory{
 	"queuefs":      func(configFile string) plugin.ServicePlugin { return queuefs.NewQueueFSPlugin() },
 	"kvfs":         func(configFile string) plugin.ServicePlugin { return kvfs.NewKVFSPlugin() },
 	"hellofs":      func(configFile string) plugin.ServicePlugin { return hellofs.NewHelloFSPlugin() },
+	"httpfs":       func(configFile string) plugin.ServicePlugin { return httpfs.NewHTTPFSPlugin() },
 	"proxyfs":      func(configFile string) plugin.ServicePlugin { return proxyfs.NewProxyFSPlugin("") },
 	"s3fs":         func(configFile string) plugin.ServicePlugin { return s3fs.NewS3FSPlugin() },
 	"streamfs":     func(configFile string) plugin.ServicePlugin { return streamfs.NewStreamFSPlugin() },
@@ -204,6 +206,13 @@ func main() {
 
 		// Create plugin instance
 		p := factory(*configFile)
+
+		// Special handling for httpfs: inject rootFS reference
+		if pluginName == "httpfs" {
+			if httpfsPlugin, ok := p.(*httpfs.HTTPFSPlugin); ok {
+				httpfsPlugin.SetRootFS(mfs)
+			}
+		}
 
 		// Mount asynchronously
 		go func() {

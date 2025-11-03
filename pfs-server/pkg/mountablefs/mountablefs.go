@@ -101,6 +101,16 @@ func (mfs *MountableFS) MountPlugin(fstype string, path string, config map[strin
 	// Create plugin instance
 	pluginInstance := factory()
 
+	// Special handling for plugins that need rootFS reference
+	// Check if plugin has SetRootFS method (e.g., httpfs, proxyfs)
+	type rootFSSetter interface {
+		SetRootFS(filesystem.FileSystem)
+	}
+	if setter, ok := pluginInstance.(rootFSSetter); ok {
+		setter.SetRootFS(mfs)
+		log.Debugf("Set rootFS for plugin %s at %s", fstype, path)
+	}
+
 	// Initialize plugin with config
 	if err := pluginInstance.Initialize(config); err != nil {
 		return fmt.Errorf("failed to initialize plugin: %v", err)
