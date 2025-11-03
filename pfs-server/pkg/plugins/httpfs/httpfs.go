@@ -393,8 +393,14 @@ func (fs *HTTPFS) serveDirectory(w http.ResponseWriter, r *http.Request, pfsPath
 
 	parent := ""
 	if urlPath != "/" {
-		parent = path.Dir(urlPath)
-		if parent != "/" {
+		// Clean the path to remove trailing slash before getting parent
+		// This is important because path.Dir("/level1/") returns "/level1"
+		// but path.Dir("/level1") returns "/"
+		cleanPath := strings.TrimSuffix(urlPath, "/")
+		parent = path.Dir(cleanPath)
+		// Ensure parent path ends with / for proper directory navigation
+		// But don't add extra / if already at root
+		if parent != "/" && !strings.HasSuffix(parent, "/") {
 			parent = parent + "/"
 		}
 	}
