@@ -74,7 +74,7 @@ type Reader struct {
 	ch           chan []byte
 	registered   time.Time
 	droppedCount int64 // Number of chunks dropped due to slow consumption
-	readIndex    int   // Index of next chunk to read from ringBuffer
+	readIndex    int64 // Index of next chunk to read from ringBuffer (int64 to prevent overflow)
 }
 
 // streamReader wraps a registered reader and implements filesystem.StreamReader
@@ -109,7 +109,7 @@ type StreamFile struct {
 	// Ring buffer for storing recent chunks (even when no readers)
 	ringBuffer  [][]byte // Circular buffer for recent chunks
 	ringSize    int      // Max number of chunks to keep
-	writeIndex  int      // Current write position in ring buffer
+	writeIndex  int64    // Current write position in ring buffer (int64 to prevent overflow)
 	totalChunks int64    // Total chunks written (for readIndex tracking)
 }
 
@@ -145,7 +145,7 @@ func (sf *StreamFile) RegisterReader() (string, <-chan []byte) {
 	sf.nextReaderID++
 
 	// Calculate oldest available chunk in ring buffer
-	historyStart := int(sf.totalChunks) - sf.ringSize
+	historyStart := sf.totalChunks - int64(sf.ringSize)
 	if historyStart < 0 {
 		historyStart = 0
 	}
@@ -175,19 +175,19 @@ func (sf *StreamFile) sendHistoricalData(reader *Reader) {
 	defer sf.mu.RUnlock()
 
 	// Calculate how many historical chunks are available
-	historyStart := int(sf.totalChunks) - sf.ringSize
+	historyStart := sf.totalChunks - int64(sf.ringSize)
 	if historyStart < 0 {
 		historyStart = 0
 	}
 
 	// If reader wants to start from the beginning and we have history
-	if reader.readIndex < int(sf.totalChunks) && int(sf.totalChunks) > 0 {
+	if reader.readIndex < sf.totalChunks && sf.totalChunks > 0 {
 		log.Debugf("[streamfs] Sending historical data to reader %s (from chunk %d to %d)",
 			reader.id, historyStart, sf.totalChunks)
 
 		// Send available historical chunks
-		for i := historyStart; i < int(sf.totalChunks); i++ {
-			ringIdx := i % sf.ringSize
+		for i := historyStart; i < sf.totalChunks; i++ {
+			ringIdx := int(i % int64(sf.ringSize))
 			if sf.ringBuffer[ringIdx] != nil {
 				select {
 				case reader.ch <- sf.ringBuffer[ringIdx]:
@@ -232,7 +232,7 @@ func (sf *StreamFile) Write(data []byte) error {
 	sf.modTime = time.Now()
 
 	// Store in ring buffer (always, even if no readers)
-	ringIdx := sf.writeIndex % sf.ringSize
+	ringIdx := int(sf.writeIndex % int64(sf.ringSize))
 	sf.ringBuffer[ringIdx] = chunk
 	sf.writeIndex++
 	sf.totalChunks++
@@ -743,6 +743,28 @@ IMPORTANT NOTES:
   - Slow readers may drop chunks if they can't keep up
   - MUST use --stream flag for reading streams (cat --stream)
   - Regular cat without --stream will fail with error
+
+MEMORY USAGE:
+
+  File Size vs Memory Usage:
+  - 'ls' and 'stat' show TOTAL BYTES WRITTEN (cumulative counter)
+  - This is NOT the actual memory usage - just a throughput statistic
+  - Example: Stream shows 1GB in 'ls', but only uses 6MB RAM (ring buffer)
+  - The file size will continuously grow as data is written
+  - This is similar to /dev/null - unlimited writes, fixed memory
+
+  Actual Memory Footprint:
+  - Ring buffer: Fixed at ring_buffer_size (default: 6MB)
+  - Per reader channel: Fixed at channel_buffer_size (default: 6MB per reader)
+  - Total memory = ring_buffer_size + (channel_buffer_size × number of readers)
+  - Example with 3 readers: 6MB (ring) + 3×6MB (readers) = 24MB total
+  - Old data in ring buffer is automatically overwritten (circular buffer)
+  - No disk space is used - everything is in memory only
+
+  Overflow Protection:
+  - All counters use int64 to prevent overflow (max: 9.2 EB ≈ 292 years at 1GB/s)
+  - Ring buffer index calculations are overflow-safe on both 32-bit and 64-bit systems
+  - Stream can run indefinitely without counter overflow concerns
 
 PERFORMANCE TIPS:
 
