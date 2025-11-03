@@ -216,8 +216,15 @@ func main() {
 
 		// Mount asynchronously
 		go func() {
+			// Inject mount_path into config
+			configWithPath := make(map[string]interface{})
+			for k, v := range pluginConfig {
+				configWithPath[k] = v
+			}
+			configWithPath["mount_path"] = mountPath
+
 			// Initialize plugin
-			if err := p.Initialize(pluginConfig); err != nil {
+			if err := p.Initialize(configWithPath); err != nil {
 				log.Errorf("Failed to initialize %s instance '%s': %v", pluginName, instanceName, err)
 				return
 			}

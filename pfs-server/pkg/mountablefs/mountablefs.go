@@ -111,8 +111,15 @@ func (mfs *MountableFS) MountPlugin(fstype string, path string, config map[strin
 		log.Debugf("Set rootFS for plugin %s at %s", fstype, path)
 	}
 
+	// Inject mount_path into config for plugins that need to know their virtual path
+	configWithPath := make(map[string]interface{})
+	for k, v := range config {
+		configWithPath[k] = v
+	}
+	configWithPath["mount_path"] = path
+
 	// Initialize plugin with config
-	if err := pluginInstance.Initialize(config); err != nil {
+	if err := pluginInstance.Initialize(configWithPath); err != nil {
 		return fmt.Errorf("failed to initialize plugin: %v", err)
 	}
 

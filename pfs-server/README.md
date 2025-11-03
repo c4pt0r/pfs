@@ -21,6 +21,7 @@ Highly inspired by Plan9
   - **ProxyFS** - Federation/proxy to remote PFS servers
   - **S3FS** - Amazon S3 as a file system
   - **LocalFS** - Mount local directories into PFS
+  - **HTTPFS** - HTTP file server for any PFS path
 
 ## Quick Start
 
@@ -57,38 +58,43 @@ uv run pfs cat /queuefs/size
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                      PFS Server                              │
-│  ┌───────────────────────────────────────────────────────┐   │
-│  │              RESTful API (/api/v1/*)                  │   │
-│  └───────────────────────────────────────────────────────┘   │
-│                            ↓                                 │
-│  ┌───────────────────────────────────────────────────────┐   │
-│  │                  MountableFS                          │   │
-│  │        (Plugin Mount Management & Routing)            │   │
-│  └───────────────────────────────────────────────────────┘   │
-│                            ↓                                 │
-│         ┌──────────────────┴────────────────────┐            │
-│         ↓                  ↓                    ↓            │
-│  ┌─────────────┐    ┌────────────┐     ┌──────────────┐      │
-│  │  MemFS      │    │  QueueFS   │     │   ProxyFS    │      │
-│  │  /memfs     │    │  /queuefs  │     │  /proxyfs/*  ├─┐    │
-│  └─────────────┘    └────────────┘     └──────────────┘ │    │
-│  ┌─────────────┐    ┌────────────┐     ┌──────────────┐ │    │
-│  │  KVFS       │    │  StreamFS  │     │   S3FS       │ │    │
-│  │  /kvfs      │    │  /streamfs │     │  /s3fs/*     │ │    │
-│  └─────────────┘    └────────────┘     └──────────────┘ │    │
-│  ┌─────────────┐    ┌────────────┐     ┌──────────────┐ │    │
-│  │  SQLFS      │    │ ServerInfo │     │   LocalFS    │ │    │
-│  │  /sqlfs     │    │ /serverinfo│     │  /local      │ │    │
-│  └─────────────┘    └────────────┘     └──────────────┘ │    │
-└─────────────────────────────────────────────────────────┼────┘
-                                                          │
-                    HTTP Federation (ProxyFS)             │
-                              ↓                           │
-                    ┌─────────────────────┐               │
-                    │  Remote PFS Server  │ ←─────────────┘
-                    └─────────────────────┘
+┌────────────────────────────────────────────────────────────────────┐
+│                          PFS Server                                │
+│  ┌─────────────────────────────────────────────────────────────┐   │
+│  │                RESTful API (/api/v1/*)                      │   │
+│  └─────────────────────────────────────────────────────────────┘   │
+│                              ↓                                     │
+│  ┌─────────────────────────────────────────────────────────────┐   │
+│  │                      MountableFS                            │   │
+│  │          (Plugin Mount Management & Routing)                │   │
+│  └─────────────────────────────────────────────────────────────┘   │
+│                              ↓                                     │
+│         ┌────────────────────┴────────────────────┐                │
+│         ↓                    ↓                    ↓                │
+│  ┌─────────────┐      ┌─────────────┐      ┌─────────────┐        │
+│  │   MemFS     │      │  QueueFS    │      │  ProxyFS    │        │
+│  │  /memfs     │      │  /queuefs   │      │ /proxyfs/*  ├────┐   │
+│  └─────────────┘      └─────────────┘      └─────────────┘    │   │
+│  ┌─────────────┐      ┌─────────────┐      ┌─────────────┐    │   │
+│  │    KVFS     │      │  StreamFS   │      │    S3FS     │    │   │
+│  │   /kvfs     │      │ /streamfs   │      │  /s3fs/*    │    │   │
+│  └─────────────┘      └─────────────┘      └─────────────┘    │   │
+│  ┌─────────────┐      ┌─────────────┐      ┌─────────────┐    │   │
+│  │   SQLFS     │      │ ServerInfo  │      │  LocalFS    │    │   │
+│  │  /sqlfs     │      │/serverinfo  │      │  /local     │    │   │
+│  └─────────────┘      └─────────────┘      └─────────────┘    │   │
+│                                                                │   │
+│  ┌──────────────────────────────────────────────────────┐     │   │
+│  │         HTTPFS - HTTP File Server (:9000)            │     │   │
+│  │      /httpfs-*  (serves any PFS path via HTTP)       ├─────┼───┼──→ Browser
+│  └──────────────────────────────────────────────────────┘     │   │    curl
+└────────────────────────────────────────────────────────────────┼───┘
+                                                                │
+                       HTTP Federation (ProxyFS)                │
+                                    ↓                           │
+                         ┌─────────────────────┐                │
+                         │  Remote PFS Server  │ ←──────────────┘
+                         └─────────────────────┘
 ```
 
 ### Plugin System
@@ -531,6 +537,143 @@ curl -X POST "http://localhost:8080/api/v1/directories?path=/local/newdir"
 - Development and testing with local data
 - Backup and sync operations
 
+### HTTPFS - HTTP File Server
+
+Serve any PFS path via HTTP, similar to `python3 -m http.server`:
+
+**Features:**
+- Serve any PFS filesystem (memfs, queuefs, s3fs, etc.) via HTTP
+- Browse directories and download files in web browser
+- README files display inline instead of downloading
+- Virtual status file for monitoring each instance
+- Dynamic mounting - create/remove HTTP servers at runtime
+- Multiple instances serving different content
+
+**Configuration:**
+```yaml
+httpfs:
+  # Serve memfs on port 9000
+  - name: httpfs-memfs
+    enabled: true
+    path: /httpfs-memfs
+    config:
+      pfs_path: /memfs        # PFS path to serve
+      http_port: "9000"       # HTTP server port
+
+  # Serve queuefs on port 9001
+  - name: httpfs-queue
+    enabled: false
+    path: /httpfs-queue
+    config:
+      pfs_path: /queuefs
+      http_port: "9001"
+
+  # Serve S3 content on port 9002
+  - name: httpfs-s3
+    enabled: false
+    path: /httpfs-s3
+    config:
+      pfs_path: /s3fs/mybucket
+      http_port: "9002"
+```
+
+**Static Examples:**
+```bash
+# Upload files to memfs
+pfs:/> write /memfs/report.pdf < report.pdf
+pfs:/> write /memfs/README.md "# Project\n\nDocumentation here"
+
+# Files are now accessible via HTTP
+# Browser: http://localhost:9000/
+# CLI: curl http://localhost:9000/report.pdf
+```
+
+**Dynamic Mounting Examples:**
+```bash
+# Create temporary HTTP server
+pfs:/> mount httpfs /temp-http pfs_path=/memfs http_port=10000
+
+# Check instance status
+pfs:/> cat /temp-http
+# Output:
+# HTTPFS Instance Status
+# ======================
+# Virtual Path:    /temp-http
+# PFS Source Path: /memfs
+# HTTP Port:       10000
+# Server Status:   Running
+# Uptime:          5m30s
+# ...
+
+# Access via HTTP
+# Browser: http://localhost:10000/
+# CLI: curl http://localhost:10000/
+
+# Remove when done
+pfs:/> unmount /temp-http
+```
+
+**cURL Examples:**
+```bash
+# Dynamic mount
+curl -X POST http://localhost:8080/api/v1/mount \
+  -H "Content-Type: application/json" \
+  -d '{
+    "fstype": "httpfs",
+    "path": "/my-http",
+    "config": {
+      "pfs_path": "/memfs",
+      "http_port": "10000"
+    }
+  }'
+
+# Check status
+curl "http://localhost:8080/api/v1/files?path=/my-http"
+
+# Access HTTP server
+curl http://localhost:10000/
+curl http://localhost:10000/file.txt
+
+# Unmount
+curl -X POST http://localhost:8080/api/v1/unmount \
+  -H "Content-Type: application/json" \
+  -d '{"path": "/my-http"}'
+```
+
+**Use Cases:**
+- Temporary file sharing
+- Multi-environment documentation (dev/staging/prod on different ports)
+- Browse S3 buckets via HTTP
+- Monitor queue contents in browser
+- Quick file distribution without setting up separate web servers
+- Development and debugging - visualize PFS content
+
+**Special Features:**
+
+1. **README Display**: README files (README, README.md, README.txt) display inline in browser instead of downloading
+
+2. **Virtual Status File**: Each instance has a status file showing:
+   - Virtual mount path
+   - Source PFS path
+   - HTTP port and endpoint
+   - Server status and uptime
+   - Access instructions
+
+3. **Multiple Instances**: Run multiple HTTP servers simultaneously, each serving different content on different ports
+
+**Multi-Instance Example:**
+```bash
+# Serve different content on different ports
+pfs:/> mount httpfs /docs pfs_path=/memfs/docs http_port=8001
+pfs:/> mount httpfs /images pfs_path=/memfs/images http_port=8002
+pfs:/> mount httpfs /s3-public pfs_path=/s3fs/public http_port=8003
+
+# Now you have:
+# http://localhost:8001/ -> Documentation
+# http://localhost:8002/ -> Images
+# http://localhost:8003/ -> S3 public files
+```
+
 ### MemFS - In-Memory File System
 
 Fast in-memory storage for temporary files:
@@ -734,6 +877,7 @@ pfs-server/
 │   │   ├── proxyfs/             # Remote proxy
 │   │   ├── s3fs/                # Amazon S3
 │   │   ├── localfs/             # Local file system mount
+│   │   ├── httpfs/              # HTTP file server
 │   │   ├── serverinfofs/        # Server info
 │   │   └── hellofs/             # Example plugin
 │   ├── handlers/

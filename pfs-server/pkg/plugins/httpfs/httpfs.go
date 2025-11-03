@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"mime"
 	"net/http"
 	"path"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -21,19 +23,120 @@ const (
 	PluginName = "httpfs"
 )
 
+// getContentType determines the Content-Type based on file extension
+func getContentType(filename string) string {
+	// Get the base filename (without directory)
+	baseName := filepath.Base(filename)
+	baseNameUpper := strings.ToUpper(baseName)
+
+	// Special handling for README files (with or without extension)
+	// These should display as text/plain in the browser
+	if baseNameUpper == "README" ||
+	   strings.HasPrefix(baseNameUpper, "README.") {
+		return "text/plain; charset=utf-8"
+	}
+
+	ext := strings.ToLower(filepath.Ext(filename))
+
+	// Common text formats that should display inline
+	textTypes := map[string]string{
+		".txt":  "text/plain; charset=utf-8",
+		".md":   "text/markdown; charset=utf-8",
+		".markdown": "text/markdown; charset=utf-8",
+		".json": "application/json; charset=utf-8",
+		".xml":  "application/xml; charset=utf-8",
+		".html": "text/html; charset=utf-8",
+		".htm":  "text/html; charset=utf-8",
+		".css":  "text/css; charset=utf-8",
+		".js":   "application/javascript; charset=utf-8",
+		".yaml": "text/yaml; charset=utf-8",
+		".yml":  "text/yaml; charset=utf-8",
+		".log":  "text/plain; charset=utf-8",
+		".csv":  "text/csv; charset=utf-8",
+		".sh":   "text/x-shellscript; charset=utf-8",
+		".py":   "text/x-python; charset=utf-8",
+		".go":   "text/x-go; charset=utf-8",
+		".c":    "text/x-c; charset=utf-8",
+		".cpp":  "text/x-c++; charset=utf-8",
+		".h":    "text/x-c; charset=utf-8",
+		".java": "text/x-java; charset=utf-8",
+		".rs":   "text/x-rust; charset=utf-8",
+		".sql":  "text/x-sql; charset=utf-8",
+	}
+
+	// Image formats
+	imageTypes := map[string]string{
+		".png":  "image/png",
+		".jpg":  "image/jpeg",
+		".jpeg": "image/jpeg",
+		".gif":  "image/gif",
+		".webp": "image/webp",
+		".svg":  "image/svg+xml",
+		".ico":  "image/x-icon",
+		".bmp":  "image/bmp",
+	}
+
+	// Video formats
+	videoTypes := map[string]string{
+		".mp4":  "video/mp4",
+		".webm": "video/webm",
+		".ogg":  "video/ogg",
+		".avi":  "video/x-msvideo",
+		".mov":  "video/quicktime",
+	}
+
+	// Audio formats
+	audioTypes := map[string]string{
+		".mp3":  "audio/mpeg",
+		".wav":  "audio/wav",
+		".ogg":  "audio/ogg",
+		".m4a":  "audio/mp4",
+		".flac": "audio/flac",
+	}
+
+	// PDF
+	if ext == ".pdf" {
+		return "application/pdf"
+	}
+
+	// Check our custom maps first
+	if ct, ok := textTypes[ext]; ok {
+		return ct
+	}
+	if ct, ok := imageTypes[ext]; ok {
+		return ct
+	}
+	if ct, ok := videoTypes[ext]; ok {
+		return ct
+	}
+	if ct, ok := audioTypes[ext]; ok {
+		return ct
+	}
+
+	// Fallback to mime package
+	if ct := mime.TypeByExtension(ext); ct != "" {
+		return ct
+	}
+
+	// Default to octet-stream for unknown types (will trigger download)
+	return "application/octet-stream"
+}
+
 // HTTPFS implements FileSystem interface with an embedded HTTP server
 // It serves files from a PFS mount path over HTTP like 'python3 -m http.server'
 type HTTPFS struct {
-	pfsPath    string                // The PFS path to serve (e.g., "/memfs")
-	httpPort   string                // HTTP server port
-	rootFS     filesystem.FileSystem // Reference to the root PFS filesystem
-	mu         sync.RWMutex
-	server     *http.Server
-	pluginName string
+	pfsPath      string                // The PFS path to serve (e.g., "/memfs")
+	httpPort     string                // HTTP server port
+	statusPath   string                // Virtual status file path (e.g., "/httpfs-demo")
+	rootFS       filesystem.FileSystem // Reference to the root PFS filesystem
+	mu           sync.RWMutex
+	server       *http.Server
+	pluginName   string
+	startTime    time.Time             // Server start time
 }
 
 // NewHTTPFS creates a new HTTP file server that serves PFS paths
-func NewHTTPFS(pfsPath string, port string, rootFS filesystem.FileSystem) (*HTTPFS, error) {
+func NewHTTPFS(pfsPath string, port string, statusPath string, rootFS filesystem.FileSystem) (*HTTPFS, error) {
 	if pfsPath == "" {
 		return nil, fmt.Errorf("pfs_path is required")
 	}
@@ -42,8 +145,9 @@ func NewHTTPFS(pfsPath string, port string, rootFS filesystem.FileSystem) (*HTTP
 		return nil, fmt.Errorf("rootFS is required")
 	}
 
-	// Normalize path
+	// Normalize paths
 	pfsPath = normalizePath(pfsPath)
+	statusPath = normalizePath(statusPath)
 
 	if port == "" {
 		port = "8000" // Default port like python http.server
@@ -52,8 +156,10 @@ func NewHTTPFS(pfsPath string, port string, rootFS filesystem.FileSystem) (*HTTP
 	fs := &HTTPFS{
 		pfsPath:    pfsPath,
 		httpPort:   port,
+		statusPath: statusPath,
 		rootFS:     rootFS,
 		pluginName: PluginName,
+		startTime:  time.Now(),
 	}
 
 	// Start HTTP server
@@ -100,8 +206,11 @@ func (fs *HTTPFS) startHTTPServer() error {
 
 	go func() {
 		log.Infof("[httpfs] Starting HTTP server on port %s, serving PFS path: %s", fs.httpPort, fs.pfsPath)
+		log.Infof("[httpfs] HTTP server listening at http://localhost:%s", fs.httpPort)
 		if err := fs.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Errorf("[httpfs] HTTP server error: %v", err)
+			log.Errorf("[httpfs] HTTP server error on port %s: %v", fs.httpPort, err)
+		} else if err == http.ErrServerClosed {
+			log.Infof("[httpfs] HTTP server on port %s closed gracefully", fs.httpPort)
 		}
 	}()
 
@@ -113,9 +222,12 @@ func (fs *HTTPFS) handleHTTPRequest(w http.ResponseWriter, r *http.Request) {
 	urlPath := r.URL.Path
 	pfsPath := fs.resolvePFSPath(urlPath)
 
+	log.Infof("[httpfs:%s] %s %s (PFS path: %s) from %s", fs.httpPort, r.Method, urlPath, pfsPath, r.RemoteAddr)
+
 	// Get file info
 	info, err := fs.rootFS.Stat(pfsPath)
 	if err != nil {
+		log.Warnf("[httpfs:%s] Not found: %s (PFS: %s)", fs.httpPort, urlPath, pfsPath)
 		http.NotFound(w, r)
 		return
 	}
@@ -136,50 +248,59 @@ func (fs *HTTPFS) serveFile(w http.ResponseWriter, r *http.Request, pfsPath stri
 	info, err := fs.rootFS.Stat(pfsPath)
 	if err != nil {
 		http.Error(w, "Failed to stat file", http.StatusInternalServerError)
-		log.Errorf("[httpfs] Failed to stat file %s: %v", pfsPath, err)
+		log.Errorf("[httpfs:%s] Failed to stat file %s: %v", fs.httpPort, pfsPath, err)
 		return
 	}
+
+	// Determine content type based on file extension
+	contentType := getContentType(pfsPath)
+	log.Infof("[httpfs:%s] Serving file: %s (size: %d bytes, type: %s)", fs.httpPort, pfsPath, info.Size, contentType)
 
 	// Try to open file using Open method
 	reader, err := fs.rootFS.Open(pfsPath)
 	if err != nil {
 		// Fallback: use Read method if Open is not supported
-		log.Debugf("[httpfs] Open failed for %s, falling back to Read: %v", pfsPath, err)
+		log.Debugf("[httpfs:%s] Open failed for %s, falling back to Read: %v", fs.httpPort, pfsPath, err)
 		data, err := fs.rootFS.Read(pfsPath, 0, -1)
 		// EOF is expected when reading the entire file
 		if err != nil && err != io.EOF {
 			http.Error(w, "Failed to read file", http.StatusInternalServerError)
-			log.Errorf("[httpfs] Failed to read file %s: %v", pfsPath, err)
+			log.Errorf("[httpfs:%s] Failed to read file %s: %v", fs.httpPort, pfsPath, err)
 			return
 		}
 
 		// Set headers
-		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Type", contentType)
 		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(data)))
 		w.Header().Set("Last-Modified", info.ModTime.Format(http.TimeFormat))
 
 		// Write content
 		w.Write(data)
+		log.Infof("[httpfs:%s] Sent file: %s (%d bytes via Read)", fs.httpPort, pfsPath, len(data))
 		return
 	}
 	defer reader.Close()
 
 	// Set headers
-	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", info.Size))
 	w.Header().Set("Last-Modified", info.ModTime.Format(http.TimeFormat))
 
 	// Copy content
-	io.Copy(w, reader)
+	written, _ := io.Copy(w, reader)
+	log.Infof("[httpfs:%s] Sent file: %s (%d bytes via stream)", fs.httpPort, pfsPath, written)
 }
 
 // serveDirectory serves a directory listing
 func (fs *HTTPFS) serveDirectory(w http.ResponseWriter, r *http.Request, pfsPath string, urlPath string) {
 	entries, err := fs.rootFS.ReadDir(pfsPath)
 	if err != nil {
+		log.Errorf("[httpfs:%s] Failed to read directory %s: %v", fs.httpPort, pfsPath, err)
 		http.Error(w, "Failed to read directory", http.StatusInternalServerError)
 		return
 	}
+
+	log.Infof("[httpfs:%s] Serving directory: %s (%d entries)", fs.httpPort, pfsPath, len(entries))
 
 	// Sort entries: directories first, then files, alphabetically
 	sort.Slice(entries, func(i, j int) bool {
@@ -314,6 +435,24 @@ func (fs *HTTPFS) RemoveAll(path string) error {
 }
 
 func (fs *HTTPFS) Read(path string, offset int64, size int64) ([]byte, error) {
+	// Check if this is the virtual status file
+	if path == "/" || path == "" {
+		// Return status information
+		statusData := []byte(fs.getStatusInfo())
+
+		// Handle offset and size
+		if offset >= int64(len(statusData)) {
+			return []byte{}, io.EOF
+		}
+
+		data := statusData[offset:]
+		if size > 0 && int64(len(data)) > size {
+			data = data[:size]
+		}
+
+		return data, nil
+	}
+
 	return nil, fmt.Errorf("httpfs is read-only via filesystem interface, use HTTP to access files")
 }
 
@@ -326,6 +465,22 @@ func (fs *HTTPFS) ReadDir(path string) ([]filesystem.FileInfo, error) {
 }
 
 func (fs *HTTPFS) Stat(path string) (*filesystem.FileInfo, error) {
+	// Check if this is the virtual status file
+	if path == "/" || path == "" {
+		statusData := fs.getStatusInfo()
+		return &filesystem.FileInfo{
+			Name:    "status",
+			Size:    int64(len(statusData)),
+			Mode:    0444, // Read-only
+			ModTime: fs.startTime,
+			IsDir:   false,
+			Meta: filesystem.MetaData{
+				Name: "httpfs-status",
+				Type: "virtual",
+			},
+		}, nil
+	}
+
 	return nil, fmt.Errorf("httpfs is read-only via filesystem interface, use HTTP to access files")
 }
 
@@ -345,22 +500,72 @@ func (fs *HTTPFS) OpenWrite(path string) (io.WriteCloser, error) {
 	return nil, fmt.Errorf("httpfs is read-only via filesystem interface, use HTTP to access files")
 }
 
+// getStatusInfo returns the status information for this httpfs instance
+func (fs *HTTPFS) getStatusInfo() string {
+	fs.mu.RLock()
+	defer fs.mu.RUnlock()
+
+	uptime := time.Since(fs.startTime)
+
+	status := fmt.Sprintf(`HTTPFS Instance Status
+======================
+
+Virtual Path:    %s
+PFS Source Path: %s
+HTTP Port:       %s
+HTTP Endpoint:   http://localhost:%s
+
+Server Status:   Running
+Start Time:      %s
+Uptime:          %s
+
+Access this HTTP server:
+  Browser:       http://localhost:%s/
+  CLI:           curl http://localhost:%s/
+
+Serving content from PFS path: %s
+All files under %s are accessible via HTTP on port %s
+`,
+		fs.statusPath,
+		fs.pfsPath,
+		fs.httpPort,
+		fs.httpPort,
+		fs.startTime.Format("2006-01-02 15:04:05"),
+		uptime.Round(time.Second).String(),
+		fs.httpPort,
+		fs.httpPort,
+		fs.pfsPath,
+		fs.pfsPath,
+		fs.httpPort,
+	)
+
+	return status
+}
+
 // Shutdown stops the HTTP server
 func (fs *HTTPFS) Shutdown() error {
 	if fs.server != nil {
+		log.Infof("[httpfs:%s] Shutting down HTTP server...", fs.httpPort)
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		return fs.server.Shutdown(ctx)
+		err := fs.server.Shutdown(ctx)
+		if err != nil {
+			log.Errorf("[httpfs:%s] Error during shutdown: %v", fs.httpPort, err)
+		} else {
+			log.Infof("[httpfs:%s] HTTP server shutdown complete", fs.httpPort)
+		}
+		return err
 	}
 	return nil
 }
 
 // HTTPFSPlugin wraps HTTPFS as a plugin
 type HTTPFSPlugin struct {
-	fs       *HTTPFS
-	pfsPath  string
-	httpPort string
-	rootFS   filesystem.FileSystem
+	fs         *HTTPFS
+	pfsPath    string
+	httpPort   string
+	statusPath string
+	rootFS     filesystem.FileSystem
 }
 
 // NewHTTPFSPlugin creates a new HTTPFS plugin
@@ -393,14 +598,21 @@ func (p *HTTPFSPlugin) Initialize(config map[string]interface{}) error {
 	}
 	p.httpPort = httpPort
 
+	// Get mount path (virtual status path)
+	statusPath := "/"
+	if mountPath, ok := config["mount_path"].(string); ok && mountPath != "" {
+		statusPath = mountPath
+	}
+	p.statusPath = statusPath
+
 	// Create HTTPFS instance if rootFS is available
 	if p.rootFS != nil {
-		fs, err := NewHTTPFS(p.pfsPath, p.httpPort, p.rootFS)
+		fs, err := NewHTTPFS(p.pfsPath, p.httpPort, p.statusPath, p.rootFS)
 		if err != nil {
 			return fmt.Errorf("failed to initialize httpfs: %w", err)
 		}
 		p.fs = fs
-		log.Infof("[httpfs] Initialized with PFS path: %s, HTTP server: http://localhost:%s", pfsPath, httpPort)
+		log.Infof("[httpfs] Initialized with PFS path: %s, HTTP server: http://localhost:%s, Status path: %s", pfsPath, httpPort, statusPath)
 	} else {
 		log.Infof("[httpfs] Configured to serve PFS path: %s on HTTP port: %s (will start after rootFS is available)", pfsPath, httpPort)
 	}
@@ -411,7 +623,7 @@ func (p *HTTPFSPlugin) Initialize(config map[string]interface{}) error {
 func (p *HTTPFSPlugin) GetFileSystem() filesystem.FileSystem {
 	// Lazy initialization: create HTTPFS instance if not already created
 	if p.fs == nil && p.rootFS != nil {
-		fs, err := NewHTTPFS(p.pfsPath, p.httpPort, p.rootFS)
+		fs, err := NewHTTPFS(p.pfsPath, p.httpPort, p.statusPath, p.rootFS)
 		if err != nil {
 			log.Errorf("[httpfs] Failed to initialize: %v", err)
 			return nil
@@ -434,6 +646,7 @@ FEATURES:
   - Pretty HTML directory listings
   - Access PFS virtual filesystems through HTTP
   - Read-only HTTP access (modifications should be done through PFS API)
+  - Support for dynamic mounting via PFS Shell mount command
 
 CONFIGURATION:
 
@@ -467,6 +680,42 @@ CONFIGURATION:
 CURRENT CONFIGURATION:
   PFS Path: %s
   HTTP Server: http://localhost:%s
+
+DYNAMIC MOUNTING:
+
+  You can dynamically mount httpfs at runtime using PFS Shell:
+
+  # In PFS Shell REPL:
+  > mount httpfs /httpfs-demo pfs_path=/memfs http_port=10000
+    plugin mounted
+
+  > mounts
+  httpfs on /httpfs-demo (plugin: httpfs, pfs_path=/memfs, http_port=10000)
+
+  > unmount /httpfs-demo
+  Unmounted plugin at /httpfs-demo
+
+  # Via command line:
+  pfs mount httpfs /httpfs-demo pfs_path=/memfs http_port=10000
+  pfs unmount /httpfs-demo
+
+  # Via REST API:
+  curl -X POST http://localhost:8080/api/v1/mount \
+       -H "Content-Type: application/json" \
+       -d '{
+         "fstype": "httpfs",
+         "path": "/httpfs-demo",
+         "config": {
+           "pfs_path": "/memfs",
+           "http_port": "10000"
+         }
+       }'
+
+  Dynamic mounting advantages:
+  - No server restart required
+  - Mount/unmount on demand
+  - Multiple instances with different configurations
+  - Flexible port and path selection
 
 USAGE:
 
@@ -528,7 +777,7 @@ AUTHOR: PFS Server
 }
 
 func (p *HTTPFSPlugin) Shutdown() error {
-	log.Infof("[httpfs] Shutting down")
+	log.Infof("[httpfs] Plugin shutting down (port: %s, path: %s)", p.httpPort, p.pfsPath)
 	if p.fs != nil {
 		return p.fs.Shutdown()
 	}

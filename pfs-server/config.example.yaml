@@ -124,27 +124,87 @@ plugins:
         secret_access_key: secret
         prefix: pfs/ # Optional: all keys will be prefixed with "pfs/"
 
+  # ============================================================================
+  # HTTPFS - HTTP File Server (Multiple Instances)
+  # ============================================================================
+  # HTTPFS serves PFS paths over HTTP, similar to 'python3 -m http.server'.
+  # Each instance can serve a different PFS path on a different port.
+  #
+  # Features:
+  # - Serve any PFS filesystem (memfs, queuefs, s3fs, etc.) via HTTP
+  # - Browse directories and download files in web browser
+  # - README files display inline instead of downloading
+  # - Virtual status file: 'pfs cat /httpfs-memfs' shows instance info
+  # - Dynamic mounting: 'pfs mount httpfs /path pfs_path=/memfs http_port=9000'
+  #
+  httpfs:
+    # Instance 1: Serve memfs on port 9000
+    - name: httpfs-memfs
+      enabled: true
+      path: /httpfs-memfs
+      config:
+        pfs_path: /memfs        # The PFS path to serve
+        http_port: "9000"       # HTTP server port
+
+    # Instance 2: Serve queuefs on port 9001 (disabled by default)
+    - name: httpfs-queue
+      enabled: false
+      path: /httpfs-queue
+      config:
+        pfs_path: /queuefs
+        http_port: "9001"
+
+    # Instance 3: Serve S3 content on port 9002 (disabled by default)
+    - name: httpfs-s3
+      enabled: false
+      path: /httpfs-s3
+      config:
+        pfs_path: /s3fs/aws
+        http_port: "9002"
+
+  # Example: Single instance httpfs (uncomment to use)
+  # httpfs_public:
+  #   enabled: false
+  #   path: /httpfs-public
+  #   config:
+  #     pfs_path: /memfs/public  # Serve only public directory
+  #     http_port: "8000"        # Default port
+
+  # Note: You can also mount httpfs dynamically at runtime:
+  #   pfs mount httpfs /httpfs-temp pfs_path=/memfs http_port=10000
+  #   pfs cat /httpfs-temp        # View instance status
+  #   pfs unmount /httpfs-temp    # Remove when done
+
 # ============================================================================
 # File System Structure
 # ============================================================================
 # With current enabled plugins:
 # /
-# ├── serverinfofs/  (server information)
-# ├── memfs/         (in-memory filesystem)
-# ├── queuefs/       (message queue)
-# ├── kvfs/          (key-value store)
-# ├── hellofs/       (hello world plugin)
-# ├── streamfs/      (streaming data)
-# └── sqlfs/         (database-backed filesystem - SQLite)
+# ├── serverinfofs/   (server information)
+# ├── memfs/          (in-memory filesystem)
+# ├── queuefs/        (message queue)
+# ├── kvfs/           (key-value store)
+# ├── hellofs/        (hello world plugin)
+# ├── streamfs/       (streaming data)
+# ├── sqlfs/          (database-backed filesystem - SQLite)
+# ├── httpfs-memfs    (virtual status file for httpfs instance)
+# └── local/
+#     └── tmp/        (local file system mount)
 #
 # If additional instances are enabled:
-# ├── local/         (local file system mount)
-# ├── sqlfs_tidb/    (database-backed filesystem - TiDB)
+# ├── sqlfs_tidb/     (database-backed filesystem - TiDB)
+# ├── httpfs-queue    (virtual status file - httpfs serving queuefs)
+# ├── httpfs-s3       (virtual status file - httpfs serving S3)
 # ├── s3fs/
-# │   └── aws/       (AWS S3 storage)
+# │   └── aws/        (AWS S3 storage)
 # └── proxyfs/
-#     ├── remote1/   (remote PFS server 1)
-#     └── remote2/   (remote PFS server 2)
+#     ├── remote1/    (remote PFS server 1)
+#     └── remote2/    (remote PFS server 2)
+#
+# HTTPFS instances are also accessible via HTTP:
+# - http://localhost:9000/  -> serves /memfs
+# - http://localhost:9001/  -> serves /queuefs (if enabled)
+# - http://localhost:9002/  -> serves /s3fs/aws (if enabled)
 
 # ============================================================================
 # Usage Examples
@@ -171,3 +231,23 @@ plugins:
 # Multiple SQLFS instances (when enabled):
 #   pfs write /sqlfs/local-data.txt "local"
 #   pfs write /sqlfs_tidb/prod-data.txt "production"
+#
+# HTTPFS - HTTP File Server:
+#   # View httpfs instance status
+#   pfs cat /httpfs-memfs
+#
+#   # Access via HTTP (browser or curl)
+#   curl http://localhost:9000/              # List directory
+#   curl http://localhost:9000/file.txt      # Download file
+#   # Or open in browser: http://localhost:9000/
+#
+#   # Dynamic mounting (create temporary HTTP servers)
+#   pfs mount httpfs /temp-http pfs_path=/memfs http_port=10000
+#   pfs cat /temp-http                       # Check status
+#   # Now accessible at http://localhost:10000/
+#   pfs unmount /temp-http                   # Remove when done
+#
+#   # Multiple instances serving different content
+#   pfs mount httpfs /docs pfs_path=/memfs/docs http_port=8001
+#   pfs mount httpfs /images pfs_path=/memfs/images http_port=8002
+#   pfs mount httpfs /s3-public pfs_path=/s3fs/aws/public http_port=8003
