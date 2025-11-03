@@ -11,7 +11,59 @@ FEATURES:
   - Supports files and directories
   - Maximum file size: 5MB per file
 
-CONFIGURATION:
+DYNAMIC MOUNTING WITH PFS SHELL:
+
+  Interactive shell - SQLite:
+  pfs:/> mount sqlfs /db backend=sqlite db_path=/tmp/mydata.db
+  pfs:/> mount sqlfs /persistent backend=sqlite db_path=./storage.db
+  pfs:/> mount sqlfs /cache backend=sqlite db_path=/tmp/cache.db cache_enabled=true cache_max_size=2000
+
+  Interactive shell - TiDB:
+  pfs:/> mount sqlfs /tidb backend=tidb dsn="user:pass@tcp(localhost:4000)/database"
+  pfs:/> mount sqlfs /cloud backend=tidb user=root password=mypass host=tidb-server.com port=4000 database=pfs_data enable_tls=true
+
+  Direct command - SQLite:
+  uv run pfs mount sqlfs /db backend=sqlite db_path=/tmp/test.db
+
+  Direct command - TiDB:
+  uv run pfs mount sqlfs /tidb backend=tidb dsn="user:pass@tcp(host:4000)/db"
+
+CONFIGURATION PARAMETERS:
+
+  Required (SQLite):
+  - backend: "sqlite" or "sqlite3"
+  - db_path: Path to SQLite database file (created if doesn't exist)
+
+  Required (TiDB) - Option 1 (DSN):
+  - backend: "tidb"
+  - dsn: Full database connection string (e.g., "user:pass@tcp(host:4000)/db")
+
+  Required (TiDB) - Option 2 (Individual parameters):
+  - backend: "tidb"
+  - user: Database username
+  - password: Database password
+  - host: Database host
+  - port: Database port (typically 4000)
+  - database: Database name
+
+  Optional (All backends):
+  - cache_enabled: Enable directory listing cache (default: true)
+  - cache_max_size: Maximum cached entries (default: 1000)
+  - cache_ttl_seconds: Cache TTL in seconds (default: 5)
+  - enable_tls: Enable TLS for TiDB (default: false)
+  - tls_server_name: TLS server name for TiDB
+
+  Examples:
+  # Multiple databases
+  pfs:/> mount sqlfs /local backend=sqlite db_path=local.db
+  pfs:/> mount sqlfs /shared backend=tidb dsn="user:pass@tcp(shared-db:4000)/pfs"
+
+  # With custom cache settings
+  pfs:/> mount sqlfs /fast backend=sqlite db_path=fast.db cache_enabled=true cache_max_size=5000 cache_ttl_seconds=10
+
+STATIC CONFIGURATION (config.yaml):
+
+  Alternative to dynamic mounting - configure in server config file:
 
   SQLite Backend (Local Testing):
   [plugins.sqlfs]

@@ -2,6 +2,24 @@ KVFS Plugin - Key-Value Store Service
 
 This plugin provides a key-value store service through a file system interface.
 
+DYNAMIC MOUNTING WITH PFS SHELL:
+
+  Interactive shell:
+  pfs:/> mount kvfs /kv
+  pfs:/> mount kvfs /cache
+
+  Direct command:
+  uv run pfs mount kvfs /kv
+  uv run pfs mount kvfs /store
+
+CONFIGURATION PARAMETERS:
+
+  Optional:
+  - initial_data: Map of initial key-value pairs to populate on mount
+
+  Example with initial data:
+  pfs:/> mount kvfs /config initial_data='{"app":"myapp","version":"1.0"}'
+
 USAGE:
   Set a key-value pair:
     echo "value" > /keys/<key>

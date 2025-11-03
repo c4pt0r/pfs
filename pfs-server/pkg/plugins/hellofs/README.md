@@ -2,6 +2,9 @@ HelloFS Plugin - Minimal Demo
 
 This plugin provides a single file: /hello
 
+MOUNT:
+  pfs:/> mount hellofs /hello
+
 USAGE:
   cat /hellofs/hello
 

@@ -2,6 +2,21 @@ QueueFS Plugin - Message Queue Service
 
 This plugin provides a message queue service through a file system interface.
 
+DYNAMIC MOUNTING WITH PFS SHELL:
+
+  Interactive shell:
+  pfs:/> mount queuefs /queue
+  pfs:/> mount queuefs /tasks
+  pfs:/> mount queuefs /messages
+
+  Direct command:
+  uv run pfs mount queuefs /queue
+  uv run pfs mount queuefs /jobs
+
+CONFIGURATION PARAMETERS:
+
+  None required - QueueFS works with default settings
+
 USAGE:
   Enqueue a message:
     echo "your message" > /enqueue

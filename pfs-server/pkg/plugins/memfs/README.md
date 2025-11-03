@@ -2,6 +2,25 @@ MemFS Plugin - In-Memory File System
 
 This plugin provides a full-featured in-memory file system.
 
+DYNAMIC MOUNTING WITH PFS SHELL:
+
+  Interactive shell:
+  pfs:/> mount memfs /mem
+  pfs:/> mount memfs /tmp
+  pfs:/> mount memfs /scratch init_dirs='["/home","/tmp","/data"]'
+
+  Direct command:
+  uv run pfs mount memfs /mem
+  uv run pfs mount memfs /tmp init_dirs='["/work","/cache"]'
+
+CONFIGURATION PARAMETERS:
+
+  Optional:
+  - init_dirs: Array of directories to create automatically on mount
+
+  Examples:
+  pfs:/> mount memfs /workspace init_dirs='["/projects","/builds","/logs"]'
+
 FEATURES:
   - Standard file system operations (create, read, write, delete)
   - Directory support with hierarchical structure

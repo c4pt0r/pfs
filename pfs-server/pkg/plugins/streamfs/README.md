@@ -3,6 +3,48 @@ StreamFS Plugin - Streaming File System
 This plugin provides streaming files that support multiple concurrent readers and writers
 with real-time data fanout and ring buffer for late joiners.
 
+DYNAMIC MOUNTING WITH PFS SHELL:
+
+  Interactive shell - Default settings:
+  pfs:/> mount streamfs /stream
+  pfs:/> mount streamfs /live
+
+  Interactive shell - Custom buffer sizes:
+  pfs:/> mount streamfs /stream channel_buffer_size=512KB ring_buffer_size=1MB
+  pfs:/> mount streamfs /hq channel_buffer_size=8MB ring_buffer_size=16MB
+  pfs:/> mount streamfs /lowlatency channel_buffer_size=256KB ring_buffer_size=512KB
+
+  Direct command - Default:
+  uv run pfs mount streamfs /stream
+
+  Direct command - Custom settings:
+  uv run pfs mount streamfs /video channel_buffer_size=4MB ring_buffer_size=8MB
+  uv run pfs mount streamfs /live channel_buffer_size=512KB ring_buffer_size=1MB
+
+CONFIGURATION PARAMETERS:
+
+  Optional:
+  - channel_buffer_size: Buffer per reader (default: "6MB")
+    Supports units: KB, MB, GB or raw bytes (e.g., "512KB", "4MB", 524288)
+    Controls how much data each reader can buffer before dropping chunks
+
+  - ring_buffer_size: Historical data buffer (default: "6MB")
+    Supports units: KB, MB, GB or raw bytes (e.g., "1MB", "8MB", 1048576)
+    Stores recent data for late-joining readers
+
+  Configuration examples by use case:
+  # Live streaming (low latency)
+  pfs:/> mount streamfs /live channel_buffer_size=256KB ring_buffer_size=512KB
+
+  # VOD/Recording (smooth playback)
+  pfs:/> mount streamfs /vod channel_buffer_size=8MB ring_buffer_size=16MB
+
+  # Interactive streaming
+  pfs:/> mount streamfs /interactive channel_buffer_size=512KB ring_buffer_size=1MB
+
+  # High bitrate video
+  pfs:/> mount streamfs /hd channel_buffer_size=16MB ring_buffer_size=32MB
+
 FEATURES:
   - Multiple writers can append data to a stream concurrently
   - Multiple readers can consume from the stream independently (fanout/broadcast)

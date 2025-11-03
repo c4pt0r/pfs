@@ -2,6 +2,9 @@ ServerInfoFS Plugin - Server Metadata and Information
 
 This plugin provides runtime information about the PFS server.
 
+MOUNT:
+  pfs:/> mount serverinfofs /info
+
 USAGE:
   View server version:
     cat /version

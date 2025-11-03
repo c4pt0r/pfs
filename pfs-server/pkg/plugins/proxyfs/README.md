@@ -6,6 +6,59 @@ A PFS plugin that transparently proxies all file system operations to a remote P
 
 ProxyFS enables PFS federation by allowing one PFS instance to mount and access file systems from another remote PFS server. All file operations are forwarded over HTTP to the remote server, making it possible to build distributed file system architectures.
 
+## Dynamic Mounting with PFS Shell
+
+### Interactive Shell
+
+```bash
+# Mount a single remote PFS server
+pfs:/> mount proxyfs /remote base_url=http://remote-server:8080/api/v1
+
+# Mount multiple remote servers
+pfs:/> mount proxyfs /dc1 base_url=http://dc1.example.com:8080/api/v1
+pfs:/> mount proxyfs /dc2 base_url=http://dc2.example.com:8080/api/v1
+pfs:/> mount proxyfs /backup base_url=https://backup.example.com:8443/api/v1
+
+# Mount with HTTPS
+pfs:/> mount proxyfs /secure base_url=https://secure-server.com:8443/api/v1
+```
+
+### Direct Command
+
+```bash
+# Mount remote server
+uv run pfs mount proxyfs /remote base_url=http://remote:8080/api/v1
+
+# Mount production server
+uv run pfs mount proxyfs /prod base_url=https://prod.example.com/api/v1
+```
+
+### Configuration Parameters
+
+| Parameter | Type   | Required | Description                                    | Example                            |
+|-----------|--------|----------|------------------------------------------------|------------------------------------|
+| base_url  | string | Yes      | Full URL to remote PFS API including version  | `http://remote:8080/api/v1`       |
+
+**Important**: The `base_url` must include the API version path (e.g., `/api/v1`).
+
+### Usage After Mounting
+
+Once mounted, all operations under the mount point are forwarded to the remote server:
+
+```bash
+# All these operations happen on the remote server
+pfs:/> mkdir /remote/data
+pfs:/> echo "hello" > /remote/data/file.txt
+pfs:/> cat /remote/data/file.txt
+hello
+pfs:/> ls /remote/data
+file.txt
+
+# Hot reload the proxy connection if needed
+pfs:/> echo '' > /remote/reload
+ProxyFS reloaded successfully
+```
+
 ## Features
 
 - **Transparent Proxying**: All file system operations forwarded to remote PFS server

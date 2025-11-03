@@ -9,7 +9,42 @@ FEATURES:
   - Automatic directory handling
   - Optional key prefix for namespace isolation
 
-CONFIGURATION:
+DYNAMIC MOUNTING WITH PFS SHELL:
+
+  Interactive shell - AWS S3:
+  pfs:/> mount s3fs /s3 bucket=my-bucket region=us-east-1 access_key_id=AKIAIOSFODNN7EXAMPLE secret_access_key=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+  pfs:/> mount s3fs /backup bucket=backup-bucket region=us-west-2 access_key_id=YOUR_KEY secret_access_key=YOUR_SECRET prefix=myapp/
+
+  Interactive shell - S3-compatible (MinIO):
+  pfs:/> mount s3fs /minio bucket=my-bucket region=us-east-1 access_key_id=minioadmin secret_access_key=minioadmin endpoint=http://localhost:9000 disable_ssl=true
+
+  Direct command - AWS S3:
+  uv run pfs mount s3fs /s3 bucket=my-bucket region=us-east-1 access_key_id=AKIAIOSFODNN7EXAMPLE secret_access_key=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+
+  Direct command - MinIO:
+  uv run pfs mount s3fs /minio bucket=test region=us-east-1 access_key_id=minioadmin secret_access_key=minioadmin endpoint=http://localhost:9000 disable_ssl=true
+
+CONFIGURATION PARAMETERS:
+
+  Required:
+  - bucket: S3 bucket name
+  - region: AWS region (e.g., "us-east-1", "eu-west-1")
+  - access_key_id: AWS/S3 access key ID
+  - secret_access_key: AWS/S3 secret access key
+
+  Optional:
+  - prefix: Key prefix for namespace isolation (e.g., "myapp/")
+  - endpoint: Custom S3 endpoint for S3-compatible services (e.g., MinIO)
+  - disable_ssl: Set to true to disable SSL for local services (default: false)
+
+  Examples:
+  # Multiple buckets with different configurations
+  pfs:/> mount s3fs /s3-prod bucket=prod-bucket region=us-east-1 access_key_id=KEY1 secret_access_key=SECRET1
+  pfs:/> mount s3fs /s3-dev bucket=dev-bucket region=us-west-2 access_key_id=KEY2 secret_access_key=SECRET2 prefix=dev/
+
+STATIC CONFIGURATION (config.yaml):
+
+  Alternative to dynamic mounting - configure in server config file:
 
   AWS S3:
   [plugins.s3fs]
