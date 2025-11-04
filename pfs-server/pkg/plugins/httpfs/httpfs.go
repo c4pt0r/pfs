@@ -126,6 +126,7 @@ func getContentType(filename string) string {
 // It serves files from a PFS mount path over HTTP like 'python3 -m http.server'
 type HTTPFS struct {
 	pfsPath      string                // The PFS path to serve (e.g., "/memfs")
+	httpHost     string                // HTTP server host (e.g., "localhost", "0.0.0.0")
 	httpPort     string                // HTTP server port
 	statusPath   string                // Virtual status file path (e.g., "/httpfs-demo")
 	rootFS       filesystem.FileSystem // Reference to the root PFS filesystem
@@ -136,7 +137,7 @@ type HTTPFS struct {
 }
 
 // NewHTTPFS creates a new HTTP file server that serves PFS paths
-func NewHTTPFS(pfsPath string, port string, statusPath string, rootFS filesystem.FileSystem) (*HTTPFS, error) {
+func NewHTTPFS(pfsPath string, host string, port string, statusPath string, rootFS filesystem.FileSystem) (*HTTPFS, error) {
 	if pfsPath == "" {
 		return nil, fmt.Errorf("pfs_path is required")
 	}
@@ -149,12 +150,17 @@ func NewHTTPFS(pfsPath string, port string, statusPath string, rootFS filesystem
 	pfsPath = normalizePath(pfsPath)
 	statusPath = normalizePath(statusPath)
 
+	if host == "" {
+		host = "0.0.0.0" // Default to all interfaces
+	}
+
 	if port == "" {
 		port = "8000" // Default port like python http.server
 	}
 
 	fs := &HTTPFS{
 		pfsPath:    pfsPath,
+		httpHost:   host,
 		httpPort:   port,
 		statusPath: statusPath,
 		rootFS:     rootFS,
@@ -199,18 +205,19 @@ func (fs *HTTPFS) startHTTPServer() error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", fs.handleHTTPRequest)
 
+	addr := fs.httpHost + ":" + fs.httpPort
 	fs.server = &http.Server{
-		Addr:    ":" + fs.httpPort,
+		Addr:    addr,
 		Handler: mux,
 	}
 
 	go func() {
-		log.Infof("[httpfs] Starting HTTP server on port %s, serving PFS path: %s", fs.httpPort, fs.pfsPath)
-		log.Infof("[httpfs] HTTP server listening at http://localhost:%s", fs.httpPort)
+		log.Infof("[httpfs] Starting HTTP server on %s, serving PFS path: %s", addr, fs.pfsPath)
+		log.Infof("[httpfs] HTTP server listening at http://%s:%s", fs.httpHost, fs.httpPort)
 		if err := fs.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Errorf("[httpfs] HTTP server error on port %s: %v", fs.httpPort, err)
+			log.Errorf("[httpfs] HTTP server error on %s: %v", addr, err)
 		} else if err == http.ErrServerClosed {
-			log.Infof("[httpfs] HTTP server on port %s closed gracefully", fs.httpPort)
+			log.Infof("[httpfs] HTTP server on %s closed gracefully", addr)
 		}
 	}()
 
@@ -518,30 +525,36 @@ func (fs *HTTPFS) getStatusInfo() string {
 
 Virtual Path:    %s
 PFS Source Path: %s
+HTTP Host:       %s
 HTTP Port:       %s
-HTTP Endpoint:   http://localhost:%s
+HTTP Endpoint:   http://%s:%s
 
 Server Status:   Running
 Start Time:      %s
 Uptime:          %s
 
 Access this HTTP server:
-  Browser:       http://localhost:%s/
-  CLI:           curl http://localhost:%s/
+  Browser:       http://%s:%s/
+  CLI:           curl http://%s:%s/
 
 Serving content from PFS path: %s
-All files under %s are accessible via HTTP on port %s
+All files under %s are accessible via HTTP on %s:%s
 `,
 		fs.statusPath,
 		fs.pfsPath,
+		fs.httpHost,
 		fs.httpPort,
+		fs.httpHost,
 		fs.httpPort,
 		fs.startTime.Format("2006-01-02 15:04:05"),
 		uptime.Round(time.Second).String(),
+		fs.httpHost,
 		fs.httpPort,
+		fs.httpHost,
 		fs.httpPort,
 		fs.pfsPath,
 		fs.pfsPath,
+		fs.httpHost,
 		fs.httpPort,
 	)
 
@@ -569,6 +582,7 @@ func (fs *HTTPFS) Shutdown() error {
 type HTTPFSPlugin struct {
 	fs         *HTTPFS
 	pfsPath    string
+	httpHost   string
 	httpPort   string
 	statusPath string
 	rootFS     filesystem.FileSystem
@@ -597,10 +611,22 @@ func (p *HTTPFSPlugin) Initialize(config map[string]interface{}) error {
 
 	p.pfsPath = pfsPath
 
+	// Get HTTP host (optional, defaults to 0.0.0.0)
+	httpHost := "0.0.0.0"
+	if host, ok := config["host"].(string); ok && host != "" {
+		httpHost = host
+	}
+	p.httpHost = httpHost
+
 	// Get HTTP port (optional, defaults to 8000)
+	// Support both string, integer, and float64 (JSON numbers) port values
 	httpPort := "8000"
-	if port, ok := config["http_port"].(string); ok && port != "" {
+	if port, ok := config["port"].(string); ok && port != "" {
 		httpPort = port
+	} else if portInt, ok := config["port"].(int); ok {
+		httpPort = fmt.Sprintf("%d", portInt)
+	} else if portFloat, ok := config["port"].(float64); ok {
+		httpPort = fmt.Sprintf("%d", int(portFloat))
 	}
 	p.httpPort = httpPort
 
@@ -613,14 +639,14 @@ func (p *HTTPFSPlugin) Initialize(config map[string]interface{}) error {
 
 	// Create HTTPFS instance if rootFS is available
 	if p.rootFS != nil {
-		fs, err := NewHTTPFS(p.pfsPath, p.httpPort, p.statusPath, p.rootFS)
+		fs, err := NewHTTPFS(p.pfsPath, p.httpHost, p.httpPort, p.statusPath, p.rootFS)
 		if err != nil {
 			return fmt.Errorf("failed to initialize httpfs: %w", err)
 		}
 		p.fs = fs
-		log.Infof("[httpfs] Initialized with PFS path: %s, HTTP server: http://localhost:%s, Status path: %s", pfsPath, httpPort, statusPath)
+		log.Infof("[httpfs] Initialized with PFS path: %s, HTTP server: http://%s:%s, Status path: %s", pfsPath, httpHost, httpPort, statusPath)
 	} else {
-		log.Infof("[httpfs] Configured to serve PFS path: %s on HTTP port: %s (will start after rootFS is available)", pfsPath, httpPort)
+		log.Infof("[httpfs] Configured to serve PFS path: %s on HTTP %s:%s (will start after rootFS is available)", pfsPath, httpHost, httpPort)
 	}
 
 	return nil
@@ -629,7 +655,7 @@ func (p *HTTPFSPlugin) Initialize(config map[string]interface{}) error {
 func (p *HTTPFSPlugin) GetFileSystem() filesystem.FileSystem {
 	// Lazy initialization: create HTTPFS instance if not already created
 	if p.fs == nil && p.rootFS != nil {
-		fs, err := NewHTTPFS(p.pfsPath, p.httpPort, p.statusPath, p.rootFS)
+		fs, err := NewHTTPFS(p.pfsPath, p.httpHost, p.httpPort, p.statusPath, p.rootFS)
 		if err != nil {
 			log.Errorf("[httpfs] Failed to initialize: %v", err)
 			return nil
@@ -663,7 +689,8 @@ CONFIGURATION:
 
     [plugins.httpfs.config]
     pfs_path = "/memfs"         # The PFS path to serve (e.g., /memfs, /queuefs)
-    http_port = "8000"          # Optional, defaults to 8000
+    host = "0.0.0.0"            # Optional, defaults to 0.0.0.0 (all interfaces)
+    port = "8000"               # Optional, defaults to 8000
 
   Example - Serve memfs:
   [plugins.httpfs_mem]
@@ -672,7 +699,8 @@ CONFIGURATION:
 
     [plugins.httpfs_mem.config]
     pfs_path = "/memfs"
-    http_port = "9000"
+    host = "localhost"
+    port = "9000"
 
   Example - Serve queuefs:
   [plugins.httpfs_queue]
@@ -681,28 +709,33 @@ CONFIGURATION:
 
     [plugins.httpfs_queue.config]
     pfs_path = "/queuefs"
-    http_port = "9001"
+    port = "9001"
 
 CURRENT CONFIGURATION:
   PFS Path: %s
-  HTTP Server: http://localhost:%s
+  HTTP Server: http://%s:%s
 
 DYNAMIC MOUNTING:
 
   You can dynamically mount httpfs at runtime using PFS Shell:
 
   # In PFS Shell REPL:
-  > mount httpfs /httpfs-demo pfs_path=/memfs http_port=10000
+  > mount httpfs /httpfs-demo pfs_path=/memfs port=10000
+    plugin mounted
+
+  > mount httpfs /web pfs_path=/local host=localhost port=9000
     plugin mounted
 
   > mounts
-  httpfs on /httpfs-demo (plugin: httpfs, pfs_path=/memfs, http_port=10000)
+  httpfs on /httpfs-demo (plugin: httpfs, pfs_path=/memfs, port=10000)
+  httpfs on /web (plugin: httpfs, pfs_path=/local, host=localhost, port=9000)
 
   > unmount /httpfs-demo
   Unmounted plugin at /httpfs-demo
 
   # Via command line:
-  pfs mount httpfs /httpfs-demo pfs_path=/memfs http_port=10000
+  pfs mount httpfs /httpfs-demo pfs_path=/memfs port=10000
+  pfs mount httpfs /web pfs_path=/local host=localhost port=9000
   pfs unmount /httpfs-demo
 
   # Via REST API:
@@ -713,7 +746,8 @@ DYNAMIC MOUNTING:
          "path": "/httpfs-demo",
          "config": {
            "pfs_path": "/memfs",
-           "http_port": "10000"
+           "host": "0.0.0.0",
+           "port": "10000"
          }
        }'
 
@@ -777,7 +811,7 @@ ADVANTAGES:
 
 VERSION: 1.0.0
 AUTHOR: PFS Server
-`, p.pfsPath, p.httpPort, p.httpPort, p.httpPort, p.httpPort, p.httpPort, p.httpPort)
+`, p.pfsPath, p.httpHost, p.httpPort, p.httpPort, p.httpPort, p.httpPort, p.httpPort, p.httpPort)
 
 	return readmeContent
 }
