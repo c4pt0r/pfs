@@ -14,12 +14,27 @@ import (
 
 // Handler wraps the FileSystem and provides HTTP handlers
 type Handler struct {
-	fs filesystem.FileSystem
+	fs         filesystem.FileSystem
+	version    string
+	gitCommit  string
+	buildTime  string
 }
 
 // NewHandler creates a new Handler
 func NewHandler(fs filesystem.FileSystem) *Handler {
-	return &Handler{fs: fs}
+	return &Handler{
+		fs:        fs,
+		version:   "dev",
+		gitCommit: "unknown",
+		buildTime: "unknown",
+	}
+}
+
+// SetVersionInfo sets the version information for the handler
+func (h *Handler) SetVersionInfo(version, gitCommit, buildTime string) {
+	h.version = version
+	h.gitCommit = gitCommit
+	h.buildTime = buildTime
 }
 
 // ErrorResponse represents an error response
@@ -330,9 +345,23 @@ func (h *Handler) Chmod(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, SuccessResponse{Message: "permissions changed"})
 }
 
+// HealthResponse represents the health check response
+type HealthResponse struct {
+	Status    string `json:"status"`
+	Version   string `json:"version"`
+	GitCommit string `json:"gitCommit"`
+	BuildTime string `json:"buildTime"`
+}
+
 // Health handles GET /health
 func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{"status": "healthy"})
+	response := HealthResponse{
+		Status:    "healthy",
+		Version:   h.version,
+		GitCommit: h.gitCommit,
+		BuildTime: h.buildTime,
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 // SetupRoutes sets up all HTTP routes with /api/v1 prefix

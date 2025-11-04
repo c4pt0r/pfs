@@ -98,14 +98,21 @@ def start_repl(api_base_url: str):
 
     # Test connection
     try:
-        client.health()
+        health_info = client.health()
         print(r"""    ____  ___________
    / __ \/ ____/ ___/
   / /_/ / /_   \__ \
  / ____/ __/  ___/ /
 /_/   /_/    /____/
 """)
-        console.print(f"[dim]{get_version_string()}[/dim]")
+        console.print(f"[dim]Client: {get_version_string()}[/dim]")
+
+        # Display server version info if available
+        server_version = health_info.get("version", "unknown")
+        server_commit = health_info.get("gitCommit", "unknown")
+        server_build_time = health_info.get("buildTime", "unknown")
+        console.print(f"[dim]Server: version={server_version}, commit={server_commit}, build={server_build_time}[/dim]")
+
         console.print(f"Connected to pfs server at {api_base_url}")
         console.print("press 'help' or '?' for help")
         print()

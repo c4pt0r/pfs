@@ -25,6 +25,13 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+var (
+	// Version information, injected during build
+	Version   = "dev"
+	BuildTime = "unknown"
+	GitCommit = "unknown"
+)
+
 // PluginFactory is a function that creates a new plugin instance
 type PluginFactory func(configFile string) plugin.ServicePlugin
 
@@ -143,7 +150,16 @@ func main() {
 	configFile := flag.String("c", "config.yaml", "Path to configuration file")
 	addr := flag.String("addr", "", "Server listen address (will override addr in config file)")
 	printSampleConfig := flag.Bool("print-sample-config", false, "Print a sample configuration file and exit")
+	version := flag.Bool("version", false, "Print version information and exit")
 	flag.Parse()
+
+	// Handle --version
+	if *version {
+		fmt.Printf("pfs-server version: %s\n", Version)
+		fmt.Printf("Git commit: %s\n", GitCommit)
+		fmt.Printf("Build time: %s\n", BuildTime)
+		return
+	}
 
 	// Handle --print-sample-config
 	if *printSampleConfig {
@@ -270,6 +286,7 @@ func main() {
 
 	// Create handlers
 	handler := handlers.NewHandler(mfs)
+	handler.SetVersionInfo(Version, GitCommit, BuildTime)
 	pluginHandler := handlers.NewPluginHandler(mfs)
 
 	// Setup routes
