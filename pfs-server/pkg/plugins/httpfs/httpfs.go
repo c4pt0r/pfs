@@ -33,7 +33,7 @@ func getContentType(filename string) string {
 	// Special handling for README files (with or without extension)
 	// These should display as text/plain in the browser
 	if baseNameUpper == "README" ||
-	   strings.HasPrefix(baseNameUpper, "README.") {
+		strings.HasPrefix(baseNameUpper, "README.") {
 		return "text/plain; charset=utf-8"
 	}
 
@@ -41,28 +41,28 @@ func getContentType(filename string) string {
 
 	// Common text formats that should display inline
 	textTypes := map[string]string{
-		".txt":  "text/plain; charset=utf-8",
-		".md":   "text/markdown; charset=utf-8",
+		".txt":      "text/plain; charset=utf-8",
+		".md":       "text/markdown; charset=utf-8",
 		".markdown": "text/markdown; charset=utf-8",
-		".json": "application/json; charset=utf-8",
-		".xml":  "application/xml; charset=utf-8",
-		".html": "text/html; charset=utf-8",
-		".htm":  "text/html; charset=utf-8",
-		".css":  "text/css; charset=utf-8",
-		".js":   "application/javascript; charset=utf-8",
-		".yaml": "text/yaml; charset=utf-8",
-		".yml":  "text/yaml; charset=utf-8",
-		".log":  "text/plain; charset=utf-8",
-		".csv":  "text/csv; charset=utf-8",
-		".sh":   "text/x-shellscript; charset=utf-8",
-		".py":   "text/x-python; charset=utf-8",
-		".go":   "text/x-go; charset=utf-8",
-		".c":    "text/x-c; charset=utf-8",
-		".cpp":  "text/x-c++; charset=utf-8",
-		".h":    "text/x-c; charset=utf-8",
-		".java": "text/x-java; charset=utf-8",
-		".rs":   "text/x-rust; charset=utf-8",
-		".sql":  "text/x-sql; charset=utf-8",
+		".json":     "application/json; charset=utf-8",
+		".xml":      "application/xml; charset=utf-8",
+		".html":     "text/html; charset=utf-8",
+		".htm":      "text/html; charset=utf-8",
+		".css":      "text/css; charset=utf-8",
+		".js":       "application/javascript; charset=utf-8",
+		".yaml":     "text/yaml; charset=utf-8",
+		".yml":      "text/yaml; charset=utf-8",
+		".log":      "text/plain; charset=utf-8",
+		".csv":      "text/csv; charset=utf-8",
+		".sh":       "text/x-shellscript; charset=utf-8",
+		".py":       "text/x-python; charset=utf-8",
+		".go":       "text/x-go; charset=utf-8",
+		".c":        "text/x-c; charset=utf-8",
+		".cpp":      "text/x-c++; charset=utf-8",
+		".h":        "text/x-c; charset=utf-8",
+		".java":     "text/x-java; charset=utf-8",
+		".rs":       "text/x-rust; charset=utf-8",
+		".sql":      "text/x-sql; charset=utf-8",
 	}
 
 	// Image formats
@@ -126,15 +126,15 @@ func getContentType(filename string) string {
 // HTTPFS implements FileSystem interface with an embedded HTTP server
 // It serves files from a PFS mount path over HTTP like 'python3 -m http.server'
 type HTTPFS struct {
-	pfsPath      string                // The PFS path to serve (e.g., "/memfs")
-	httpHost     string                // HTTP server host (e.g., "localhost", "0.0.0.0")
-	httpPort     string                // HTTP server port
-	statusPath   string                // Virtual status file path (e.g., "/httpfs-demo")
-	rootFS       filesystem.FileSystem // Reference to the root PFS filesystem
-	mu           sync.RWMutex
-	server       *http.Server
-	pluginName   string
-	startTime    time.Time             // Server start time
+	pfsPath    string                // The PFS path to serve (e.g., "/memfs")
+	httpHost   string                // HTTP server host (e.g., "localhost", "0.0.0.0")
+	httpPort   string                // HTTP server port
+	statusPath string                // Virtual status file path (e.g., "/httpfs-demo")
+	rootFS     filesystem.FileSystem // Reference to the root PFS filesystem
+	mu         sync.RWMutex
+	server     *http.Server
+	pluginName string
+	startTime  time.Time // Server start time
 }
 
 // NewHTTPFS creates a new HTTP file server that serves PFS paths
