@@ -118,6 +118,11 @@ func (mfs *MountableFS) MountPlugin(fstype string, path string, config map[strin
 	}
 	configWithPath["mount_path"] = path
 
+	// Validate plugin configuration
+	if err := pluginInstance.Validate(configWithPath); err != nil {
+		return fmt.Errorf("failed to validate plugin: %v", err)
+	}
+
 	// Initialize plugin with config
 	if err := pluginInstance.Initialize(configWithPath); err != nil {
 		return fmt.Errorf("failed to initialize plugin: %v", err)

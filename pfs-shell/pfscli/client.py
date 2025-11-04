@@ -236,7 +236,14 @@ class PFSClient:
             json={"fstype": fstype, "path": path, "config": config},
             timeout=self.timeout
         )
-        response.raise_for_status()
+        if not response.ok:
+            # Try to extract error message from response body
+            try:
+                error_data = response.json()
+                error_msg = error_data.get("error", str(response.status_code))
+            except:
+                error_msg = response.text or str(response.status_code)
+            raise Exception(error_msg)
         return response.json()
 
     def unmount(self, path: str) -> Dict[str, Any]:
@@ -246,5 +253,12 @@ class PFSClient:
             json={"path": path},
             timeout=self.timeout
         )
-        response.raise_for_status()
+        if not response.ok:
+            # Try to extract error message from response body
+            try:
+                error_data = response.json()
+                error_msg = error_data.get("error", str(response.status_code))
+            except:
+                error_msg = response.text or str(response.status_code)
+            raise Exception(error_msg)
         return response.json()

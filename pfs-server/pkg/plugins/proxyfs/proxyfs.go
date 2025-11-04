@@ -3,6 +3,7 @@ package proxyfs
 import (
 	"fmt"
 	"io"
+	"net/url"
 	"time"
 
 	"github.com/c4pt0r/pfs/pfs-server/pkg/client"
@@ -309,6 +310,44 @@ func NewProxyFSPlugin(baseURL string) *ProxyFSPlugin {
 
 func (p *ProxyFSPlugin) Name() string {
 	return PluginName
+}
+
+func (p *ProxyFSPlugin) Validate(cfg map[string]interface{}) error {
+	// Check for unknown parameters
+	allowedKeys := []string{"base_url", "mount_path"}
+	if cfg != nil {
+		for key := range cfg {
+			found := false
+			for _, allowed := range allowedKeys {
+				if key == allowed {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return fmt.Errorf("unknown configuration parameter: %s (allowed: %v)", key, allowedKeys)
+			}
+		}
+	}
+
+	// base_url is required (either from constructor or config)
+	baseURL := p.baseURL
+	if cfg != nil {
+		if u, ok := cfg["base_url"].(string); ok && u != "" {
+			baseURL = u
+		}
+	}
+
+	if baseURL == "" {
+		return fmt.Errorf("base_url is required in configuration")
+	}
+
+	// Validate URL format
+	if _, err := url.Parse(baseURL); err != nil {
+		return fmt.Errorf("invalid base_url format: %w", err)
+	}
+
+	return nil
 }
 
 func (p *ProxyFSPlugin) Initialize(config map[string]interface{}) error {

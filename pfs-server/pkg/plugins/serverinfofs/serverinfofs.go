@@ -10,6 +10,7 @@ import (
 
 	"github.com/c4pt0r/pfs/pfs-server/pkg/filesystem"
 	"github.com/c4pt0r/pfs/pfs-server/pkg/plugin"
+	"github.com/c4pt0r/pfs/pfs-server/pkg/plugin/config"
 )
 
 // ServerInfoFSPlugin provides server metadata and information
@@ -28,6 +29,20 @@ func NewServerInfoFSPlugin() *ServerInfoFSPlugin {
 
 func (p *ServerInfoFSPlugin) Name() string {
 	return "serverinfofs"
+}
+
+func (p *ServerInfoFSPlugin) Validate(cfg map[string]interface{}) error {
+	// Check for unknown parameters
+	allowedKeys := []string{"version", "mount_path"}
+	if err := config.ValidateOnlyKnownKeys(cfg, allowedKeys); err != nil {
+		return err
+	}
+
+	// Validate version if provided
+	if err := config.ValidateStringType(cfg, "version"); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (p *ServerInfoFSPlugin) Initialize(config map[string]interface{}) error {

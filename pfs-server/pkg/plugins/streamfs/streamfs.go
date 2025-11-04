@@ -11,6 +11,7 @@ import (
 
 	"github.com/c4pt0r/pfs/pfs-server/pkg/filesystem"
 	"github.com/c4pt0r/pfs/pfs-server/pkg/plugin"
+	"github.com/c4pt0r/pfs/pfs-server/pkg/plugin/config"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -605,6 +606,44 @@ func NewStreamFSPlugin() *StreamFSPlugin {
 
 func (p *StreamFSPlugin) Name() string {
 	return PluginName
+}
+
+func (p *StreamFSPlugin) Validate(cfg map[string]interface{}) error {
+	// Check for unknown parameters
+	allowedKeys := []string{"channel_buffer_size", "ring_buffer_size", "mount_path"}
+	if err := config.ValidateOnlyKnownKeys(cfg, allowedKeys); err != nil {
+		return err
+	}
+
+	// Validate channel_buffer_size if provided
+	if val, exists := cfg["channel_buffer_size"]; exists {
+		switch v := val.(type) {
+		case string:
+			if _, err := config.ParseSize(v); err != nil {
+				return fmt.Errorf("invalid channel_buffer_size: %w", err)
+			}
+		case int, int64, float64:
+			// Valid numeric types
+		default:
+			return fmt.Errorf("channel_buffer_size must be a size string (e.g., '512KB') or number")
+		}
+	}
+
+	// Validate ring_buffer_size if provided
+	if val, exists := cfg["ring_buffer_size"]; exists {
+		switch v := val.(type) {
+		case string:
+			if _, err := config.ParseSize(v); err != nil {
+				return fmt.Errorf("invalid ring_buffer_size: %w", err)
+			}
+		case int, int64, float64:
+			// Valid numeric types
+		default:
+			return fmt.Errorf("ring_buffer_size must be a size string (e.g., '1MB') or number")
+		}
+	}
+
+	return nil
 }
 
 func (p *StreamFSPlugin) Initialize(config map[string]interface{}) error {

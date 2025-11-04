@@ -71,6 +71,16 @@ func (q *QueueFSPlugin) Name() string {
 	return q.metadata.Name
 }
 
+func (q *QueueFSPlugin) Validate(cfg map[string]interface{}) error {
+	// Only mount_path is allowed (injected by framework)
+	for key := range cfg {
+		if key != "mount_path" {
+			return fmt.Errorf("unknown configuration parameter: %s (queuefs accepts no configuration)", key)
+		}
+	}
+	return nil
+}
+
 func (q *QueueFSPlugin) Initialize(config map[string]interface{}) error {
 	return nil
 }

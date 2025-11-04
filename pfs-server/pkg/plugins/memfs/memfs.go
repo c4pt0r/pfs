@@ -1,6 +1,8 @@
 package memfs
 
 import (
+	"fmt"
+
 	"github.com/c4pt0r/pfs/pfs-server/pkg/filesystem"
 	"github.com/c4pt0r/pfs/pfs-server/pkg/plugin"
 )
@@ -23,6 +25,35 @@ func NewMemFSPlugin() *MemFSPlugin {
 
 func (p *MemFSPlugin) Name() string {
 	return PluginName
+}
+
+func (p *MemFSPlugin) Validate(cfg map[string]interface{}) error {
+	// Check for unknown parameters
+	allowedKeys := []string{"init_dirs", "mount_path"}
+	for key := range cfg {
+		found := false
+		for _, allowed := range allowedKeys {
+			if key == allowed {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("unknown configuration parameter: %s (allowed: %v)", key, allowedKeys)
+		}
+	}
+
+	// Validate init_dirs if provided
+	if val, exists := cfg["init_dirs"]; exists {
+		// Check if it's a slice
+		if _, ok := val.([]interface{}); !ok {
+			// Also check for []string type
+			if _, ok := val.([]string); !ok {
+				return fmt.Errorf("init_dirs must be an array")
+			}
+		}
+	}
+	return nil
 }
 
 func (p *MemFSPlugin) Initialize(config map[string]interface{}) error {

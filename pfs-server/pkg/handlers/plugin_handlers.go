@@ -104,6 +104,10 @@ func (ph *PluginHandler) Mount(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusConflict, err.Error())
 		} else if strings.Contains(errMsg, "unknown filesystem type") || strings.Contains(errMsg, "unknown plugin") {
 			writeError(w, http.StatusBadRequest, err.Error())
+		} else if strings.Contains(errMsg, "failed to validate") || strings.Contains(errMsg, "is required") ||
+			strings.Contains(errMsg, "invalid") || strings.Contains(errMsg, "unknown configuration parameter") {
+			// Validation errors should return 400 Bad Request
+			writeError(w, http.StatusBadRequest, err.Error())
 		} else {
 			writeError(w, http.StatusInternalServerError, err.Error())
 		}

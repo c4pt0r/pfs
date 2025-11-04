@@ -2,6 +2,7 @@ package hellofs
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"time"
 
@@ -23,6 +24,16 @@ func NewHelloFSPlugin() *HelloFSPlugin {
 
 func (p *HelloFSPlugin) Name() string {
 	return PluginName
+}
+
+func (p *HelloFSPlugin) Validate(cfg map[string]interface{}) error {
+	// Only mount_path is allowed (injected by framework)
+	for key := range cfg {
+		if key != "mount_path" {
+			return fmt.Errorf("unknown configuration parameter: %s (hellofs accepts no configuration)", key)
+		}
+	}
+	return nil
 }
 
 func (p *HelloFSPlugin) Initialize(config map[string]interface{}) error {

@@ -239,6 +239,12 @@ func main() {
 			}
 			configWithPath["mount_path"] = mountPath
 
+			// Validate plugin configuration
+			if err := p.Validate(configWithPath); err != nil {
+				log.Errorf("Failed to validate %s instance '%s': %v", pluginName, instanceName, err)
+				return
+			}
+
 			// Initialize plugin
 			if err := p.Initialize(configWithPath); err != nil {
 				log.Errorf("Failed to initialize %s instance '%s': %v", pluginName, instanceName, err)

@@ -12,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/c4pt0r/pfs/pfs-server/pkg/filesystem"
 	"github.com/c4pt0r/pfs/pfs-server/pkg/plugin"
+	"github.com/c4pt0r/pfs/pfs-server/pkg/plugin/config"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -450,6 +451,33 @@ func NewS3FSPlugin() *S3FSPlugin {
 
 func (p *S3FSPlugin) Name() string {
 	return PluginName
+}
+
+func (p *S3FSPlugin) Validate(cfg map[string]interface{}) error {
+	// Check for unknown parameters
+	allowedKeys := []string{"bucket", "region", "access_key_id", "secret_access_key", "endpoint", "prefix", "disable_ssl", "mount_path"}
+	if err := config.ValidateOnlyKnownKeys(cfg, allowedKeys); err != nil {
+		return err
+	}
+
+	// Validate bucket (required)
+	if _, err := config.RequireString(cfg, "bucket"); err != nil {
+		return err
+	}
+
+	// Validate optional string parameters
+	for _, key := range []string{"region", "access_key_id", "secret_access_key", "endpoint", "prefix"} {
+		if err := config.ValidateStringType(cfg, key); err != nil {
+			return err
+		}
+	}
+
+	// Validate disable_ssl (optional boolean)
+	if err := config.ValidateBoolType(cfg, "disable_ssl"); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (p *S3FSPlugin) Initialize(config map[string]interface{}) error {

@@ -16,6 +16,7 @@ import (
 
 	"github.com/c4pt0r/pfs/pfs-server/pkg/filesystem"
 	"github.com/c4pt0r/pfs/pfs-server/pkg/plugin"
+	"github.com/c4pt0r/pfs/pfs-server/pkg/plugin/config"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -595,6 +596,38 @@ func NewHTTPFSPlugin() *HTTPFSPlugin {
 
 func (p *HTTPFSPlugin) Name() string {
 	return PluginName
+}
+
+func (p *HTTPFSPlugin) Validate(cfg map[string]interface{}) error {
+	// Check for unknown parameters
+	allowedKeys := []string{"pfs_path", "host", "port", "mount_path"}
+	if err := config.ValidateOnlyKnownKeys(cfg, allowedKeys); err != nil {
+		return err
+	}
+
+	// Validate pfs_path (required)
+	if _, err := config.RequireString(cfg, "pfs_path"); err != nil {
+		return err
+	}
+
+	// Validate optional string parameters
+	for _, key := range []string{"host", "mount_path"} {
+		if err := config.ValidateStringType(cfg, key); err != nil {
+			return err
+		}
+	}
+
+	// Validate port - can be string, int, or float64
+	if val, exists := cfg["port"]; exists {
+		switch val.(type) {
+		case string, int, int64, float64:
+			// Valid types
+		default:
+			return fmt.Errorf("port must be a string or number")
+		}
+	}
+
+	return nil
 }
 
 // SetRootFS sets the root filesystem reference

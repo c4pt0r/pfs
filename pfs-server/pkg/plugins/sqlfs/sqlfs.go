@@ -11,6 +11,7 @@ import (
 
 	"github.com/c4pt0r/pfs/pfs-server/pkg/filesystem"
 	"github.com/c4pt0r/pfs/pfs-server/pkg/plugin"
+	"github.com/c4pt0r/pfs/pfs-server/pkg/plugin/config"
 	_ "github.com/mattn/go-sqlite3"
 	log "github.com/sirupsen/logrus"
 )
@@ -35,6 +36,48 @@ func NewSQLFSPlugin() *SQLFSPlugin {
 
 func (p *SQLFSPlugin) Name() string {
 	return PluginName
+}
+
+func (p *SQLFSPlugin) Validate(cfg map[string]interface{}) error {
+	// Check for unknown parameters
+	allowedKeys := []string{"backend", "db_path", "dsn", "user", "password", "host", "port", "database",
+		"cache_enabled", "cache_max_size", "cache_ttl_seconds", "mount_path"}
+	if err := config.ValidateOnlyKnownKeys(cfg, allowedKeys); err != nil {
+		return err
+	}
+
+	// Validate backend type
+	backendType := config.GetStringConfig(cfg, "backend", "sqlite")
+	validBackends := map[string]bool{
+		"sqlite":  true,
+		"sqlite3": true,
+		"tidb":    true,
+		"mysql":   true,
+	}
+	if !validBackends[backendType] {
+		return fmt.Errorf("unsupported database backend: %s (valid options: sqlite, sqlite3, tidb, mysql)", backendType)
+	}
+
+	// Validate optional string parameters
+	for _, key := range []string{"db_path", "dsn", "user", "password", "host", "database"} {
+		if err := config.ValidateStringType(cfg, key); err != nil {
+			return err
+		}
+	}
+
+	// Validate optional integer parameters
+	for _, key := range []string{"port", "cache_max_size", "cache_ttl_seconds"} {
+		if err := config.ValidateIntType(cfg, key); err != nil {
+			return err
+		}
+	}
+
+	// Validate cache_enabled (optional boolean)
+	if err := config.ValidateBoolType(cfg, "cache_enabled"); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (p *SQLFSPlugin) Initialize(config map[string]interface{}) error {

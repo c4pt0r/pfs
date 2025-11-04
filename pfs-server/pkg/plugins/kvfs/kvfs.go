@@ -54,6 +54,35 @@ func (kv *KVFSPlugin) Name() string {
 	return kv.metadata.Name
 }
 
+func (kv *KVFSPlugin) Validate(cfg map[string]interface{}) error {
+	// Check for unknown parameters
+	allowedKeys := []string{"initial_data", "mount_path"}
+	for key := range cfg {
+		found := false
+		for _, allowed := range allowedKeys {
+			if key == allowed {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("unknown configuration parameter: %s (allowed: %v)", key, allowedKeys)
+		}
+	}
+
+	// Validate initial_data if provided
+	if val, exists := cfg["initial_data"]; exists {
+		// Check if it's a map[string]interface{} or map[string]string
+		switch val.(type) {
+		case map[string]interface{}, map[string]string:
+			// Valid types
+		default:
+			return fmt.Errorf("initial_data must be a map/object")
+		}
+	}
+	return nil
+}
+
 func (kv *KVFSPlugin) Initialize(config map[string]interface{}) error {
 	// Load initial data if provided
 	if data, ok := config["initial_data"].(map[string]string); ok {

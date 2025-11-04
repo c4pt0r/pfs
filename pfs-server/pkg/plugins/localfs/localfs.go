@@ -9,6 +9,7 @@ import (
 
 	"github.com/c4pt0r/pfs/pfs-server/pkg/filesystem"
 	"github.com/c4pt0r/pfs/pfs-server/pkg/plugin"
+	pluginConfig "github.com/c4pt0r/pfs/pfs-server/pkg/plugin/config"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -440,13 +441,45 @@ func (p *LocalFSPlugin) Name() string {
 	return PluginName
 }
 
-func (p *LocalFSPlugin) Initialize(config map[string]interface{}) error {
-	// Parse configuration
-	basePath, ok := config["local_dir"].(string)
+func (p *LocalFSPlugin) Validate(cfg map[string]interface{}) error {
+	// Check for unknown parameters
+	allowedKeys := []string{"local_dir", "mount_path"}
+	if err := pluginConfig.ValidateOnlyKnownKeys(cfg, allowedKeys); err != nil {
+		return err
+	}
+
+	// Validate local_dir parameter
+	basePath, ok := cfg["local_dir"].(string)
 	if !ok || basePath == "" {
 		return fmt.Errorf("local_dir is required in configuration")
 	}
 
+	// Resolve to absolute path
+	absPath, err := filepath.Abs(basePath)
+	if err != nil {
+		return fmt.Errorf("failed to resolve base path: %w", err)
+	}
+
+	// Check if path exists
+	info, err := os.Stat(absPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("base path does not exist: %s", absPath)
+		}
+		return fmt.Errorf("failed to stat base path: %w", err)
+	}
+
+	// Verify it's a directory
+	if !info.IsDir() {
+		return fmt.Errorf("base path is not a directory: %s", absPath)
+	}
+
+	return nil
+}
+
+func (p *LocalFSPlugin) Initialize(config map[string]interface{}) error {
+	// Parse configuration (validation already done in Validate)
+	basePath := config["local_dir"].(string)
 	p.basePath = basePath
 
 	// Create LocalFS instance

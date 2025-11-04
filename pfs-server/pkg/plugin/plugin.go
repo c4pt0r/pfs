@@ -10,7 +10,13 @@ type ServicePlugin interface {
 	// Name returns the plugin name
 	Name() string
 
+	// Validate validates the plugin configuration before initialization
+	// This method should check all required parameters and validate their types/values
+	// Returns an error if the configuration is invalid
+	Validate(config map[string]interface{}) error
+
 	// Initialize initializes the plugin with optional configuration
+	// This method is called after Validate succeeds
 	Initialize(config map[string]interface{}) error
 
 	// GetFileSystem returns the FileSystem implementation for this plugin
