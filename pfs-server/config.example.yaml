@@ -144,7 +144,7 @@ plugins:
       path: /httpfs-memfs
       config:
         pfs_path: /memfs        # The PFS path to serve
-        http_port: "9000"       # HTTP server port
+        port: "9000"       # HTTP server port
 
     # Instance 2: Serve queuefs on port 9001 (disabled by default)
     - name: httpfs-queue
@@ -152,7 +152,7 @@ plugins:
       path: /httpfs-queue
       config:
         pfs_path: /queuefs
-        http_port: "9001"
+        port: "9001"
 
     # Instance 3: Serve S3 content on port 9002 (disabled by default)
     - name: httpfs-s3
@@ -160,7 +160,8 @@ plugins:
       path: /httpfs-s3
       config:
         pfs_path: /s3fs/aws
-        http_port: "9002"
+        port: "9002"
+        host: "localhost"
 
   # Example: Single instance httpfs (uncomment to use)
   # httpfs_public:
