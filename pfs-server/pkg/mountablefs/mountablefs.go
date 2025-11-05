@@ -9,6 +9,7 @@ import (
 
 	"github.com/c4pt0r/pfs/pfs-server/pkg/filesystem"
 	"github.com/c4pt0r/pfs/pfs-server/pkg/plugin"
+	"github.com/c4pt0r/pfs/pfs-server/pkg/plugin/loader"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -33,6 +34,7 @@ type MountableFS struct {
 	mounts          map[string]*MountPoint
 	mountPaths      []string // sorted by length (longest first) for prefix matching
 	pluginFactories map[string]PluginFactory
+	pluginLoader    *loader.PluginLoader // For loading external plugins
 	mu              sync.RWMutex
 }
 
@@ -42,6 +44,7 @@ func NewMountableFS() *MountableFS {
 		mounts:          make(map[string]*MountPoint),
 		mountPaths:      []string{},
 		pluginFactories: make(map[string]PluginFactory),
+		pluginLoader:    loader.NewPluginLoader(),
 	}
 }
 
@@ -172,6 +175,40 @@ func (mfs *MountableFS) Unmount(path string) error {
 
 	log.Infof("Unmounted plugin at %s", path)
 	return nil
+}
+
+// LoadExternalPlugin loads a plugin from a shared library file
+func (mfs *MountableFS) LoadExternalPlugin(libraryPath string) (plugin.ServicePlugin, error) {
+	p, err := mfs.pluginLoader.LoadPlugin(libraryPath)
+	if err != nil {
+		return nil, err
+	}
+
+	// Register the plugin as a factory so it can be mounted
+	pluginName := p.Name()
+	mfs.RegisterPluginFactory(pluginName, func() plugin.ServicePlugin {
+		// For external plugins, we need to return the already loaded instance
+		// since we can't create new instances from the loaded library
+		return p
+	})
+
+	log.Infof("Registered external plugin factory: %s", pluginName)
+	return p, nil
+}
+
+// UnloadExternalPlugin unloads an external plugin
+func (mfs *MountableFS) UnloadExternalPlugin(libraryPath string) error {
+	return mfs.pluginLoader.UnloadPlugin(libraryPath)
+}
+
+// GetLoadedExternalPlugins returns a list of loaded external plugin paths
+func (mfs *MountableFS) GetLoadedExternalPlugins() []string {
+	return mfs.pluginLoader.GetLoadedPlugins()
+}
+
+// LoadExternalPluginsFromDirectory loads all plugins from a directory
+func (mfs *MountableFS) LoadExternalPluginsFromDirectory(dir string) ([]string, []error) {
+	return mfs.pluginLoader.LoadPluginsFromDirectory(dir)
 }
 
 // GetMounts returns all mount points

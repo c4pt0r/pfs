@@ -230,7 +230,10 @@ class CommandHandler:
             ("  mounts", "List mounted plugins"),
             ("  mount <fstype> <path> [k=v ...]", "Mount plugin dynamically"),
             ("  unmount <path>", "Unmount plugin"),
-            ("  plugins", "Show mounted plugins (alias for mounts)"),
+            ("  plugins", "Show mounted plugins"),
+            ("  plugins load <lib>", "Load external plugin (.so/.dylib/.dll)"),
+            ("  plugins unload <lib>", "Unload external plugin"),
+            ("  plugins list", "List loaded external plugins"),
             ("", ""),
             ("Utility Commands", ""),
             ("  clear", "Clear screen"),
@@ -731,8 +734,53 @@ class CommandHandler:
         return True
 
     def cmd_plugins(self, args: List[str]) -> bool:
-        """Show mounted plugins (alias for mounts)"""
-        return self.cmd_mounts(args)
+        """Show mounted plugins (alias for mounts) or manage external plugins"""
+        # If there are no args, show mounted plugins (alias for mounts)
+        if not args:
+            return self.cmd_mounts(args)
+
+        # Otherwise, handle plugin subcommands
+        subcommand = args[0].lower()
+
+        if subcommand == "load":
+            if len(args) < 2:
+                console.print("Usage: plugins load <library_path>")
+                console.print("\nExample:")
+                console.print("  plugins load ./examples/plugins/hellofs-c/hellofs-c.dylib")
+                return True
+            library_path = args[1]
+            try:
+                cli_commands.cmd_load_plugin(self.client, library_path)
+            except Exception as e:
+                console.print(f"[red]Error loading plugin: {e}[/red]")
+            return True
+
+        elif subcommand == "unload":
+            if len(args) < 2:
+                console.print("Usage: plugins unload <library_path>")
+                return True
+            library_path = args[1]
+            try:
+                cli_commands.cmd_unload_plugin(self.client, library_path)
+            except Exception as e:
+                console.print(f"[red]Error unloading plugin: {e}[/red]")
+            return True
+
+        elif subcommand == "list":
+            try:
+                cli_commands.cmd_list_plugins(self.client)
+            except Exception as e:
+                console.print(f"[red]Error listing plugins: {e}[/red]")
+            return True
+
+        else:
+            console.print(f"[red]Unknown subcommand: {subcommand}[/red]")
+            console.print("\nUsage:")
+            console.print("  plugins           - List mounted plugins")
+            console.print("  plugins load <library_path>   - Load external plugin")
+            console.print("  plugins unload <library_path> - Unload external plugin")
+            console.print("  plugins list      - List loaded external plugins")
+            return True
 
     def cmd_upload(self, args: List[str]) -> bool:
         """Upload local file or directory to PFS"""

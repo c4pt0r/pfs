@@ -285,3 +285,60 @@ class PFSClient:
             return response.json()
         except Exception as e:
             self._handle_request_error(e)
+
+    def load_plugin(self, library_path: str) -> Dict[str, Any]:
+        """Load an external plugin from a shared library
+
+        Args:
+            library_path: Path to the shared library (.so/.dylib/.dll)
+
+        Returns:
+            Response with message and plugin name
+        """
+        try:
+            response = self.session.post(
+                f"{self.api_base}/plugins/load",
+                json={"library_path": library_path},
+                timeout=self.timeout
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            self._handle_request_error(e)
+
+    def unload_plugin(self, library_path: str) -> Dict[str, Any]:
+        """Unload an external plugin
+
+        Args:
+            library_path: Path to the shared library
+
+        Returns:
+            Response with message
+        """
+        try:
+            response = self.session.post(
+                f"{self.api_base}/plugins/unload",
+                json={"library_path": library_path},
+                timeout=self.timeout
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            self._handle_request_error(e)
+
+    def list_plugins(self) -> List[str]:
+        """List all loaded external plugins
+
+        Returns:
+            List of plugin library paths
+        """
+        try:
+            response = self.session.get(
+                f"{self.api_base}/plugins",
+                timeout=self.timeout
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data.get("loaded_plugins", [])
+        except Exception as e:
+            self._handle_request_error(e)

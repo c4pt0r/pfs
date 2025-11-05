@@ -7,6 +7,7 @@ Highly inspired by Plan9
 ## Features
 
 - **Plugin Architecture**: Mount multiple filesystems and services at different paths
+- **External Plugin Support**: Load plugins from dynamic libraries (.so/.dylib/.dll) without recompiling
 - **Unified API**: Single HTTP API for all file operations across all plugins
 - **Dynamic Mounting**: Add/remove plugins at runtime without restarting
 - **Configuration-based**: YAML configuration supports both single and multi-instance plugins
@@ -100,10 +101,14 @@ uv run pfs cat /queuefs/size
 ### Plugin System
 
 - **Plugin Interface**: All plugins implement `FileSystem` interface
+- **Built-in Plugins**: Go plugins compiled into the server
+- **External Plugins**: Dynamically loaded from shared libraries (.so/.dylib/.dll)
+- **Multi-Language Support**: Write plugins in C, C++, Rust, or any language with C ABI
 - **Mount Points**: Plugins can be mounted at any path
 - **Multi-Instance**: Same plugin type can run multiple instances (e.g., multiple databases)
-- **Dynamic Control**: Mount/unmount plugins at runtime via API
+- **Dynamic Control**: Load/unload/mount/unmount plugins at runtime via API
 - **Configuration**: YAML-based configuration with support for arrays
+- **Zero Cgo**: External plugins use purego for FFI (no C compiler needed for Go code)
 
 ## Configuration
 
@@ -113,6 +118,14 @@ uv run pfs cat /queuefs/size
 server:
   address: ":8080"
   log_level: info  # debug, info, warn, error
+
+# External plugins (optional)
+external_plugins:
+  enabled: true
+  plugin_dir: "./plugins"        # Auto-load all plugins from this directory
+  auto_load: true                # Enable auto-loading
+  plugin_paths:                  # Specific plugins to load
+    - "./examples/plugins/hellofs-c/hellofs-c.dylib"
 
 plugins:
   # Single instance plugin
@@ -223,6 +236,9 @@ All endpoints are prefixed with `/api/v1/`.
 | `GET` | `/mounts` | List mounted plugins | - |
 | `POST` | `/mount` | Mount plugin | `{"fstype": "...", "path": "...", "config": {...}}` |
 | `POST` | `/unmount` | Unmount plugin | `{"path": "..."}` |
+| `GET` | `/plugins` | List loaded external plugins | - |
+| `POST` | `/plugins/load` | Load external plugin | `{"library_path": "..."}` |
+| `POST` | `/plugins/unload` | Unload external plugin | `{"library_path": "..."}` |
 
 ### Health Check
 
@@ -886,9 +902,100 @@ curl http://localhost:8080/api/v1/mounts
 
 ## Creating Custom Plugins
 
-### Plugin Interface
+PFS Server supports two types of plugins:
 
-All plugins must implement the `ServicePlugin` interface:
+1. **Built-in Plugins**: Go plugins compiled into the server
+2. **External Plugins**: Dynamically loaded from shared libraries
+
+### External Plugins (Dynamic Libraries)
+
+External plugins allow you to write plugins in C, C++, Rust, or any language that can produce C-compatible shared libraries, without recompiling the server.
+
+**Quick Start:**
+
+```bash
+# 1. Write your plugin in C (see examples/plugins/hellofs-c/)
+# 2. Compile to shared library
+cd examples/plugins/hellofs-c
+make  # Creates hellofs-c.dylib (macOS), .so (Linux), or .dll (Windows)
+
+# 3. Configure server to load it
+# config.yaml:
+external_plugins:
+  enabled: true
+  plugin_paths:
+    - "./examples/plugins/hellofs-c/hellofs-c.dylib"
+
+# 4. Start server (plugin auto-loads)
+./pfs-server -c config.yaml
+
+# 5. Mount and use
+curl -X POST http://localhost:8080/api/v1/mount \
+  -d '{"fstype": "hellofs-c", "path": "/helloc", "config": {}}'
+
+curl "http://localhost:8080/api/v1/files?path=/helloc/hello"
+# Output: Hello from C plugin!
+```
+
+**C Plugin API:**
+
+External plugins must implement C-compatible functions:
+
+```c
+// Required functions
+void* PluginNew();                    // Create plugin instance
+const char* PluginName(void* plugin); // Return plugin name
+
+// Optional lifecycle functions
+void PluginFree(void* plugin);
+const char* PluginValidate(void* plugin, const char* config_json);
+const char* PluginInitialize(void* plugin, const char* config_json);
+const char* PluginShutdown(void* plugin);
+const char* PluginGetReadme(void* plugin);
+
+// Optional filesystem functions
+const char* FSRead(void* plugin, const char* path, long long offset, long long size, int* out_len);
+FileInfoC* FSStat(void* plugin, const char* path);
+FileInfoArray* FSReadDir(void* plugin, const char* path, int* out_count);
+const char* FSWrite(void* plugin, const char* path, const char* data, int data_len);
+// ... and more (see docs/EXTERNAL_PLUGINS.md)
+```
+
+**Features:**
+-  No Cgo required (uses purego for FFI)
+-  Cross-platform (macOS, Linux, Windows)
+-  Runtime loading/unloading
+-  Multi-language support (C, C++, Rust, etc.)
+-  Near-native performance
+-  Full API documentation available
+
+**Documentation:**
+- Complete guide: `docs/EXTERNAL_PLUGINS.md`
+- C example: `examples/plugins/hellofs-c/`
+- Quick start: `examples/plugins/hellofs-c/QUICK_START.md`
+
+**Runtime Loading:**
+
+```bash
+# Load plugin at runtime
+curl -X POST http://localhost:8080/api/v1/plugins/load \
+  -d '{"library_path": "./my-plugin.dylib"}'
+
+# List loaded plugins
+curl http://localhost:8080/api/v1/plugins
+
+# Mount it
+curl -X POST http://localhost:8080/api/v1/mount \
+  -d '{"fstype": "my-plugin", "path": "/my", "config": {}}'
+
+# Unmount and unload when done
+curl -X POST http://localhost:8080/api/v1/unmount -d '{"path": "/my"}'
+curl -X POST http://localhost:8080/api/v1/plugins/unload -d '{"library_path": "./my-plugin.dylib"}'
+```
+
+### Built-in Go Plugins
+
+For Go plugins compiled into the server, implement the `ServicePlugin` interface:
 
 ```go
 type ServicePlugin interface {
@@ -1017,6 +1124,222 @@ pfs-server/
 └── go.mod
 ```
 
+## External Plugin System
+
+PFS Server supports dynamically loading plugins from shared libraries (.so, .dylib, .dll) at runtime using [purego](https://github.com/ebitengine/purego). This enables:
+
+-  Writing plugins in **any language** (C, C++, Rust, Zig, etc.)
+-  **No recompilation** of the server needed
+-  **Runtime loading/unloading** of plugins
+-  **Zero Cgo** - pure Go FFI implementation
+-  **Cross-platform** support (macOS, Linux, Windows)
+-  **Near-native performance**
+
+### Architecture
+
+```
+┌─────────────────────────────────┐
+│   PFS Server (Go)               │
+│                                 │
+│  ┌──────────────────────────┐   │
+│  │   Plugin Loader          │   │
+│  │   (purego FFI)           │   │
+│  └──────────────────────────┘   │
+└─────────────────────────────────┘
+              ↓
+┌─────────────────────────────────┐
+│  External Plugin                │
+│  (.so / .dylib / .dll)          │
+│                                 │
+│  - C/C++/Rust implementation    │
+│  - Exports C-compatible API     │
+└─────────────────────────────────┘
+```
+
+### Example: HelloFS-C Plugin
+
+A simple read-only filesystem written in C:
+
+** Write Plugin (hellofs.c):**
+
+```c
+#include <stdlib.h>
+#include <string.h>
+
+typedef struct { char* name; } HelloFSPlugin;
+
+void* PluginNew() {
+    HelloFSPlugin* p = malloc(sizeof(HelloFSPlugin));
+    p->name = strdup("hellofs-c");
+    return p;
+}
+
+const char* PluginName(void* plugin) {
+    return ((HelloFSPlugin*)plugin)->name;
+}
+
+const char* FSRead(void* plugin, const char* path,
+                   long long offset, long long size, int* out_len) {
+    if (strcmp(path, "/hello") == 0) {
+        const char* data = "Hello from C plugin!";
+        *out_len = strlen(data);
+        return strdup(data);
+    }
+    *out_len = -1;
+    return NULL;
+}
+
+
+**Configure:**
+
+```yaml
+external_plugins:
+  enabled: true
+  plugin_paths:
+    - "./hellofs-c.dylib"
+```
+
+**4. Use:**
+
+```bash
+# Start server (plugin loads automatically)
+./pfs-server
+
+# Mount the plugin
+curl -X POST http://localhost:8080/api/v1/mount \
+  -d '{"fstype": "hellofs-c", "path": "/helloc", "config": {}}'
+
+# Read file
+curl "http://localhost:8080/api/v1/files?path=/helloc/hello"
+# Output: Hello from C plugin!
+```
+
+### Complete Example
+
+A full working example is provided in `examples/plugins/hellofs-c/`:
+
+**Files:**
+- `hellofs.c` - Complete C implementation (210 lines)
+- `Makefile` - Cross-platform build system
+- `README.md` - Detailed documentation
+- `QUICK_START.md` - Quick start guide (中文)
+
+### C Plugin API Reference
+
+**Required Functions:**
+
+```c
+void* PluginNew();                    // Create plugin instance
+const char* PluginName(void* plugin); // Return plugin name
+```
+
+**Optional Lifecycle:**
+
+```c
+void PluginFree(void* plugin);
+const char* PluginValidate(void* plugin, const char* config_json);
+const char* PluginInitialize(void* plugin, const char* config_json);
+const char* PluginShutdown(void* plugin);
+const char* PluginGetReadme(void* plugin);
+```
+
+**Optional FileSystem Operations:**
+
+```c
+const char* FSCreate(void*, const char* path);
+const char* FSMkdir(void*, const char* path, unsigned int perm);
+const char* FSRemove(void*, const char* path);
+const char* FSRemoveAll(void*, const char* path);
+const char* FSRead(void*, const char* path, long long offset, long long size, int* out_len);
+const char* FSWrite(void*, const char* path, const char* data, int data_len);
+FileInfoArray* FSReadDir(void*, const char* path, int* out_count);
+FileInfoC* FSStat(void*, const char* path);
+const char* FSRename(void*, const char* old_path, const char* new_path);
+const char* FSChmod(void*, const char* path, unsigned int mode);
+```
+
+**Return Values:**
+- Error functions: Return `NULL` on success, error message on failure
+- `FSRead`: Returns data pointer, sets `*out_len` to length (or -1 on error)
+- `FSStat`/`FSReadDir`: Return C structures (see API docs)
+
+### Configuration Options
+
+```yaml
+external_plugins:
+  enabled: true                    # Enable external plugin support
+  plugin_dir: "./plugins"          # Directory to scan for plugins
+  auto_load: true                  # Auto-load all plugins in plugin_dir
+  plugin_paths:                    # Specific plugin paths to load
+    - "./path/to/plugin1.dylib"
+    - "./path/to/plugin2.dylib"
+```
+
+### Runtime Plugin Management
+
+**Load Plugin:**
+```bash
+curl -X POST http://localhost:8080/api/v1/plugins/load \
+  -H "Content-Type: application/json" \
+  -d '{"library_path": "./my-plugin.dylib"}'
+```
+
+**List Loaded Plugins:**
+```bash
+curl http://localhost:8080/api/v1/plugins
+# {"loaded_plugins": ["./my-plugin.dylib", ...]}
+```
+
+**Unload Plugin:**
+```bash
+curl -X POST http://localhost:8080/api/v1/plugins/unload \
+  -H "Content-Type: application/json" \
+  -d '{"library_path": "./my-plugin.dylib"}'
+```
+
+### Documentation
+
+- **Complete Guide**: `docs/EXTERNAL_PLUGINS.md`
+  - Full C API reference
+  - Architecture details
+  - Platform-specific notes
+  - Troubleshooting guide
+
+- **Quick Start**: `examples/plugins/hellofs-c/QUICK_START.md`
+  - 5-minute tutorial (中文)
+  - Common use cases
+  - Build instructions
+
+- **Example Plugin**: `examples/plugins/hellofs-c/`
+  - Working C implementation
+  - Cross-platform Makefile
+  - Comprehensive README
+
+### Why External Plugins?
+
+**Advantages:**
+-  **Performance**: Native code execution, near-zero FFI overhead
+-  **Multi-language**: Use any language (C, C++, Rust, Zig, etc.)
+-  **Fast builds**: No Cgo, Go compiles faster
+-  **No recompilation**: Add plugins without rebuilding server
+-  **Easy distribution**: Distribute binary plugins
+-  **Hot loading**: Load/unload at runtime
+
+**Use Cases:**
+- High-performance file processing
+- Integration with C/C++ libraries
+- Legacy system integration
+- Custom protocol implementations
+- Hardware-specific optimizations
+
+### Technical Details
+
+- **FFI Library**: [purego](https://github.com/ebitengine/purego) - Pure Go foreign function interface
+- **No Cgo**: Faster compilation, easier cross-compilation
+- **Memory Management**: C allocates return values, Go manages inputs
+- **Thread Safety**: Plugin loader is thread-safe, plugins should handle their own concurrency
+- **Platform Support**: macOS (.dylib), Linux (.so), Windows (.dll)
+
 ## Development
 
 ### Building
@@ -1033,6 +1356,14 @@ make test
 
 # Install to $GOPATH/bin
 make install
+```
+
+### Building External Plugins
+
+```bash
+# Build the example C plugin
+cd examples/plugins/hellofs-c
+make
 ```
 
 ## License

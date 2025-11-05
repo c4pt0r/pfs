@@ -9,14 +9,23 @@ import (
 
 // Config represents the entire configuration file
 type Config struct {
-	Server  ServerConfig            `yaml:"server"`
-	Plugins map[string]PluginConfig `yaml:"plugins"`
+	Server          ServerConfig            `yaml:"server"`
+	Plugins         map[string]PluginConfig `yaml:"plugins"`
+	ExternalPlugins ExternalPluginsConfig   `yaml:"external_plugins"`
 }
 
 // ServerConfig contains server-level configuration
 type ServerConfig struct {
 	Address  string `yaml:"address"`
 	LogLevel string `yaml:"log_level"`
+}
+
+// ExternalPluginsConfig contains configuration for external plugins
+type ExternalPluginsConfig struct {
+	Enabled       bool     `yaml:"enabled"`
+	PluginDir     string   `yaml:"plugin_dir"`
+	AutoLoad      bool     `yaml:"auto_load"`
+	PluginPaths   []string `yaml:"plugin_paths"`
 }
 
 // PluginConfig can be either a single plugin or an array of plugin instances

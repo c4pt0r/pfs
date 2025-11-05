@@ -262,6 +262,37 @@ func main() {
 		}()
 	}
 
+	// Load external plugins if enabled
+	if cfg.ExternalPlugins.Enabled {
+		log.Info("Loading external plugins...")
+
+		// Auto-load from plugin directory
+		if cfg.ExternalPlugins.AutoLoad && cfg.ExternalPlugins.PluginDir != "" {
+			log.Infof("  Auto-loading plugins from: %s", cfg.ExternalPlugins.PluginDir)
+			loaded, errors := mfs.LoadExternalPluginsFromDirectory(cfg.ExternalPlugins.PluginDir)
+			if len(errors) > 0 {
+				log.Warnf("  Encountered %d error(s) while loading plugins:", len(errors))
+				for _, err := range errors {
+					log.Warnf("    - %v", err)
+				}
+			}
+			if len(loaded) > 0 {
+				log.Infof("  Auto-loaded %d plugin(s)", len(loaded))
+			}
+		}
+
+		// Load specific plugin paths
+		for _, pluginPath := range cfg.ExternalPlugins.PluginPaths {
+			log.Infof("  Loading plugin: %s", pluginPath)
+			p, err := mfs.LoadExternalPlugin(pluginPath)
+			if err != nil {
+				log.Errorf("  Failed to load plugin %s: %v", pluginPath, err)
+			} else {
+				log.Infof("  Loaded plugin: %s", p.Name())
+			}
+		}
+	}
+
 	// Mount all enabled plugins
 	log.Info("Mounting plugin filesytems...")
 	for pluginName, pluginCfg := range cfg.Plugins {

@@ -122,6 +122,79 @@ func (ph *PluginHandler) Mount(w http.ResponseWriter, r *http.Request) {
 }
 
 
+// LoadPluginRequest represents a request to load an external plugin
+type LoadPluginRequest struct {
+	LibraryPath string `json:"library_path"`
+}
+
+// LoadPluginResponse represents the response for loading a plugin
+type LoadPluginResponse struct {
+	Message    string `json:"message"`
+	PluginName string `json:"plugin_name"`
+}
+
+// LoadPlugin handles POST /plugins/load
+func (ph *PluginHandler) LoadPlugin(w http.ResponseWriter, r *http.Request) {
+	var req LoadPluginRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.LibraryPath == "" {
+		writeError(w, http.StatusBadRequest, "library_path is required")
+		return
+	}
+
+	plugin, err := ph.mfs.LoadExternalPlugin(req.LibraryPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, LoadPluginResponse{
+		Message:    "plugin loaded successfully",
+		PluginName: plugin.Name(),
+	})
+}
+
+// UnloadPluginRequest represents a request to unload an external plugin
+type UnloadPluginRequest struct {
+	LibraryPath string `json:"library_path"`
+}
+
+// UnloadPlugin handles POST /plugins/unload
+func (ph *PluginHandler) UnloadPlugin(w http.ResponseWriter, r *http.Request) {
+	var req UnloadPluginRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.LibraryPath == "" {
+		writeError(w, http.StatusBadRequest, "library_path is required")
+		return
+	}
+
+	if err := ph.mfs.UnloadExternalPlugin(req.LibraryPath); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, SuccessResponse{Message: "plugin unloaded successfully"})
+}
+
+// ListPluginsResponse represents the response for listing plugins
+type ListPluginsResponse struct {
+	LoadedPlugins []string `json:"loaded_plugins"`
+}
+
+// ListPlugins handles GET /plugins
+func (ph *PluginHandler) ListPlugins(w http.ResponseWriter, r *http.Request) {
+	plugins := ph.mfs.GetLoadedExternalPlugins()
+	writeJSON(w, http.StatusOK, ListPluginsResponse{LoadedPlugins: plugins})
+}
+
 // SetupRoutes sets up plugin management routes with /api/v1 prefix
 func (ph *PluginHandler) SetupRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/mounts", func(w http.ResponseWriter, r *http.Request) {
@@ -146,5 +219,30 @@ func (ph *PluginHandler) SetupRoutes(mux *http.ServeMux) {
 			return
 		}
 		ph.Unmount(w, r)
+	})
+
+	// External plugin management endpoints
+	mux.HandleFunc("/api/v1/plugins", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		ph.ListPlugins(w, r)
+	})
+
+	mux.HandleFunc("/api/v1/plugins/load", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		ph.LoadPlugin(w, r)
+	})
+
+	mux.HandleFunc("/api/v1/plugins/unload", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		ph.UnloadPlugin(w, r)
 	})
 }

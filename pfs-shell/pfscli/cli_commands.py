@@ -324,6 +324,51 @@ def cmd_unmount(client, path: str):
     console.print(f"Unmounted plugin at {path}")
 
 
+def cmd_load_plugin(client, library_path: str):
+    """Load an external plugin from a shared library
+
+    Args:
+        client: PFS client
+        library_path: Path to the shared library (.so/.dylib/.dll)
+    """
+    result = client.load_plugin(library_path)
+    plugin_name = result.get("plugin_name", "unknown")
+    console.print(f"[green]✓[/green] Loaded external plugin: [bold cyan]{plugin_name}[/bold cyan]")
+    console.print(f"  Library: {library_path}")
+
+
+def cmd_unload_plugin(client, library_path: str):
+    """Unload an external plugin
+
+    Args:
+        client: PFS client
+        library_path: Path to the shared library
+    """
+    client.unload_plugin(library_path)
+    console.print(f"[green]✓[/green] Unloaded external plugin: {library_path}")
+
+
+def cmd_list_plugins(client):
+    """List all loaded external plugins
+
+    Args:
+        client: PFS client
+    """
+    plugins = client.list_plugins()
+
+    if not plugins:
+        console.print("No external plugins loaded")
+        return
+
+    console.print(f"[bold]Loaded External Plugins:[/bold] ({len(plugins)})")
+    for plugin_path in plugins:
+        # Extract just the filename for display
+        import os
+        filename = os.path.basename(plugin_path)
+        console.print(f"  [cyan]{filename}[/cyan]")
+        console.print(f"    {plugin_path}")
+
+
 def cmd_mount(client, fstype: str, path: str, config_args: list):
     """Mount a plugin dynamically
 
