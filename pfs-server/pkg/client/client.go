@@ -19,10 +19,12 @@ type Client struct {
 }
 
 // NewClient creates a new PFS client
-// baseURL should include the API version path, e.g., "http://localhost:8080/api/v1"
+// baseURL can be either full URL with "/api/v1" or just the base.
+// If "/api/v1" is not present, it will be automatically appended.
+// e.g., "http://localhost:8080" or "http://localhost:8080/api/v1"
 func NewClient(baseURL string) *Client {
 	return &Client{
-		baseURL: baseURL,
+		baseURL: normalizeBaseURL(baseURL),
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
@@ -32,9 +34,22 @@ func NewClient(baseURL string) *Client {
 // NewClientWithHTTPClient creates a new PFS client with custom HTTP client
 func NewClientWithHTTPClient(baseURL string, httpClient *http.Client) *Client {
 	return &Client{
-		baseURL:    baseURL,
+		baseURL:    normalizeBaseURL(baseURL),
 		httpClient: httpClient,
 	}
+}
+
+// normalizeBaseURL ensures the base URL ends with /api/v1
+func normalizeBaseURL(baseURL string) string {
+	// Remove trailing slash
+	if len(baseURL) > 0 && baseURL[len(baseURL)-1] == '/' {
+		baseURL = baseURL[:len(baseURL)-1]
+	}
+	// Auto-append /api/v1 if not present
+	if len(baseURL) < 7 || baseURL[len(baseURL)-7:] != "/api/v1" {
+		baseURL = baseURL + "/api/v1"
+	}
+	return baseURL
 }
 
 // ErrorResponse represents an error response from the API

@@ -16,10 +16,16 @@ class PFSClient:
         Initialize PFS client.
 
         Args:
-            api_base_url: Full API base URL including version, e.g., "http://localhost:8080/api/v1"
+            api_base_url: API base URL. Can be either full URL with "/api/v1" or just the base.
+                         If "/api/v1" is not present, it will be automatically appended.
+                         e.g., "http://localhost:8080" or "http://localhost:8080/api/v1"
             timeout: Request timeout in seconds (default: 10)
         """
-        self.api_base = api_base_url.rstrip("/")
+        api_base_url = api_base_url.rstrip("/")
+        # Auto-append /api/v1 if not present
+        if not api_base_url.endswith("/api/v1"):
+            api_base_url = api_base_url + "/api/v1"
+        self.api_base = api_base_url
         self.session = requests.Session()
         self.timeout = timeout
 
