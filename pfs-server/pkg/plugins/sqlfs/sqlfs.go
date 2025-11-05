@@ -273,12 +273,12 @@ func (fs *SQLFS) Create(path string) error {
 		var isDir int
 		err := fs.db.QueryRow("SELECT is_dir FROM files WHERE path = ?", parent).Scan(&isDir)
 		if err == sql.ErrNoRows {
-			return fmt.Errorf("parent directory does not exist: %s", parent)
+			return filesystem.NewNotFoundError("create", parent)
 		} else if err != nil {
 			return err
 		}
 		if isDir == 0 {
-			return fmt.Errorf("parent is not a directory: %s", parent)
+			return filesystem.NewNotDirectoryError(parent)
 		}
 	}
 
@@ -289,7 +289,7 @@ func (fs *SQLFS) Create(path string) error {
 		return err
 	}
 	if exists > 0 {
-		return fmt.Errorf("file already exists: %s", path)
+		return filesystem.NewAlreadyExistsError("file", path)
 	}
 
 	// Create empty file
@@ -318,12 +318,12 @@ func (fs *SQLFS) Mkdir(path string, perm uint32) error {
 		var isDir int
 		err := fs.db.QueryRow("SELECT is_dir FROM files WHERE path = ?", parent).Scan(&isDir)
 		if err == sql.ErrNoRows {
-			return fmt.Errorf("parent directory does not exist: %s", parent)
+			return filesystem.NewNotFoundError("mkdir", parent)
 		} else if err != nil {
 			return err
 		}
 		if isDir == 0 {
-			return fmt.Errorf("parent is not a directory: %s", parent)
+			return filesystem.NewNotDirectoryError(parent)
 		}
 	}
 
@@ -334,7 +334,7 @@ func (fs *SQLFS) Mkdir(path string, perm uint32) error {
 		return err
 	}
 	if exists > 0 {
-		return fmt.Errorf("file or directory already exists: %s", path)
+		return filesystem.NewAlreadyExistsError("directory", path)
 	}
 
 	// Create directory
@@ -368,7 +368,7 @@ func (fs *SQLFS) Remove(path string) error {
 	var isDir int
 	err := fs.db.QueryRow("SELECT is_dir FROM files WHERE path = ?", path).Scan(&isDir)
 	if err == sql.ErrNoRows {
-		return fmt.Errorf("no such file or directory: %s", path)
+		return filesystem.NewNotFoundError("remove", path)
 	} else if err != nil {
 		return err
 	}
@@ -429,13 +429,13 @@ func (fs *SQLFS) Read(path string, offset int64, size int64) ([]byte, error) {
 	var data []byte
 	err := fs.db.QueryRow("SELECT is_dir, data FROM files WHERE path = ?", path).Scan(&isDir, &data)
 	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("no such file or directory: %s", path)
+		return nil, filesystem.NewNotFoundError("read", path)
 	} else if err != nil {
 		return nil, err
 	}
 
 	if isDir == 1 {
-		return nil, fmt.Errorf("is a directory: %s", path)
+		return nil, filesystem.NewInvalidArgumentError("path", path, "is a directory")
 	}
 
 	// Apply offset and size
@@ -482,7 +482,7 @@ func (fs *SQLFS) Write(path string, data []byte) ([]byte, error) {
 	}
 
 	if exists > 0 && isDir == 1 {
-		return nil, fmt.Errorf("is a directory: %s", path)
+		return nil, filesystem.NewInvalidArgumentError("path", path, "is a directory")
 	}
 
 	if exists == 0 {
@@ -492,12 +492,12 @@ func (fs *SQLFS) Write(path string, data []byte) ([]byte, error) {
 			var parentIsDir int
 			err := fs.db.QueryRow("SELECT is_dir FROM files WHERE path = ?", parent).Scan(&parentIsDir)
 			if err == sql.ErrNoRows {
-				return nil, fmt.Errorf("parent directory does not exist: %s", parent)
+				return nil, filesystem.NewNotFoundError("write", parent)
 			} else if err != nil {
 				return nil, err
 			}
 			if parentIsDir == 0 {
-				return nil, fmt.Errorf("parent is not a directory: %s", parent)
+				return nil, filesystem.NewNotDirectoryError(parent)
 			}
 		}
 
@@ -541,13 +541,13 @@ func (fs *SQLFS) ReadDir(path string) ([]filesystem.FileInfo, error) {
 	var isDir int
 	err := fs.db.QueryRow("SELECT is_dir FROM files WHERE path = ?", path).Scan(&isDir)
 	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("no such directory: %s", path)
+		return nil, filesystem.NewNotFoundError("readdir", path)
 	} else if err != nil {
 		return nil, err
 	}
 
 	if isDir == 0 {
-		return nil, fmt.Errorf("not a directory: %s", path)
+		return nil, filesystem.NewNotDirectoryError(path)
 	}
 
 	// Query children
@@ -617,7 +617,7 @@ func (fs *SQLFS) Stat(path string) (*filesystem.FileInfo, error) {
 	).Scan(&isDir, &mode, &size, &modTime)
 
 	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("no such file or directory: %s", path)
+		return nil, filesystem.NewNotFoundError("stat", path)
 	} else if err != nil {
 		return nil, err
 	}
@@ -658,7 +658,7 @@ func (fs *SQLFS) Rename(oldPath, newPath string) error {
 		return err
 	}
 	if exists == 0 {
-		return fmt.Errorf("no such file or directory: %s", oldPath)
+		return filesystem.NewNotFoundError("rename", oldPath)
 	}
 
 	// Check if new path already exists
@@ -667,7 +667,7 @@ func (fs *SQLFS) Rename(oldPath, newPath string) error {
 		return err
 	}
 	if exists > 0 {
-		return fmt.Errorf("file already exists: %s", newPath)
+		return filesystem.NewAlreadyExistsError("file", newPath)
 	}
 
 	// Rename file/directory
@@ -709,7 +709,7 @@ func (fs *SQLFS) Chmod(path string, mode uint32) error {
 		return err
 	}
 	if rows == 0 {
-		return fmt.Errorf("no such file or directory: %s", path)
+		return filesystem.NewNotFoundError("chmod", path)
 	}
 
 	return nil

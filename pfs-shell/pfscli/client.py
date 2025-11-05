@@ -39,20 +39,27 @@ class PFSClient:
             # Extract useful error information from response
             if hasattr(e, 'response') and e.response is not None:
                 status_code = e.response.status_code
-                # Try to get error message from JSON response
+                # Try to get error message from JSON response first (priority)
                 try:
                     error_data = e.response.json()
                     error_msg = error_data.get("error", "")
                     if error_msg:
+                        # Use the server's detailed error message
                         raise PFSClientError(error_msg)
-                except:
+                except (ValueError, KeyError, TypeError):
+                    # If JSON parsing fails, fall through to generic status code messages
                     pass
+                except PFSClientError:
+                    # Re-raise our own error
+                    raise
 
-                # Handle specific status codes
+                # Fallback to generic messages based on status codes
                 if status_code == 404:
                     raise PFSClientError("No such file or directory")
                 elif status_code == 403:
                     raise PFSClientError("Permission denied")
+                elif status_code == 409:
+                    raise PFSClientError("Resource already exists")
                 elif status_code == 500:
                     raise PFSClientError("Internal server error")
                 elif status_code == 502:
@@ -147,36 +154,45 @@ class PFSClient:
 
     def create(self, path: str) -> Dict[str, Any]:
         """Create a new file"""
-        response = self.session.post(
-            f"{self.api_base}/files",
-            params={"path": path},
-            timeout=self.timeout
-        )
-        response.raise_for_status()
-        return response.json()
+        try:
+            response = self.session.post(
+                f"{self.api_base}/files",
+                params={"path": path},
+                timeout=self.timeout
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            self._handle_request_error(e)
 
     def mkdir(self, path: str, mode: str = "755") -> Dict[str, Any]:
         """Create a directory"""
-        response = self.session.post(
-            f"{self.api_base}/directories",
-            params={"path": path, "mode": mode},
-            timeout=self.timeout
-        )
-        response.raise_for_status()
-        return response.json()
+        try:
+            response = self.session.post(
+                f"{self.api_base}/directories",
+                params={"path": path, "mode": mode},
+                timeout=self.timeout
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            self._handle_request_error(e)
 
     def rm(self, path: str, recursive: bool = False) -> Dict[str, Any]:
         """Remove a file or directory"""
-        params = {"path": path}
-        if recursive:
-            params["recursive"] = "true"
-        response = self.session.delete(
-            f"{self.api_base}/files",
-            params=params,
-            timeout=self.timeout
-        )
-        response.raise_for_status()
-        return response.json()
+        try:
+            params = {"path": path}
+            if recursive:
+                params["recursive"] = "true"
+            response = self.session.delete(
+                f"{self.api_base}/files",
+                params=params,
+                timeout=self.timeout
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            self._handle_request_error(e)
 
     def stat(self, path: str) -> Dict[str, Any]:
         """Get file/directory information"""
@@ -193,32 +209,41 @@ class PFSClient:
 
     def mv(self, old_path: str, new_path: str) -> Dict[str, Any]:
         """Rename/move a file or directory"""
-        response = self.session.post(
-            f"{self.api_base}/rename",
-            params={"path": old_path},
-            json={"newPath": new_path},
-            timeout=self.timeout
-        )
-        response.raise_for_status()
-        return response.json()
+        try:
+            response = self.session.post(
+                f"{self.api_base}/rename",
+                params={"path": old_path},
+                json={"newPath": new_path},
+                timeout=self.timeout
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            self._handle_request_error(e)
 
     def chmod(self, path: str, mode: int) -> Dict[str, Any]:
         """Change file permissions"""
-        response = self.session.post(
-            f"{self.api_base}/chmod",
-            params={"path": path},
-            json={"mode": mode},
-            timeout=self.timeout
-        )
-        response.raise_for_status()
-        return response.json()
+        try:
+            response = self.session.post(
+                f"{self.api_base}/chmod",
+                params={"path": path},
+                json={"mode": mode},
+                timeout=self.timeout
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            self._handle_request_error(e)
 
     def mounts(self) -> List[Dict[str, Any]]:
         """List all mounted plugins"""
-        response = self.session.get(f"{self.api_base}/mounts", timeout=self.timeout)
-        response.raise_for_status()
-        data = response.json()
-        return data.get("mounts", [])
+        try:
+            response = self.session.get(f"{self.api_base}/mounts", timeout=self.timeout)
+            response.raise_for_status()
+            data = response.json()
+            return data.get("mounts", [])
+        except Exception as e:
+            self._handle_request_error(e)
 
     def mount(self, fstype: str, path: str, config: Dict[str, Any]) -> Dict[str, Any]:
         """Mount a plugin dynamically
@@ -231,34 +256,26 @@ class PFSClient:
         Returns:
             Response with message
         """
-        response = self.session.post(
-            f"{self.api_base}/mount",
-            json={"fstype": fstype, "path": path, "config": config},
-            timeout=self.timeout
-        )
-        if not response.ok:
-            # Try to extract error message from response body
-            try:
-                error_data = response.json()
-                error_msg = error_data.get("error", str(response.status_code))
-            except:
-                error_msg = response.text or str(response.status_code)
-            raise Exception(error_msg)
-        return response.json()
+        try:
+            response = self.session.post(
+                f"{self.api_base}/mount",
+                json={"fstype": fstype, "path": path, "config": config},
+                timeout=self.timeout
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            self._handle_request_error(e)
 
     def unmount(self, path: str) -> Dict[str, Any]:
         """Unmount a plugin"""
-        response = self.session.post(
-            f"{self.api_base}/unmount",
-            json={"path": path},
-            timeout=self.timeout
-        )
-        if not response.ok:
-            # Try to extract error message from response body
-            try:
-                error_data = response.json()
-                error_msg = error_data.get("error", str(response.status_code))
-            except:
-                error_msg = response.text or str(response.status_code)
-            raise Exception(error_msg)
-        return response.json()
+        try:
+            response = self.session.post(
+                f"{self.api_base}/unmount",
+                json={"path": path},
+                timeout=self.timeout
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            self._handle_request_error(e)

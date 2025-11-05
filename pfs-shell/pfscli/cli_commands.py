@@ -25,10 +25,14 @@ def cmd_ls(client, path: str):
     """List directory contents"""
     from datetime import datetime
 
-    files = client.ls(path)
-    if not files:
+    files = []
+    try:
+        files = client.ls(path)
+        if not files:
+            return
+    except Exception as e:
+        console.print(f"[red]ls: {path}: {e}[/red]")
         return
-
     # Separate directories and files
     dirs = [f for f in files if f.get("isDir", False)]
     regular_files = [f for f in files if not f.get("isDir", False)]

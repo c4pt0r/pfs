@@ -2,10 +2,10 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/c4pt0r/pfs/pfs-server/pkg/filesystem"
@@ -87,6 +87,23 @@ func writeError(w http.ResponseWriter, status int, message string) {
 	writeJSON(w, status, ErrorResponse{Error: message})
 }
 
+// mapErrorToStatus maps filesystem errors to HTTP status codes
+func mapErrorToStatus(err error) int {
+	if errors.Is(err, filesystem.ErrNotFound) {
+		return http.StatusNotFound
+	}
+	if errors.Is(err, filesystem.ErrPermissionDenied) {
+		return http.StatusForbidden
+	}
+	if errors.Is(err, filesystem.ErrInvalidArgument) {
+		return http.StatusBadRequest
+	}
+	if errors.Is(err, filesystem.ErrAlreadyExists) {
+		return http.StatusConflict
+	}
+	return http.StatusInternalServerError
+}
+
 // CreateFile handles POST /files?path=<path>
 func (h *Handler) CreateFile(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Query().Get("path")
@@ -96,7 +113,8 @@ func (h *Handler) CreateFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.fs.Create(path); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		status := mapErrorToStatus(err)
+		writeError(w, status, err.Error())
 		return
 	}
 
@@ -123,7 +141,8 @@ func (h *Handler) CreateDirectory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.fs.Mkdir(path, mode); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		status := mapErrorToStatus(err)
+		writeError(w, status, err.Error())
 		return
 	}
 
@@ -176,15 +195,9 @@ func (h *Handler) ReadFile(w http.ResponseWriter, r *http.Request) {
 			w.Write(data) // Return partial data with 200 OK
 			return
 		}
-		// Check if it's a permission error
-		errMsg := err.Error()
-		if strings.Contains(errMsg, "permission denied") || strings.Contains(errMsg, "write-only") {
-			writeError(w, http.StatusForbidden, err.Error())
-		} else if strings.Contains(errMsg, "no such file") || strings.Contains(errMsg, "not found") {
-			writeError(w, http.StatusNotFound, err.Error())
-		} else {
-			writeError(w, http.StatusInternalServerError, err.Error())
-		}
+		// Map error to appropriate HTTP status code
+		status := mapErrorToStatus(err)
+		writeError(w, status, err.Error())
 		return
 	}
 
@@ -209,7 +222,8 @@ func (h *Handler) WriteFile(w http.ResponseWriter, r *http.Request) {
 
 	response, err := h.fs.Write(path, data)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		status := mapErrorToStatus(err)
+		writeError(w, status, err.Error())
 		return
 	}
 
@@ -235,7 +249,8 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		status := mapErrorToStatus(err)
+		writeError(w, status, err.Error())
 		return
 	}
 
@@ -251,7 +266,9 @@ func (h *Handler) ListDirectory(w http.ResponseWriter, r *http.Request) {
 
 	files, err := h.fs.ReadDir(path)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		// Map error to appropriate HTTP status code
+		status := mapErrorToStatus(err)
+		writeError(w, status, err.Error())
 		return
 	}
 
@@ -280,7 +297,8 @@ func (h *Handler) Stat(w http.ResponseWriter, r *http.Request) {
 
 	info, err := h.fs.Stat(path)
 	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		status := mapErrorToStatus(err)
+		writeError(w, status, err.Error())
 		return
 	}
 
@@ -316,7 +334,8 @@ func (h *Handler) Rename(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.fs.Rename(path, req.NewPath); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		status := mapErrorToStatus(err)
+		writeError(w, status, err.Error())
 		return
 	}
 
@@ -338,7 +357,8 @@ func (h *Handler) Chmod(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.fs.Chmod(path, req.Mode); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		status := mapErrorToStatus(err)
+		writeError(w, status, err.Error())
 		return
 	}
 

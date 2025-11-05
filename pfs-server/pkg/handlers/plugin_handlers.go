@@ -2,9 +2,11 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
+	"github.com/c4pt0r/pfs/pfs-server/pkg/filesystem"
 	"github.com/c4pt0r/pfs/pfs-server/pkg/mountablefs"
 )
 
@@ -98,15 +100,17 @@ func (ph *PluginHandler) Mount(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := ph.mfs.MountPlugin(req.FSType, req.Path, req.Config); err != nil {
-		// Return appropriate status codes based on error type
-		errMsg := err.Error()
-		if strings.Contains(errMsg, "already has a mount") || strings.Contains(errMsg, "already mounted") {
+		// First check for typed errors
+		if errors.Is(err, filesystem.ErrAlreadyExists) {
 			writeError(w, http.StatusConflict, err.Error())
-		} else if strings.Contains(errMsg, "unknown filesystem type") || strings.Contains(errMsg, "unknown plugin") {
-			writeError(w, http.StatusBadRequest, err.Error())
-		} else if strings.Contains(errMsg, "failed to validate") || strings.Contains(errMsg, "is required") ||
+			return
+		}
+
+		// For backward compatibility, check string-based errors that aren't typed yet
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "unknown filesystem type") || strings.Contains(errMsg, "unknown plugin") ||
+			strings.Contains(errMsg, "failed to validate") || strings.Contains(errMsg, "is required") ||
 			strings.Contains(errMsg, "invalid") || strings.Contains(errMsg, "unknown configuration parameter") {
-			// Validation errors should return 400 Bad Request
 			writeError(w, http.StatusBadRequest, err.Error())
 		} else {
 			writeError(w, http.StatusInternalServerError, err.Error())

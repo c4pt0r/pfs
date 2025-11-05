@@ -62,7 +62,7 @@ func (mfs *MountableFS) Mount(path string, plugin plugin.ServicePlugin) error {
 
 	// Check if path is already mounted
 	if _, exists := mfs.mounts[path]; exists {
-		return fmt.Errorf("path already has a mount: %s", path)
+		return filesystem.NewAlreadyExistsError("mount", path)
 	}
 
 	// Add mount (no config for static mounts)
@@ -89,7 +89,7 @@ func (mfs *MountableFS) MountPlugin(fstype string, path string, config map[strin
 
 	// Check if path is already mounted
 	if _, exists := mfs.mounts[path]; exists {
-		return fmt.Errorf("path already has a mount: %s", path)
+		return filesystem.NewAlreadyExistsError("mount", path)
 	}
 
 	// Get plugin factory
@@ -245,7 +245,7 @@ func (mfs *MountableFS) Create(path string) error {
 	if found {
 		return mount.Plugin.GetFileSystem().Create(relPath)
 	}
-	return fmt.Errorf("no filesystem mounted at path: %s", path)
+	return filesystem.NewNotFoundError("create", path)
 }
 
 func (mfs *MountableFS) Mkdir(path string, perm uint32) error {
@@ -256,7 +256,7 @@ func (mfs *MountableFS) Mkdir(path string, perm uint32) error {
 	if found {
 		return mount.Plugin.GetFileSystem().Mkdir(relPath, perm)
 	}
-	return fmt.Errorf("no filesystem mounted at path: %s", path)
+	return filesystem.NewNotFoundError("mkdir", path)
 }
 
 func (mfs *MountableFS) Remove(path string) error {
@@ -267,7 +267,7 @@ func (mfs *MountableFS) Remove(path string) error {
 	if found {
 		return mount.Plugin.GetFileSystem().Remove(relPath)
 	}
-	return fmt.Errorf("no filesystem mounted at path: %s", path)
+	return filesystem.NewNotFoundError("remove", path)
 }
 
 func (mfs *MountableFS) RemoveAll(path string) error {
@@ -278,7 +278,7 @@ func (mfs *MountableFS) RemoveAll(path string) error {
 	if found {
 		return mount.Plugin.GetFileSystem().RemoveAll(relPath)
 	}
-	return fmt.Errorf("no filesystem mounted at path: %s", path)
+	return filesystem.NewNotFoundError("removeall", path)
 }
 
 func (mfs *MountableFS) Read(path string, offset int64, size int64) ([]byte, error) {
@@ -289,7 +289,7 @@ func (mfs *MountableFS) Read(path string, offset int64, size int64) ([]byte, err
 	if found {
 		return mount.Plugin.GetFileSystem().Read(relPath, offset, size)
 	}
-	return nil, fmt.Errorf("no filesystem mounted at path: %s", path)
+	return nil, filesystem.NewNotFoundError("read", path)
 }
 
 func (mfs *MountableFS) Write(path string, data []byte) ([]byte, error) {
@@ -300,7 +300,7 @@ func (mfs *MountableFS) Write(path string, data []byte) ([]byte, error) {
 	if found {
 		return mount.Plugin.GetFileSystem().Write(relPath, data)
 	}
-	return nil, fmt.Errorf("no filesystem mounted at path: %s", path)
+	return nil, filesystem.NewNotFoundError("write", path)
 }
 
 func (mfs *MountableFS) ReadDir(path string) ([]filesystem.FileInfo, error) {
@@ -393,7 +393,7 @@ func (mfs *MountableFS) ReadDir(path string) ([]filesystem.FileInfo, error) {
 		return infos, nil
 	}
 
-	return nil, fmt.Errorf("no filesystem mounted at path: %s", path)
+	return nil, filesystem.NewNotFoundError("readdir", path)
 }
 
 func (mfs *MountableFS) Stat(path string) (*filesystem.FileInfo, error) {
@@ -470,7 +470,7 @@ func (mfs *MountableFS) Stat(path string) (*filesystem.FileInfo, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("no filesystem mounted at path: %s", path)
+	return nil, filesystem.NewNotFoundError("stat", path)
 }
 
 func (mfs *MountableFS) Rename(oldPath, newPath string) error {
@@ -498,7 +498,7 @@ func (mfs *MountableFS) Chmod(path string, mode uint32) error {
 	if found {
 		return mount.Plugin.GetFileSystem().Chmod(relPath, mode)
 	}
-	return fmt.Errorf("no filesystem mounted at path: %s", path)
+	return filesystem.NewNotFoundError("chmod", path)
 }
 
 func (mfs *MountableFS) Open(path string) (io.ReadCloser, error) {
@@ -509,7 +509,7 @@ func (mfs *MountableFS) Open(path string) (io.ReadCloser, error) {
 	if found {
 		return mount.Plugin.GetFileSystem().Open(relPath)
 	}
-	return nil, fmt.Errorf("no filesystem mounted at path: %s", path)
+	return nil, filesystem.NewNotFoundError("open", path)
 }
 
 func (mfs *MountableFS) OpenWrite(path string) (io.WriteCloser, error) {
@@ -520,7 +520,7 @@ func (mfs *MountableFS) OpenWrite(path string) (io.WriteCloser, error) {
 	if found {
 		return mount.Plugin.GetFileSystem().OpenWrite(relPath)
 	}
-	return nil, fmt.Errorf("no filesystem mounted at path: %s", path)
+	return nil, filesystem.NewNotFoundError("openwrite", path)
 }
 
 // OpenStream implements filesystem.Streamer interface
@@ -530,7 +530,7 @@ func (mfs *MountableFS) OpenStream(path string) (filesystem.StreamReader, error)
 	mfs.mu.RUnlock()
 
 	if !found {
-		return nil, fmt.Errorf("no filesystem mounted at path: %s", path)
+		return nil, filesystem.NewNotFoundError("openstream", path)
 	}
 
 	// Check if the filesystem supports Streamer interface
@@ -552,7 +552,7 @@ func (mfs *MountableFS) GetStream(path string) (interface{}, error) {
 	mfs.mu.RUnlock()
 
 	if !found {
-		return nil, fmt.Errorf("no filesystem mounted at path: %s", path)
+		return nil, filesystem.NewNotFoundError("getstream", path)
 	}
 
 	// Check if the filesystem supports GetStream method (for backward compatibility)
