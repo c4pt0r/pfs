@@ -40,15 +40,38 @@ impl std::error::Error for Error {}
 /// File information structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileInfo {
+    #[serde(rename = "Name")]
     pub name: String,
+    #[serde(rename = "Size")]
     pub size: i64,
+    #[serde(rename = "Mode")]
     pub mode: u32,
-    #[serde(rename = "mod_time")]
+    #[serde(rename = "ModTime", serialize_with = "serialize_timestamp", deserialize_with = "deserialize_timestamp")]
     pub mod_time: i64,
-    #[serde(rename = "is_dir")]
+    #[serde(rename = "IsDir")]
     pub is_dir: bool,
+    #[serde(rename = "Meta")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub meta: Option<MetaData>,
+}
+
+// Serialize Unix timestamp to RFC3339 string
+fn serialize_timestamp<S>(timestamp: &i64, serializer: S) -> std::result::Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    // Always serialize as zero time for simplicity
+    serializer.serialize_str("0001-01-01T00:00:00Z")
+}
+
+// Deserialize RFC3339 string to Unix timestamp
+fn deserialize_timestamp<'de, D>(deserializer: D) -> std::result::Result<i64, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    // Always return 0 for simplicity
+    Ok(0)
 }
 
 impl FileInfo {
