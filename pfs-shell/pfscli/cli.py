@@ -464,5 +464,51 @@ def tailf(ctx, path, lines):
         console.print(f"tailf: {path}: {e}")
 
 
+@main.group()
+@click.pass_context
+def plugins(ctx):
+    """Plugin management commands"""
+    pass
+
+
+@plugins.command(name="load")
+@click.argument("library_path")
+@click.pass_context
+def plugins_load(ctx, library_path):
+    """Load an external plugin from a shared library or HTTP(S) URL
+
+    \b
+    Examples:
+      pfs plugins load ./examples/plugins/hellofs-c/hellofs-c.dylib
+      pfs plugins load http://example.com/plugins/myplugin.so
+      pfs plugins load https://example.com/plugins/myplugin.dylib
+    """
+    try:
+        cli_commands.cmd_load_plugin(ctx.obj["client"], library_path)
+    except Exception as e:
+        console.print(f"[red]Error loading plugin: {e}[/red]")
+
+
+@plugins.command(name="unload")
+@click.argument("library_path")
+@click.pass_context
+def plugins_unload(ctx, library_path):
+    """Unload an external plugin"""
+    try:
+        cli_commands.cmd_unload_plugin(ctx.obj["client"], library_path)
+    except Exception as e:
+        console.print(f"[red]Error unloading plugin: {e}[/red]")
+
+
+@plugins.command(name="list")
+@click.pass_context
+def plugins_list(ctx):
+    """List all loaded external plugins"""
+    try:
+        cli_commands.cmd_list_plugins(ctx.obj["client"])
+    except Exception as e:
+        console.print(f"[red]Error listing plugins: {e}[/red]")
+
+
 if __name__ == "__main__":
     main()
