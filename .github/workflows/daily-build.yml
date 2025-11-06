@@ -36,9 +36,6 @@ jobs:
           - os: windows
             arch: amd64
             runner: windows-latest
-          - os: windows
-            arch: arm64
-            runner: windows-latest
 
     steps:
       - name: Checkout code
@@ -210,7 +207,6 @@ jobs:
             - **macOS AMD64**: `pfs-darwin-amd64-${{ steps.version.outputs.date }}.tar.gz`
             - **macOS ARM64 (Apple Silicon)**: `pfs-darwin-arm64-${{ steps.version.outputs.date }}.tar.gz`
             - **Windows AMD64**: `pfs-windows-amd64-${{ steps.version.outputs.date }}.zip`
-            - **Windows ARM64**: `pfs-windows-arm64-${{ steps.version.outputs.date }}.zip`
 
             #### CLI Client (Portable, Python 3.10+ required)
 
