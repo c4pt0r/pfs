@@ -2,8 +2,10 @@ package loader
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 
 	"github.com/c4pt0r/pfs/pfs-server/pkg/plugin"
@@ -11,6 +13,30 @@ import (
 	"github.com/ebitengine/purego"
 	log "github.com/sirupsen/logrus"
 )
+
+// PluginType represents the type of plugin
+type PluginType int
+
+const (
+	// PluginTypeUnknown represents an unknown plugin type
+	PluginTypeUnknown PluginType = iota
+	// PluginTypeNative represents a native shared library plugin (.so, .dylib, .dll)
+	PluginTypeNative
+	// PluginTypeWASM represents a WebAssembly plugin (.wasm)
+	PluginTypeWASM
+)
+
+// String returns the string representation of the plugin type
+func (pt PluginType) String() string {
+	switch pt {
+	case PluginTypeNative:
+		return "native"
+	case PluginTypeWASM:
+		return "wasm"
+	default:
+		return "unknown"
+	}
+}
 
 // LoadedPlugin tracks a loaded external plugin
 type LoadedPlugin struct {
@@ -24,6 +50,7 @@ type LoadedPlugin struct {
 // PluginLoader manages loading and unloading of external plugins
 type PluginLoader struct {
 	loadedPlugins map[string]*LoadedPlugin
+	wasmLoader    *WASMPluginLoader
 	mu            sync.RWMutex
 }
 
@@ -31,11 +58,108 @@ type PluginLoader struct {
 func NewPluginLoader() *PluginLoader {
 	return &PluginLoader{
 		loadedPlugins: make(map[string]*LoadedPlugin),
+		wasmLoader:    NewWASMPluginLoader(),
 	}
 }
 
-// LoadPlugin loads a plugin from a shared library file (.so, .dylib, .dll)
+// DetectPluginType detects the type of plugin based on file content and extension
+func DetectPluginType(libraryPath string) (PluginType, error) {
+	// Check if file exists
+	if _, err := os.Stat(libraryPath); err != nil {
+		return PluginTypeUnknown, fmt.Errorf("plugin file not found: %w", err)
+	}
+
+	// Try to read file magic number
+	file, err := os.Open(libraryPath)
+	if err != nil {
+		return PluginTypeUnknown, fmt.Errorf("failed to open plugin file: %w", err)
+	}
+	defer file.Close()
+
+	// Read first 4 bytes for magic number detection
+	magic := make([]byte, 4)
+	n, err := file.Read(magic)
+	if err != nil || n < 4 {
+		// If we can't read magic, fall back to extension
+		return detectPluginTypeByExtension(libraryPath), nil
+	}
+
+	// Check WASM magic number: 0x00 0x61 0x73 0x6D ("\0asm")
+	if magic[0] == 0x00 && magic[1] == 0x61 && magic[2] == 0x73 && magic[3] == 0x6D {
+		return PluginTypeWASM, nil
+	}
+
+	// Check ELF magic number: 0x7F 'E' 'L' 'F' (Linux .so)
+	if magic[0] == 0x7F && magic[1] == 'E' && magic[2] == 'L' && magic[3] == 'F' {
+		return PluginTypeNative, nil
+	}
+
+	// Check Mach-O magic numbers (macOS .dylib)
+	// 32-bit: 0xFE 0xED 0xFA 0xCE or 0xCE 0xFA 0xED 0xFE
+	// 64-bit: 0xFE 0xED 0xFA 0xCF or 0xCF 0xFA 0xED 0xFE
+	// Fat binary: 0xCA 0xFE 0xBA 0xBE or 0xBE 0xBA 0xFE 0xCA
+	if (magic[0] == 0xFE && magic[1] == 0xED && magic[2] == 0xFA && (magic[3] == 0xCE || magic[3] == 0xCF)) ||
+		(magic[0] == 0xCE && magic[1] == 0xFA && magic[2] == 0xED && magic[3] == 0xFE) ||
+		(magic[0] == 0xCF && magic[1] == 0xFA && magic[2] == 0xED && magic[3] == 0xFE) ||
+		(magic[0] == 0xCA && magic[1] == 0xFE && magic[2] == 0xBA && magic[3] == 0xBE) ||
+		(magic[0] == 0xBE && magic[1] == 0xBA && magic[2] == 0xFE && magic[3] == 0xCA) {
+		return PluginTypeNative, nil
+	}
+
+	// Check PE magic number: 'M' 'Z' (Windows .dll) - first 2 bytes
+	if magic[0] == 'M' && magic[1] == 'Z' {
+		return PluginTypeNative, nil
+	}
+
+	// Fall back to extension-based detection
+	return detectPluginTypeByExtension(libraryPath), nil
+}
+
+// detectPluginTypeByExtension detects plugin type based on file extension (fallback)
+func detectPluginTypeByExtension(libraryPath string) PluginType {
+	ext := strings.ToLower(filepath.Ext(libraryPath))
+	switch ext {
+	case ".wasm":
+		return PluginTypeWASM
+	case ".so", ".dylib", ".dll":
+		return PluginTypeNative
+	default:
+		return PluginTypeUnknown
+	}
+}
+
+// LoadPluginWithType loads a plugin with an explicitly specified type
+func (pl *PluginLoader) LoadPluginWithType(libraryPath string, pluginType PluginType) (plugin.ServicePlugin, error) {
+	log.Debugf("Loading plugin with type %s: %s", pluginType, libraryPath)
+
+	// Load based on specified type
+	switch pluginType {
+	case PluginTypeWASM:
+		return pl.wasmLoader.LoadWASMPlugin(libraryPath)
+	case PluginTypeNative:
+		return pl.loadNativePlugin(libraryPath)
+	default:
+		return nil, fmt.Errorf("unsupported plugin type: %s", pluginType)
+	}
+}
+
+// LoadPlugin loads a plugin from a shared library file (.so, .dylib, .dll) or WASM file (.wasm)
+// The plugin type is automatically detected based on file magic number and extension
 func (pl *PluginLoader) LoadPlugin(libraryPath string) (plugin.ServicePlugin, error) {
+	// Detect plugin type
+	pluginType, err := DetectPluginType(libraryPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to detect plugin type: %w", err)
+	}
+
+	log.Debugf("Auto-detected plugin type: %s for %s", pluginType, libraryPath)
+
+	// Use LoadPluginWithType for actual loading
+	return pl.LoadPluginWithType(libraryPath, pluginType)
+}
+
+// loadNativePlugin loads a native shared library plugin
+func (pl *PluginLoader) loadNativePlugin(libraryPath string) (plugin.ServicePlugin, error) {
 	pl.mu.Lock()
 	defer pl.mu.Unlock()
 
@@ -90,8 +214,36 @@ func (pl *PluginLoader) LoadPlugin(libraryPath string) (plugin.ServicePlugin, er
 	return externalPlugin, nil
 }
 
+// UnloadPluginWithType unloads a plugin with an explicitly specified type
+func (pl *PluginLoader) UnloadPluginWithType(libraryPath string, pluginType PluginType) error {
+	log.Debugf("Unloading plugin with type %s: %s", pluginType, libraryPath)
+
+	// Unload based on specified type
+	switch pluginType {
+	case PluginTypeWASM:
+		return pl.wasmLoader.UnloadWASMPlugin(libraryPath)
+	case PluginTypeNative:
+		return pl.unloadNativePlugin(libraryPath)
+	default:
+		return fmt.Errorf("unsupported plugin type: %s", pluginType)
+	}
+}
+
 // UnloadPlugin unloads a plugin (decrements ref count, unloads when reaches 0)
+// The plugin type is automatically detected based on file magic number and extension
 func (pl *PluginLoader) UnloadPlugin(libraryPath string) error {
+	// Detect plugin type
+	pluginType, err := DetectPluginType(libraryPath)
+	if err != nil {
+		return fmt.Errorf("failed to detect plugin type: %w", err)
+	}
+
+	// Use UnloadPluginWithType for actual unloading
+	return pl.UnloadPluginWithType(libraryPath, pluginType)
+}
+
+// unloadNativePlugin unloads a native shared library plugin
+func (pl *PluginLoader) unloadNativePlugin(libraryPath string) error {
 	pl.mu.Lock()
 	defer pl.mu.Unlock()
 
@@ -129,7 +281,7 @@ func (pl *PluginLoader) UnloadPlugin(libraryPath string) error {
 	return nil
 }
 
-// GetLoadedPlugins returns a list of all loaded plugins
+// GetLoadedPlugins returns a list of all loaded plugins (both native and WASM)
 func (pl *PluginLoader) GetLoadedPlugins() []string {
 	pl.mu.RLock()
 	defer pl.mu.RUnlock()
@@ -138,11 +290,43 @@ func (pl *PluginLoader) GetLoadedPlugins() []string {
 	for path := range pl.loadedPlugins {
 		paths = append(paths, path)
 	}
+
+	// Add WASM plugins
+	wasmPaths := pl.wasmLoader.GetLoadedPlugins()
+	paths = append(paths, wasmPaths...)
+
 	return paths
 }
 
-// IsLoaded checks if a plugin is currently loaded
+// IsLoadedWithType checks if a plugin of a specific type is currently loaded
+func (pl *PluginLoader) IsLoadedWithType(libraryPath string, pluginType PluginType) bool {
+	// Check based on specified type
+	switch pluginType {
+	case PluginTypeWASM:
+		return pl.wasmLoader.IsLoaded(libraryPath)
+	case PluginTypeNative:
+		return pl.isNativePluginLoaded(libraryPath)
+	default:
+		return false
+	}
+}
+
+// IsLoaded checks if a plugin is currently loaded (both native and WASM)
+// The plugin type is automatically detected based on file magic number and extension
 func (pl *PluginLoader) IsLoaded(libraryPath string) bool {
+	// Detect plugin type
+	pluginType, err := DetectPluginType(libraryPath)
+	if err != nil {
+		log.Debugf("Failed to detect plugin type for %s: %v", libraryPath, err)
+		return false
+	}
+
+	// Use IsLoadedWithType for actual check
+	return pl.IsLoadedWithType(libraryPath, pluginType)
+}
+
+// isNativePluginLoaded checks if a native plugin is currently loaded
+func (pl *PluginLoader) isNativePluginLoaded(libraryPath string) bool {
 	pl.mu.RLock()
 	defer pl.mu.RUnlock()
 

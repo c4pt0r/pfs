@@ -213,15 +213,21 @@ func main() {
 
 	// mountPlugin initializes and mounts a plugin asynchronously
 	mountPlugin := func(pluginName, instanceName, mountPath string, pluginConfig map[string]interface{}) {
-		// Get plugin factory
+		// Get plugin factory (try built-in first, then external)
 		factory, ok := availablePlugins[pluginName]
-		if !ok {
-			log.Warnf("  Unknown plugin: %s, skipping instance '%s'", pluginName, instanceName)
-			return
-		}
+		var p plugin.ServicePlugin
 
-		// Create plugin instance
-		p := factory(*configFile)
+		if !ok {
+			// Try to get external plugin from mfs
+			p = mfs.CreatePlugin(pluginName)
+			if p == nil {
+				log.Warnf("  Unknown plugin: %s, skipping instance '%s'", pluginName, instanceName)
+				return
+			}
+		} else {
+			// Create plugin instance from built-in factory
+			p = factory(*configFile)
+		}
 
 		// Special handling for httpfs: inject rootFS reference
 		if pluginName == "httpfs" {

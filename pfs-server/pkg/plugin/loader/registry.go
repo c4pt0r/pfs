@@ -14,10 +14,11 @@ import (
 type PluginInfo struct {
 	Path     string
 	Name     string
+	Type     PluginType
 	IsLoaded bool
 }
 
-// DiscoverPlugins searches for plugin files in a directory
+// DiscoverPlugins searches for plugin files in a directory (both native and WASM)
 func DiscoverPlugins(dir string) ([]PluginInfo, error) {
 	if dir == "" {
 		return []PluginInfo{}, nil
@@ -37,7 +38,8 @@ func DiscoverPlugins(dir string) ([]PluginInfo, error) {
 	}
 
 	// Get plugin extension for current platform
-	ext := getPluginExtension()
+	nativeExt := getPluginExtension()
+	wasmExt := ".wasm"
 
 	// Find all plugin files
 	var plugins []PluginInfo
@@ -52,14 +54,27 @@ func DiscoverPlugins(dir string) ([]PluginInfo, error) {
 			return nil
 		}
 
-		// Check if file has plugin extension
-		if strings.HasSuffix(info.Name(), ext) {
-			plugins = append(plugins, PluginInfo{
-				Path:     path,
-				Name:     strings.TrimSuffix(info.Name(), ext),
-				IsLoaded: false,
-			})
+		// Check if file has plugin extension (native or WASM)
+		var pluginType PluginType
+		var name string
+
+		if strings.HasSuffix(info.Name(), nativeExt) {
+			pluginType = PluginTypeNative
+			name = strings.TrimSuffix(info.Name(), nativeExt)
+		} else if strings.HasSuffix(info.Name(), wasmExt) {
+			pluginType = PluginTypeWASM
+			name = strings.TrimSuffix(info.Name(), wasmExt)
+		} else {
+			// Not a plugin file, skip
+			return nil
 		}
+
+		plugins = append(plugins, PluginInfo{
+			Path:     path,
+			Name:     name,
+			Type:     pluginType,
+			IsLoaded: false,
+		})
 
 		return nil
 	})
@@ -68,8 +83,20 @@ func DiscoverPlugins(dir string) ([]PluginInfo, error) {
 		return nil, fmt.Errorf("failed to walk plugin directory: %w", err)
 	}
 
-	log.Infof("Discovered %d plugin(s) in %s", len(plugins), dir)
+	log.Infof("Discovered %d plugin(s) in %s (%d native, %d WASM)",
+		len(plugins), dir, countPluginsByType(plugins, PluginTypeNative), countPluginsByType(plugins, PluginTypeWASM))
 	return plugins, nil
+}
+
+// countPluginsByType counts plugins of a specific type
+func countPluginsByType(plugins []PluginInfo, pluginType PluginType) int {
+	count := 0
+	for _, p := range plugins {
+		if p.Type == pluginType {
+			count++
+		}
+	}
+	return count
 }
 
 // getPluginExtension returns the shared library extension for the current platform
@@ -122,10 +149,11 @@ func ValidatePluginPath(path string) error {
 		return fmt.Errorf("plugin path is a directory, not a file")
 	}
 
-	// Check extension
-	ext := getPluginExtension()
-	if !strings.HasSuffix(path, ext) {
-		return fmt.Errorf("invalid plugin file extension (expected %s)", ext)
+	// Check extension (either native or WASM)
+	nativeExt := getPluginExtension()
+	wasmExt := ".wasm"
+	if !strings.HasSuffix(path, nativeExt) && !strings.HasSuffix(path, wasmExt) {
+		return fmt.Errorf("invalid plugin file extension (expected %s or %s)", nativeExt, wasmExt)
 	}
 
 	// Check file is readable

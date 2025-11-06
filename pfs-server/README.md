@@ -102,13 +102,16 @@ uv run pfs cat /queuefs/size
 
 - **Plugin Interface**: All plugins implement `FileSystem` interface
 - **Built-in Plugins**: Go plugins compiled into the server
-- **External Plugins**: Dynamically loaded from shared libraries (.so/.dylib/.dll)
-- **Multi-Language Support**: Write plugins in C, C++, Rust, or any language with C ABI
+- **External Plugins**: Support both native libraries and WebAssembly modules
+  - **Native** (.so/.dylib/.dll): Maximum performance, platform-specific
+  - **WASM** (.wasm): Cross-platform, sandboxed execution
+- **Smart Type Detection**: Automatic plugin type detection via file magic numbers
+- **Multi-Language Support**: Write plugins in C, C++, Rust, or any language with C ABI / WASM support
 - **Mount Points**: Plugins can be mounted at any path
 - **Multi-Instance**: Same plugin type can run multiple instances (e.g., multiple databases)
 - **Dynamic Control**: Load/unload/mount/unmount plugins at runtime via API
-- **Configuration**: YAML-based configuration with support for arrays
-- **Zero Cgo**: External plugins use purego for FFI (no C compiler needed for Go code)
+- **Configuration**: YAML-based configuration with JSON parameter passing to plugins
+- **Zero Cgo**: Native plugins use purego for FFI (no C compiler needed for Go code)
 
 ## Configuration
 
@@ -124,8 +127,9 @@ external_plugins:
   enabled: true
   plugin_dir: "./plugins"        # Auto-load all plugins from this directory
   auto_load: true                # Enable auto-loading
-  plugin_paths:                  # Specific plugins to load
-    - "./examples/plugins/hellofs-c/hellofs-c.dylib"
+  plugin_paths:                  # Specific plugins to load (native or WASM)
+    - "./examples/hellofs-c/hellofs-c.dylib"      # Native plugin
+    - "./examples/hellofs-wasm/hellofs-wasm.wasm" # WASM plugin
 
 plugins:
   # Single instance plugin
@@ -958,7 +962,7 @@ const char* FSRead(void* plugin, const char* path, long long offset, long long s
 FileInfoC* FSStat(void* plugin, const char* path);
 FileInfoArray* FSReadDir(void* plugin, const char* path, int* out_count);
 const char* FSWrite(void* plugin, const char* path, const char* data, int data_len);
-// ... and more (see docs/EXTERNAL_PLUGINS.md)
+...
 ```
 
 **Features:**
@@ -968,11 +972,6 @@ const char* FSWrite(void* plugin, const char* path, const char* data, int data_l
 -  Multi-language support (C, C++, Rust, etc.)
 -  Near-native performance
 -  Full API documentation available
-
-**Documentation:**
-- Complete guide: `docs/EXTERNAL_PLUGINS.md`
-- C example: `examples/plugins/hellofs-c/`
-- Quick start: `examples/plugins/hellofs-c/QUICK_START.md`
 
 **Runtime Loading:**
 
@@ -1084,46 +1083,6 @@ var availablePlugins = map[string]PluginFactory{
 }
 ```
 
-## Project Structure
-
-```
-pfs-server/
-├── cmd/
-│   └── server/
-│       └── main.go              # Server entry point
-├── pkg/
-│   ├── config/
-│   │   └── config.go            # YAML configuration
-│   ├── filesystem/
-│   │   └── filesystem.go        # FileSystem interface
-│   ├── mountablefs/
-│   │   └── mountablefs.go       # Plugin mount manager
-│   ├── plugin/
-│   │   ├── plugin.go            # Plugin interfaces
-│   │   └── utils.go             # Plugin utilities
-│   ├── plugins/
-│   │   ├── memfs/               # In-memory FS
-│   │   ├── queuefs/             # Message queue
-│   │   ├── kvfs/                # Key-value store
-│   │   ├── streamfs/            # Streaming
-│   │   ├── sqlfs/               # Database-backed FS
-│   │   ├── proxyfs/             # Remote proxy
-│   │   ├── s3fs/                # Amazon S3
-│   │   ├── localfs/             # Local file system mount
-│   │   ├── httpfs/              # HTTP file server
-│   │   ├── serverinfofs/        # Server info
-│   │   └── hellofs/             # Example plugin
-│   ├── handlers/
-│   │   ├── handlers.go          # HTTP handlers
-│   │   └── plugin_handlers.go   # Plugin management
-│   └── client/
-│       ├── client.go            # Go client library
-│       └── client_test.go
-├── config.example.yaml          # Example configuration
-├── Makefile                     # Build commands
-└── go.mod
-```
-
 ## External Plugin System
 
 PFS Server supports dynamically loading plugins from shared libraries (.so, .dylib, .dll) at runtime using [purego](https://github.com/ebitengine/purego). This enables:
@@ -1199,7 +1158,7 @@ external_plugins:
     - "./hellofs-c.dylib"
 ```
 
-**4. Use:**
+**Use:**
 
 ```bash
 # Start server (plugin loads automatically)
@@ -1216,7 +1175,7 @@ curl "http://localhost:8080/api/v1/files?path=/helloc/hello"
 
 ### C Plugin API Reference
 
-A full working example (hellofs in Go/Rust/C) is provided in ./examples
+A full working example (hellofs in Go/Rust/C/WASM) is provided in ./examples
 
 **Required Functions:**
 
@@ -1289,31 +1248,6 @@ curl -X POST http://localhost:8080/api/v1/plugins/unload \
   -d '{"library_path": "./my-plugin.dylib"}'
 ```
 
-### Why External Plugins?
-
-**Advantages:**
--  **Performance**: Native code execution, near-zero FFI overhead
--  **Multi-language**: Use any language (C, C++, Rust, Zig, etc.)
--  **Fast builds**: No Cgo, Go compiles faster
--  **No recompilation**: Add plugins without rebuilding server
--  **Easy distribution**: Distribute binary plugins
--  **Hot loading**: Load/unload at runtime
-
-**Use Cases:**
-- High-performance file processing
-- Integration with C/C++ libraries
-- Legacy system integration
-- Custom protocol implementations
-- Hardware-specific optimizations
-
-### Technical Details
-
-- **FFI Library**: [purego](https://github.com/ebitengine/purego) - Pure Go foreign function interface
-- **No Cgo**: Faster compilation, easier cross-compilation
-- **Memory Management**: C allocates return values, Go manages inputs
-- **Thread Safety**: Plugin loader is thread-safe, plugins should handle their own concurrency
-- **Platform Support**: macOS (.dylib), Linux (.so), Windows (.dll)
-
 ## Development
 
 ### Building
@@ -1330,14 +1264,6 @@ make test
 
 # Install to $GOPATH/bin
 make install
-```
-
-### Building External Plugins
-
-```bash
-# Build the example C plugin
-cd examples/plugins/hellofs-c
-make
 ```
 
 ## License

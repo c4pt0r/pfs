@@ -55,6 +55,18 @@ func (mfs *MountableFS) RegisterPluginFactory(name string, factory PluginFactory
 	mfs.pluginFactories[name] = factory
 }
 
+// CreatePlugin creates a plugin instance from a registered factory
+func (mfs *MountableFS) CreatePlugin(name string) plugin.ServicePlugin {
+	mfs.mu.RLock()
+	defer mfs.mu.RUnlock()
+
+	factory, ok := mfs.pluginFactories[name]
+	if !ok {
+		return nil
+	}
+	return factory()
+}
+
 // Mount mounts a service plugin at the specified path
 func (mfs *MountableFS) Mount(path string, plugin plugin.ServicePlugin) error {
 	mfs.mu.Lock()
@@ -177,7 +189,27 @@ func (mfs *MountableFS) Unmount(path string) error {
 	return nil
 }
 
+// LoadExternalPluginWithType loads a plugin with an explicitly specified type
+func (mfs *MountableFS) LoadExternalPluginWithType(libraryPath string, pluginType loader.PluginType) (plugin.ServicePlugin, error) {
+	p, err := mfs.pluginLoader.LoadPluginWithType(libraryPath, pluginType)
+	if err != nil {
+		return nil, err
+	}
+
+	// Register the plugin as a factory so it can be mounted
+	pluginName := p.Name()
+	mfs.RegisterPluginFactory(pluginName, func() plugin.ServicePlugin {
+		// For external plugins, we need to return the already loaded instance
+		// since we can't create new instances from the loaded library
+		return p
+	})
+
+	log.Infof("Registered external plugin factory: %s (type: %s)", pluginName, pluginType)
+	return p, nil
+}
+
 // LoadExternalPlugin loads a plugin from a shared library file
+// The plugin type is automatically detected based on file content
 func (mfs *MountableFS) LoadExternalPlugin(libraryPath string) (plugin.ServicePlugin, error) {
 	p, err := mfs.pluginLoader.LoadPlugin(libraryPath)
 	if err != nil {
@@ -196,7 +228,13 @@ func (mfs *MountableFS) LoadExternalPlugin(libraryPath string) (plugin.ServicePl
 	return p, nil
 }
 
+// UnloadExternalPluginWithType unloads an external plugin with an explicitly specified type
+func (mfs *MountableFS) UnloadExternalPluginWithType(libraryPath string, pluginType loader.PluginType) error {
+	return mfs.pluginLoader.UnloadPluginWithType(libraryPath, pluginType)
+}
+
 // UnloadExternalPlugin unloads an external plugin
+// The plugin type is automatically detected based on file content
 func (mfs *MountableFS) UnloadExternalPlugin(libraryPath string) error {
 	return mfs.pluginLoader.UnloadPlugin(libraryPath)
 }
