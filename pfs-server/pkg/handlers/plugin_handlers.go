@@ -147,6 +147,11 @@ func isHTTPURL(path string) bool {
 	return strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://")
 }
 
+// isPFSPath checks if a string is a PFS path (pfs://)
+func isPFSPath(path string) bool {
+	return strings.HasPrefix(path, "pfs://")
+}
+
 // downloadPluginFromURL downloads a plugin from an HTTP(S) URL to a temporary file
 func downloadPluginFromURL(url string) (string, error) {
 	log.Infof("Downloading plugin from URL: %s", url)
@@ -195,6 +200,51 @@ func downloadPluginFromURL(url string) (string, error) {
 	return tmpFile, nil
 }
 
+// readPluginFromPFS reads a plugin from a PFS path (pfs://...) to a temporary file
+func (ph *PluginHandler) readPluginFromPFS(pfsPath string) (string, error) {
+	// Remove pfs:// prefix to get the actual path
+	path := strings.TrimPrefix(pfsPath, "pfs://")
+	if path == "" || path == "/" {
+		return "", fmt.Errorf("invalid pfs path: %s", pfsPath)
+	}
+
+	// Ensure path starts with /
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+
+	log.Infof("Reading plugin from PFS path: %s", path)
+
+	// Read file from the mountable filesystem
+	data, err := ph.mfs.Read(path, 0, -1)
+	if err != nil {
+		return "", fmt.Errorf("failed to read from PFS path %s: %w", path, err)
+	}
+
+	// Determine file extension from path
+	ext := filepath.Ext(path)
+	if ext == "" {
+		// Default to .so if no extension
+		ext = ".so"
+	}
+
+	// Create a hash of the path to use as the filename
+	hash := sha256.Sum256([]byte(pfsPath))
+	hashStr := hex.EncodeToString(hash[:])[:16]
+
+	// Create temporary file with appropriate extension
+	tmpDir := os.TempDir()
+	tmpFile := filepath.Join(tmpDir, fmt.Sprintf("pfs-plugin-%s%s", hashStr, ext))
+
+	// Write the data to the temporary file
+	if err := os.WriteFile(tmpFile, data, 0644); err != nil {
+		return "", fmt.Errorf("failed to write temporary file: %w", err)
+	}
+
+	log.Infof("Read plugin from PFS to temporary file: %s (%d bytes)", tmpFile, len(data))
+	return tmpFile, nil
+}
+
 // LoadPlugin handles POST /plugins/load
 func (ph *PluginHandler) LoadPlugin(w http.ResponseWriter, r *http.Request) {
 	var req LoadPluginRequest
@@ -208,7 +258,7 @@ func (ph *PluginHandler) LoadPlugin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if the library path is an HTTP(S) URL
+	// Check if the library path is an HTTP(S) URL or PFS path
 	libraryPath := req.LibraryPath
 	var tmpFile string
 	if isHTTPURL(libraryPath) {
@@ -221,6 +271,16 @@ func (ph *PluginHandler) LoadPlugin(w http.ResponseWriter, r *http.Request) {
 		tmpFile = downloadedFile
 		libraryPath = downloadedFile
 		log.Infof("Using downloaded plugin from temporary file: %s", libraryPath)
+	} else if isPFSPath(libraryPath) {
+		// Read the plugin from PFS
+		pfsFile, err := ph.readPluginFromPFS(libraryPath)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, fmt.Sprintf("failed to read plugin from PFS: %v", err))
+			return
+		}
+		tmpFile = pfsFile
+		libraryPath = pfsFile
+		log.Infof("Using plugin from PFS temporary file: %s", libraryPath)
 	}
 
 	plugin, err := ph.mfs.LoadExternalPlugin(libraryPath)
