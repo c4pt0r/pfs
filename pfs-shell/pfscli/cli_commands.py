@@ -218,13 +218,13 @@ def cmd_write(client, path: str, content: str = None, stream: bool = False):
 
             # Final summary
             if total_bytes < 1024:
-                console.print(f"\n[green]✓ Streaming complete: {total_bytes} bytes in {chunk_count} chunks[/green]")
+                console.print(f"\n[green]Streaming complete: {total_bytes} bytes in {chunk_count} chunks[/green]")
             elif total_bytes < 1024 * 1024:
                 kb = total_bytes / 1024
-                console.print(f"\n[green]✓ Streaming complete: {kb:.2f} KB in {chunk_count} chunks[/green]")
+                console.print(f"\n[green]Streaming complete: {kb:.2f} KB in {chunk_count} chunks[/green]")
             else:
                 mb = total_bytes / (1024 * 1024)
-                console.print(f"\n[green]✓ Streaming complete: {mb:.2f} MB in {chunk_count} chunks[/green]")
+                console.print(f"\n[green]Streaming complete: {mb:.2f} MB in {chunk_count} chunks[/green]")
 
         except KeyboardInterrupt:
             # This shouldn't be reached due to signal handler, but keep as fallback
@@ -333,7 +333,7 @@ def cmd_load_plugin(client, library_path: str):
     """
     result = client.load_plugin(library_path)
     plugin_name = result.get("plugin_name", "unknown")
-    console.print(f"[green]✓[/green] Loaded external plugin: [bold cyan]{plugin_name}[/bold cyan]")
+    console.print(f"[green]Loaded external plugin:[/green] [bold cyan]{plugin_name}[/bold cyan]")
     console.print(f"  Library: {library_path}")
 
 
@@ -345,7 +345,7 @@ def cmd_unload_plugin(client, library_path: str):
         library_path: Path to the shared library
     """
     client.unload_plugin(library_path)
-    console.print(f"[green]✓[/green] Unloaded external plugin: {library_path}")
+    console.print(f"[green]Unloaded external plugin:[/green] {library_path}")
 
 
 def cmd_list_plugins(client):
