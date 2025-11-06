@@ -250,5 +250,34 @@ macro_rules! export_plugin {
                 result_to_error_ptr::<()>(<$plugin_type as $crate::FileSystem>::chmod(p, &path, mode))
             }
         }
+
+        // Export malloc and free for Go compatibility
+        #[no_mangle]
+        pub extern "C" fn malloc(size: usize) -> *mut u8 {
+            use std::alloc::{alloc, Layout};
+
+            if size == 0 {
+                return std::ptr::null_mut();
+            }
+
+            unsafe {
+                let layout = Layout::from_size_align(size, 1).unwrap();
+                alloc(layout)
+            }
+        }
+
+        #[no_mangle]
+        pub extern "C" fn free(ptr: *mut u8, size: usize) {
+            use std::alloc::{dealloc, Layout};
+
+            if ptr.is_null() || size == 0 {
+                return;
+            }
+
+            unsafe {
+                let layout = Layout::from_size_align(size, 1).unwrap();
+                dealloc(ptr, layout);
+            }
+        }
     };
 }
