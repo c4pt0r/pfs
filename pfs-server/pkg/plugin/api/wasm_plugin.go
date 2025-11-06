@@ -421,6 +421,7 @@ func (wfs *WASMFileSystem) ReadDir(path string) ([]filesystem.FileInfo, error) {
 }
 
 func (wfs *WASMFileSystem) Stat(path string) (*filesystem.FileInfo, error) {
+	log.Debugf("WASM Stat called with path: %s", path)
 	statFunc := wfs.module.ExportedFunction("fs_stat")
 	if statFunc == nil {
 		return nil, fmt.Errorf("fs_stat not implemented")
@@ -428,13 +429,17 @@ func (wfs *WASMFileSystem) Stat(path string) (*filesystem.FileInfo, error) {
 
 	pathPtr, err := writeStringToMemory(wfs.module, path)
 	if err != nil {
+		log.Errorf("Failed to write path to memory: %v", err)
 		return nil, err
 	}
 
+	log.Debugf("Calling fs_stat WASM function with pathPtr=%d", pathPtr)
 	results, err := statFunc.Call(wfs.ctx, uint64(pathPtr))
 	if err != nil {
+		log.Errorf("fs_stat WASM call failed: %v", err)
 		return nil, fmt.Errorf("fs_stat failed: %w", err)
 	}
+	log.Debugf("fs_stat returned %d results", len(results))
 
 	if len(results) < 1 {
 		return nil, fmt.Errorf("fs_stat returned invalid results")

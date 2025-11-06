@@ -62,6 +62,7 @@ func NewPluginLoader() *PluginLoader {
 	}
 }
 
+
 // DetectPluginType detects the type of plugin based on file content and extension
 func DetectPluginType(libraryPath string) (PluginType, error) {
 	// Check if file exists

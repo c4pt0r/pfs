@@ -297,6 +297,7 @@ func (h *Handler) Stat(w http.ResponseWriter, r *http.Request) {
 
 	info, err := h.fs.Stat(path)
 	if err != nil {
+		log.Errorf("Stat error for path %s: %v", path, err)
 		status := mapErrorToStatus(err)
 		writeError(w, status, err.Error())
 		return

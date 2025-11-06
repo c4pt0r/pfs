@@ -26,6 +26,7 @@ type ExternalPluginsConfig struct {
 	PluginDir     string   `yaml:"plugin_dir"`
 	AutoLoad      bool     `yaml:"auto_load"`
 	PluginPaths   []string `yaml:"plugin_paths"`
+	WASIMountPath string   `yaml:"wasi_mount_path"` // Directory to mount for WASI filesystem access
 }
 
 // PluginConfig can be either a single plugin or an array of plugin instances

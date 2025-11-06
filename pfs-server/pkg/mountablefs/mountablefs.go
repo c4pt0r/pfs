@@ -48,6 +48,11 @@ func NewMountableFS() *MountableFS {
 	}
 }
 
+// GetPluginLoader returns the plugin loader instance
+func (mfs *MountableFS) GetPluginLoader() *loader.PluginLoader {
+	return mfs.pluginLoader
+}
+
 // RegisterPluginFactory registers a plugin factory for dynamic mounting
 func (mfs *MountableFS) RegisterPluginFactory(name string, factory PluginFactory) {
 	mfs.mu.Lock()

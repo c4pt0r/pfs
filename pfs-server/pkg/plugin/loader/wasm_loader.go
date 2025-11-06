@@ -80,14 +80,10 @@ func (wl *WASMPluginLoader) LoadWASMPlugin(wasmPath string) (plugin.ServicePlugi
 		return nil, fmt.Errorf("failed to compile WASM module: %w", err)
 	}
 
-	// Instantiate the module with filesystem access
-	// Use sys.FS to get a read-write filesystem
-	fsConfig := wazero.NewFSConfig().
-		WithDirMount("/", "/") // Mount root directory with read-write access
-
+	// Instantiate the module without filesystem access
+	// WASM plugins are not allowed to access the local filesystem
 	config := wazero.NewModuleConfig().
 		WithName("plugin").
-		WithFSConfig(fsConfig).
 		WithStdout(os.Stdout). // Enable stdout
 		WithStderr(os.Stderr)  // Enable stderr
 
