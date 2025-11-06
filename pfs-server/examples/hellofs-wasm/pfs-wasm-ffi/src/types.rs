@@ -56,7 +56,7 @@ pub struct FileInfo {
 }
 
 // Serialize Unix timestamp to RFC3339 string
-fn serialize_timestamp<S>(timestamp: &i64, serializer: S) -> std::result::Result<S::Ok, S::Error>
+fn serialize_timestamp<S>(_timestamp: &i64, serializer: S) -> std::result::Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
 {
@@ -69,7 +69,7 @@ fn deserialize_timestamp<'de, D>(deserializer: D) -> std::result::Result<i64, D:
 where
     D: serde::Deserializer<'de>,
 {
-    let s = String::deserialize(deserializer)?;
+    let _s = String::deserialize(deserializer)?;
     // Always return 0 for simplicity
     Ok(0)
 }
