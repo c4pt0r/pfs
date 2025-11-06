@@ -1214,17 +1214,9 @@ curl "http://localhost:8080/api/v1/files?path=/helloc/hello"
 # Output: Hello from C plugin!
 ```
 
-### Complete Example
-
-A full working example is provided in `examples/plugins/hellofs-c/`:
-
-**Files:**
-- `hellofs.c` - Complete C implementation (210 lines)
-- `Makefile` - Cross-platform build system
-- `README.md` - Detailed documentation
-- `QUICK_START.md` - Quick start guide (中文)
-
 ### C Plugin API Reference
+
+A full working example (hellofs in Go/Rust/C) is provided in ./examples
 
 **Required Functions:**
 
@@ -1296,24 +1288,6 @@ curl -X POST http://localhost:8080/api/v1/plugins/unload \
   -H "Content-Type: application/json" \
   -d '{"library_path": "./my-plugin.dylib"}'
 ```
-
-### Documentation
-
-- **Complete Guide**: `docs/EXTERNAL_PLUGINS.md`
-  - Full C API reference
-  - Architecture details
-  - Platform-specific notes
-  - Troubleshooting guide
-
-- **Quick Start**: `examples/plugins/hellofs-c/QUICK_START.md`
-  - 5-minute tutorial (中文)
-  - Common use cases
-  - Build instructions
-
-- **Example Plugin**: `examples/plugins/hellofs-c/`
-  - Working C implementation
-  - Cross-platform Makefile
-  - Comprehensive README
 
 ### Why External Plugins?
 
