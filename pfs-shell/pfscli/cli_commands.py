@@ -886,6 +886,34 @@ def cmd_tree(client, path: str = "/", max_depth: Optional[int] = None):
         path: Root path to display tree from
         max_depth: Maximum depth to traverse (None for unlimited)
     """
+    import sys
+
+    # Detect if we can use Unicode box-drawing characters
+    # Try to encode them to check if the terminal supports it
+    use_unicode = True
+    try:
+        # Test if stdout can handle Unicode
+        test_chars = "├──└──│"
+        if hasattr(sys.stdout, 'encoding') and sys.stdout.encoding:
+            test_chars.encode(sys.stdout.encoding)
+        else:
+            # If no encoding info, assume ASCII
+            use_unicode = False
+    except (UnicodeEncodeError, AttributeError):
+        use_unicode = False
+
+    # Define tree characters based on Unicode support
+    if use_unicode:
+        BRANCH = "├── "
+        LAST = "└── "
+        VERTICAL = "│   "
+        SPACE = "    "
+    else:
+        BRANCH = "|-- "
+        LAST = "`-- "
+        VERTICAL = "|   "
+        SPACE = "    "
+
     # Statistics
     stats = {"dirs": 0, "files": 0}
 
@@ -913,43 +941,62 @@ def cmd_tree(client, path: str = "/", max_depth: Optional[int] = None):
 
                 # Determine the tree characters
                 if is_last:
-                    current_prefix = prefix + "└── "
-                    child_prefix = prefix + "    "
+                    current_prefix = prefix + LAST
+                    child_prefix = prefix + SPACE
                 else:
-                    current_prefix = prefix + "├── "
-                    child_prefix = prefix + "│   "
+                    current_prefix = prefix + BRANCH
+                    child_prefix = prefix + VERTICAL
 
                 # Print the entry
-                if is_dir:
-                    console.print(f"{current_prefix}[bold cyan]{name}/[/bold cyan]")
-                    stats["dirs"] += 1
-                    # Recursively process subdirectory
-                    child_path = f"{current_path.rstrip('/')}/{name}"
-                    _tree_recursive(child_path, child_prefix, depth + 1)
-                else:
-                    size = file_info.get("size", 0)
-                    # Format size
-                    if size < 1024:
-                        size_str = f"{size}B"
-                    elif size < 1024 * 1024:
-                        size_str = f"{size/1024:.1f}K"
-                    elif size < 1024 * 1024 * 1024:
-                        size_str = f"{size/(1024*1024):.1f}M"
+                try:
+                    if is_dir:
+                        console.print(f"{current_prefix}[bold cyan]{name}/[/bold cyan]")
+                        stats["dirs"] += 1
+                        # Recursively process subdirectory
+                        child_path = f"{current_path.rstrip('/')}/{name}"
+                        _tree_recursive(child_path, child_prefix, depth + 1)
                     else:
-                        size_str = f"{size/(1024*1024*1024):.1f}G"
+                        size = file_info.get("size", 0)
+                        # Format size
+                        if size < 1024:
+                            size_str = f"{size}B"
+                        elif size < 1024 * 1024:
+                            size_str = f"{size/1024:.1f}K"
+                        elif size < 1024 * 1024 * 1024:
+                            size_str = f"{size/(1024*1024):.1f}M"
+                        else:
+                            size_str = f"{size/(1024*1024*1024):.1f}G"
 
-                    console.print(f"{current_prefix}{name} [{size_str}]")
-                    stats["files"] += 1
+                        console.print(f"{current_prefix}{name} [{size_str}]")
+                        stats["files"] += 1
+                except UnicodeEncodeError:
+                    # If encoding fails, try printing without formatting
+                    print(f"{current_prefix}{name}{'/' if is_dir else ''}")
+                    if is_dir:
+                        stats["dirs"] += 1
+                        child_path = f"{current_path.rstrip('/')}/{name}"
+                        _tree_recursive(child_path, child_prefix, depth + 1)
+                    else:
+                        stats["files"] += 1
 
         except Exception as e:
             # Print error but continue
-            console.print(f"{prefix}[red]Error reading {current_path}: {e}[/red]")
+            try:
+                console.print(f"{prefix}[red]Error reading {current_path}: {e}[/red]")
+            except UnicodeEncodeError:
+                print(f"{prefix}Error reading {current_path}: {e}")
 
     # Print the root path
-    console.print(f"[bold cyan]{path}[/bold cyan]")
+    try:
+        console.print(f"[bold cyan]{path}[/bold cyan]")
+    except UnicodeEncodeError:
+        print(path)
 
     # Start recursive traversal
     _tree_recursive(path, "", 0)
 
     # Print statistics
-    console.print(f"\n{stats['dirs']} directories, {stats['files']} files")
+    try:
+        console.print(f"\n{stats['dirs']} directories, {stats['files']} files")
+    except UnicodeEncodeError:
+        print(f"\n{stats['dirs']} directories, {stats['files']} files")
