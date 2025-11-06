@@ -287,10 +287,10 @@ class PFSClient:
             self._handle_request_error(e)
 
     def load_plugin(self, library_path: str) -> Dict[str, Any]:
-        """Load an external plugin from a shared library
+        """Load an external plugin from a shared library or HTTP(S) URL
 
         Args:
-            library_path: Path to the shared library (.so/.dylib/.dll)
+            library_path: Path to the shared library (.so/.dylib/.dll) or HTTP(S) URL
 
         Returns:
             Response with message and plugin name

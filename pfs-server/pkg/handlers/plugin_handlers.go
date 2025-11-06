@@ -1,13 +1,20 @@
 package handlers
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/c4pt0r/pfs/pfs-server/pkg/filesystem"
 	"github.com/c4pt0r/pfs/pfs-server/pkg/mountablefs"
+	log "github.com/sirupsen/logrus"
 )
 
 // PluginHandler handles plugin management operations
@@ -133,6 +140,59 @@ type LoadPluginResponse struct {
 	PluginName string `json:"plugin_name"`
 }
 
+// isHTTPURL checks if a string is an HTTP or HTTPS URL
+func isHTTPURL(path string) bool {
+	return strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://")
+}
+
+// downloadPluginFromURL downloads a plugin from an HTTP(S) URL to a temporary file
+func downloadPluginFromURL(url string) (string, error) {
+	log.Infof("Downloading plugin from URL: %s", url)
+
+	// Create HTTP request
+	resp, err := http.Get(url)
+	if err != nil {
+		return "", fmt.Errorf("failed to download from URL: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("failed to download from URL: HTTP %d", resp.StatusCode)
+	}
+
+	// Determine file extension from URL
+	ext := filepath.Ext(url)
+	if ext == "" {
+		// Default to .so if no extension
+		ext = ".so"
+	}
+
+	// Create a hash of the URL to use as the filename
+	hash := sha256.Sum256([]byte(url))
+	hashStr := hex.EncodeToString(hash[:])[:16]
+
+	// Create temporary file with appropriate extension
+	tmpDir := os.TempDir()
+	tmpFile := filepath.Join(tmpDir, fmt.Sprintf("pfs-plugin-%s%s", hashStr, ext))
+
+	// Create the file
+	outFile, err := os.Create(tmpFile)
+	if err != nil {
+		return "", fmt.Errorf("failed to create temporary file: %w", err)
+	}
+	defer outFile.Close()
+
+	// Copy the downloaded content to the file
+	written, err := io.Copy(outFile, resp.Body)
+	if err != nil {
+		os.Remove(tmpFile)
+		return "", fmt.Errorf("failed to write downloaded content: %w", err)
+	}
+
+	log.Infof("Downloaded plugin to temporary file: %s (%d bytes)", tmpFile, written)
+	return tmpFile, nil
+}
+
 // LoadPlugin handles POST /plugins/load
 func (ph *PluginHandler) LoadPlugin(w http.ResponseWriter, r *http.Request) {
 	var req LoadPluginRequest
@@ -146,8 +206,27 @@ func (ph *PluginHandler) LoadPlugin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	plugin, err := ph.mfs.LoadExternalPlugin(req.LibraryPath)
+	// Check if the library path is an HTTP(S) URL
+	libraryPath := req.LibraryPath
+	var tmpFile string
+	if isHTTPURL(libraryPath) {
+		// Download the plugin from the URL
+		downloadedFile, err := downloadPluginFromURL(libraryPath)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, fmt.Sprintf("failed to download plugin: %v", err))
+			return
+		}
+		tmpFile = downloadedFile
+		libraryPath = downloadedFile
+		log.Infof("Using downloaded plugin from temporary file: %s", libraryPath)
+	}
+
+	plugin, err := ph.mfs.LoadExternalPlugin(libraryPath)
 	if err != nil {
+		// Clean up temporary file if it was downloaded
+		if tmpFile != "" {
+			os.Remove(tmpFile)
+		}
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

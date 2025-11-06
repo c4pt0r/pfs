@@ -231,7 +231,7 @@ class CommandHandler:
             ("  mount <fstype> <path> [k=v ...]", "Mount plugin dynamically"),
             ("  unmount <path>", "Unmount plugin"),
             ("  plugins", "Show mounted plugins"),
-            ("  plugins load <lib>", "Load external plugin (.so/.dylib/.dll)"),
+            ("  plugins load <lib|url>", "Load external plugin from file or HTTP(S) URL"),
             ("  plugins unload <lib>", "Unload external plugin"),
             ("  plugins list", "List loaded external plugins"),
             ("", ""),
@@ -744,9 +744,11 @@ class CommandHandler:
 
         if subcommand == "load":
             if len(args) < 2:
-                console.print("Usage: plugins load <library_path>")
-                console.print("\nExample:")
+                console.print("Usage: plugins load <library_path|url>")
+                console.print("\nExamples:")
                 console.print("  plugins load ./examples/plugins/hellofs-c/hellofs-c.dylib")
+                console.print("  plugins load http://example.com/plugins/myplugin.so")
+                console.print("  plugins load https://example.com/plugins/myplugin.dylib")
                 return True
             library_path = args[1]
             try:

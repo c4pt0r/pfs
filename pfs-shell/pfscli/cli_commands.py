@@ -325,11 +325,11 @@ def cmd_unmount(client, path: str):
 
 
 def cmd_load_plugin(client, library_path: str):
-    """Load an external plugin from a shared library
+    """Load an external plugin from a shared library or HTTP(S) URL
 
     Args:
         client: PFS client
-        library_path: Path to the shared library (.so/.dylib/.dll)
+        library_path: Path to the shared library (.so/.dylib/.dll) or HTTP(S) URL
     """
     result = client.load_plugin(library_path)
     plugin_name = result.get("plugin_name", "unknown")
