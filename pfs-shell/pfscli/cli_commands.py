@@ -267,6 +267,24 @@ def cmd_stat(client, path: str):
 
 def cmd_cp(client, source: str, destination: str):
     """Copy file"""
+    import os
+
+    # If destination ends with / or is a directory, append source filename
+    if destination.endswith('/'):
+        # Destination is explicitly a directory
+        source_filename = os.path.basename(source.rstrip('/'))
+        destination = os.path.join(destination.rstrip('/'), source_filename)
+    else:
+        # Check if destination exists and is a directory
+        try:
+            dest_stat = client.stat(destination)
+            if dest_stat.get('isDir', False):
+                source_filename = os.path.basename(source.rstrip('/'))
+                destination = os.path.join(destination, source_filename)
+        except:
+            # Destination doesn't exist or stat failed, treat as file
+            pass
+
     content = client.cat(source)
     msg = client.write(destination, content)
     if msg:
@@ -275,6 +293,24 @@ def cmd_cp(client, source: str, destination: str):
 
 def cmd_mv(client, source: str, destination: str):
     """Move/rename file"""
+    import os
+
+    # If destination ends with / or is a directory, append source filename
+    if destination.endswith('/'):
+        # Destination is explicitly a directory
+        source_filename = os.path.basename(source.rstrip('/'))
+        destination = os.path.join(destination.rstrip('/'), source_filename)
+    else:
+        # Check if destination exists and is a directory
+        try:
+            dest_stat = client.stat(destination)
+            if dest_stat.get('isDir', False):
+                source_filename = os.path.basename(source.rstrip('/'))
+                destination = os.path.join(destination, source_filename)
+        except:
+            # Destination doesn't exist or stat failed, treat as file
+            pass
+
     client.mv(source, destination)
 
 
@@ -452,6 +488,18 @@ def cmd_upload(client, local_path: str, pfs_path: str, recursive: bool = False):
         _upload_directory(client, local_path, pfs_path)
     else:
         # Upload single file
+        # Check if remote destination is a directory
+        try:
+            stat_info = client.stat(pfs_path)
+            if stat_info.get('isDir'):
+                # Remote path is a directory, append local filename
+                local_filename = os.path.basename(local_path)
+                pfs_path = f"{pfs_path.rstrip('/')}/{local_filename}"
+                console.print(f"Target is a directory, uploading to {pfs_path}")
+        except Exception:
+            # Remote path doesn't exist or stat failed, use as-is
+            pass
+
         _upload_file(client, local_path, pfs_path)
 
 def _upload_file(client, local_path: str, pfs_path: str):
