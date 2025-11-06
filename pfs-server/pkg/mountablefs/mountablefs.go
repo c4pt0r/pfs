@@ -31,26 +31,71 @@ type PluginFactory func() plugin.ServicePlugin
 
 // MountableFS is a FileSystem that supports mounting service plugins at specific paths
 type MountableFS struct {
-	mounts          map[string]*MountPoint
-	mountPaths      []string // sorted by length (longest first) for prefix matching
-	pluginFactories map[string]PluginFactory
-	pluginLoader    *loader.PluginLoader // For loading external plugins
-	mu              sync.RWMutex
+	mounts             map[string]*MountPoint
+	mountPaths         []string // sorted by length (longest first) for prefix matching
+	pluginFactories    map[string]PluginFactory
+	pluginLoader       *loader.PluginLoader // For loading external plugins
+	pluginNameCounters map[string]int       // Track counters for plugin names
+	mu                 sync.RWMutex
 }
 
 // NewMountableFS creates a new mountable file system
 func NewMountableFS() *MountableFS {
 	return &MountableFS{
-		mounts:          make(map[string]*MountPoint),
-		mountPaths:      []string{},
-		pluginFactories: make(map[string]PluginFactory),
-		pluginLoader:    loader.NewPluginLoader(),
+		mounts:             make(map[string]*MountPoint),
+		mountPaths:         []string{},
+		pluginFactories:    make(map[string]PluginFactory),
+		pluginLoader:       loader.NewPluginLoader(),
+		pluginNameCounters: make(map[string]int),
 	}
 }
 
 // GetPluginLoader returns the plugin loader instance
 func (mfs *MountableFS) GetPluginLoader() *loader.PluginLoader {
 	return mfs.pluginLoader
+}
+
+// RenamedPlugin wraps a plugin with a different name
+type RenamedPlugin struct {
+	plugin.ServicePlugin
+	originalName string
+	renamedName  string
+}
+
+// Name returns the renamed plugin name
+func (rp *RenamedPlugin) Name() string {
+	return rp.renamedName
+}
+
+// OriginalName returns the original plugin name
+func (rp *RenamedPlugin) OriginalName() string {
+	return rp.originalName
+}
+
+// generateUniquePluginName generates a unique plugin name with incremental suffix
+// Must be called with mfs.mu held (write lock)
+func (mfs *MountableFS) generateUniquePluginName(baseName string) string {
+	// Check if base name is available
+	if _, exists := mfs.pluginFactories[baseName]; !exists {
+		// Base name is available, initialize counter
+		mfs.pluginNameCounters[baseName] = 0
+		return baseName
+	}
+
+	// Base name exists, increment counter and generate new name
+	mfs.pluginNameCounters[baseName]++
+	counter := mfs.pluginNameCounters[baseName]
+	newName := fmt.Sprintf("%s-%d", baseName, counter)
+
+	// Ensure the generated name doesn't conflict (defensive programming)
+	for {
+		if _, exists := mfs.pluginFactories[newName]; !exists {
+			return newName
+		}
+		mfs.pluginNameCounters[baseName]++
+		counter = mfs.pluginNameCounters[baseName]
+		newName = fmt.Sprintf("%s-%d", baseName, counter)
+	}
 }
 
 // RegisterPluginFactory registers a plugin factory for dynamic mounting
@@ -215,21 +260,56 @@ func (mfs *MountableFS) LoadExternalPluginWithType(libraryPath string, pluginTyp
 
 // LoadExternalPlugin loads a plugin from a shared library file
 // The plugin type is automatically detected based on file content
+// If a plugin with the same name already exists, automatically appends a numeric suffix
 func (mfs *MountableFS) LoadExternalPlugin(libraryPath string) (plugin.ServicePlugin, error) {
 	p, err := mfs.pluginLoader.LoadPlugin(libraryPath)
 	if err != nil {
 		return nil, err
 	}
 
-	// Register the plugin as a factory so it can be mounted
-	pluginName := p.Name()
-	mfs.RegisterPluginFactory(pluginName, func() plugin.ServicePlugin {
+	// Get original plugin name
+	originalName := p.Name()
+
+	mfs.mu.Lock()
+
+	// Generate unique name
+	finalName := mfs.generateUniquePluginName(originalName)
+	renamed := (finalName != originalName)
+
+	if renamed {
+		log.Infof("Plugin name '%s' already exists, using '%s' instead", originalName, finalName)
+	}
+
+	// Create wrapped plugin if renamed
+	var pluginToRegister plugin.ServicePlugin = p
+	if renamed {
+		pluginToRegister = &RenamedPlugin{
+			ServicePlugin: p,
+			originalName:  originalName,
+			renamedName:   finalName,
+		}
+	}
+
+	// Register the plugin with final name
+	mfs.pluginFactories[finalName] = func() plugin.ServicePlugin {
 		// For external plugins, we need to return the already loaded instance
 		// since we can't create new instances from the loaded library
-		return p
-	})
+		return pluginToRegister
+	}
 
-	log.Infof("Registered external plugin factory: %s", pluginName)
+	mfs.mu.Unlock()
+
+	log.Infof("Registered external plugin factory: %s", finalName)
+
+	// Return wrapped plugin if renamed
+	if renamed {
+		return &RenamedPlugin{
+			ServicePlugin: p,
+			originalName:  originalName,
+			renamedName:   finalName,
+		}, nil
+	}
+
 	return p, nil
 }
 

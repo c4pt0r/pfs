@@ -136,8 +136,10 @@ type LoadPluginRequest struct {
 
 // LoadPluginResponse represents the response for loading a plugin
 type LoadPluginResponse struct {
-	Message    string `json:"message"`
-	PluginName string `json:"plugin_name"`
+	Message      string `json:"message"`
+	PluginName   string `json:"plugin_name"`
+	OriginalName string `json:"original_name,omitempty"`
+	Renamed      bool   `json:"renamed"`
 }
 
 // isHTTPURL checks if a string is an HTTP or HTTPS URL
@@ -231,10 +233,19 @@ func (ph *PluginHandler) LoadPlugin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, LoadPluginResponse{
+	// Check if plugin was renamed
+	response := LoadPluginResponse{
 		Message:    "plugin loaded successfully",
 		PluginName: plugin.Name(),
-	})
+		Renamed:    false,
+	}
+
+	if renamedPlugin, ok := plugin.(*mountablefs.RenamedPlugin); ok {
+		response.OriginalName = renamedPlugin.OriginalName()
+		response.Renamed = true
+	}
+
+	writeJSON(w, http.StatusOK, response)
 }
 
 // UnloadPluginRequest represents a request to unload an external plugin

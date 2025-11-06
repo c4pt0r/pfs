@@ -170,24 +170,48 @@ func (pl *PluginLoader) loadNativePlugin(libraryPath string) (plugin.ServicePlug
 		return nil, fmt.Errorf("failed to resolve path: %w", err)
 	}
 
-	if loaded, exists := pl.loadedPlugins[absPath]; exists {
-		loaded.mu.Lock()
-		loaded.RefCount++
-		loaded.mu.Unlock()
-		log.Infof("Plugin already loaded, incremented ref count: %s", absPath)
-		return loaded.Plugin, nil
+	// For native plugins, if already loaded, create a temp copy
+	// This allows loading multiple versions of the same file
+	if _, exists := pl.loadedPlugins[absPath]; exists {
+		log.Infof("Native plugin %s already loaded, creating new instance from copy", absPath)
+
+		// Create a unique temp copy
+		tempDir := os.TempDir()
+		baseName := filepath.Base(libraryPath)
+		ext := filepath.Ext(baseName)
+		nameWithoutExt := strings.TrimSuffix(baseName, ext)
+
+		// Find an available filename
+		counter := 1
+		var tempLibPath string
+		for {
+			tempLibPath = filepath.Join(tempDir, fmt.Sprintf("%s.%d%s", nameWithoutExt, counter, ext))
+			if _, err := os.Stat(tempLibPath); os.IsNotExist(err) {
+				break
+			}
+			counter++
+		}
+
+		// Copy file
+		if err := copyFile(libraryPath, tempLibPath); err != nil {
+			return nil, fmt.Errorf("failed to create temp copy: %w", err)
+		}
+
+		// Use the temp path as key
+		absPath = tempLibPath
+		log.Infof("Created temp copy at: %s", absPath)
 	}
 
 	// Determine dlopen flags based on platform
 	flags := getDlopenFlags()
 
 	// Open the shared library
-	libHandle, err := purego.Dlopen(libraryPath, flags)
+	libHandle, err := purego.Dlopen(absPath, flags)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open library %s: %w", libraryPath, err)
+		return nil, fmt.Errorf("failed to open library %s: %w", absPath, err)
 	}
 
-	log.Infof("Loaded library: %s (handle: %v)", libraryPath, libHandle)
+	log.Infof("Loaded library: %s (handle: %v)", absPath, libHandle)
 
 	// Load the plugin functions
 	vtable, err := loadPluginVTable(libHandle)
@@ -381,6 +405,21 @@ func loadFunc(libHandle uintptr, name string, fptr interface{}) error {
 	}()
 
 	purego.RegisterLibFunc(fptr, libHandle, name)
+	return nil
+}
+
+// copyFile copies a file from src to dst
+func copyFile(src, dst string) error {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+
+	err = os.WriteFile(dst, data, 0755)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 

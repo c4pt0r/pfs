@@ -49,12 +49,23 @@ func (wl *WASMPluginLoader) LoadWASMPlugin(wasmPath string) (plugin.ServicePlugi
 		return nil, fmt.Errorf("failed to resolve path: %w", err)
 	}
 
-	if loaded, exists := wl.loadedPlugins[absPath]; exists {
-		loaded.mu.Lock()
-		loaded.RefCount++
-		loaded.mu.Unlock()
-		log.Infof("WASM plugin already loaded, incremented ref count: %s", absPath)
-		return loaded.Plugin, nil
+	// For WASM plugins, if already loaded, create a new instance with unique key
+	// This allows hot reloading of the same WASM file
+	if _, exists := wl.loadedPlugins[absPath]; exists {
+		log.Infof("WASM plugin %s already loaded, creating new instance", absPath)
+
+		// Find a unique key for this instance
+		counter := 1
+		var uniqueKey string
+		for {
+			uniqueKey = fmt.Sprintf("%s#%d", absPath, counter)
+			if _, exists := wl.loadedPlugins[uniqueKey]; !exists {
+				break
+			}
+			counter++
+		}
+		absPath = uniqueKey
+		log.Infof("Using unique key for new WASM instance: %s", absPath)
 	}
 
 	// Read WASM binary
