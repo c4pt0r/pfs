@@ -32,11 +32,6 @@ jobs:
             arch: arm64
             runner: macos-latest
 
-          # Windows builds
-          - os: windows
-            arch: amd64
-            runner: windows-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -206,14 +201,12 @@ jobs:
             - **Linux ARM64**: `pfs-linux-arm64-${{ steps.version.outputs.date }}.tar.gz`
             - **macOS AMD64**: `pfs-darwin-amd64-${{ steps.version.outputs.date }}.tar.gz`
             - **macOS ARM64 (Apple Silicon)**: `pfs-darwin-arm64-${{ steps.version.outputs.date }}.tar.gz`
-            - **Windows AMD64**: `pfs-windows-amd64-${{ steps.version.outputs.date }}.zip`
 
             #### CLI Client (Portable, Python 3.10+ required)
 
             - **Linux AMD64**: `pfs-shell-linux-amd64.tar.gz`
             - **macOS AMD64**: `pfs-shell-darwin-amd64.tar.gz`
             - **macOS ARM64**: `pfs-shell-darwin-arm64.tar.gz`
-            - **Windows AMD64**: `pfs-shell-windows-amd64.zip`
 
             ### Installation
 
@@ -252,21 +245,6 @@ jobs:
 
             # Or install to system
             cd pfs-portable && ./install.sh
-            ```
-
-            **Windows:**
-            ```powershell
-            # Extract server
-            Expand-Archive pfs-windows-amd64-${{ steps.version.outputs.date }}.zip
-
-            # Extract client
-            Expand-Archive pfs-shell-windows-amd64.zip
-
-            # Run server
-            .\pfs-server-windows-amd64.exe
-
-            # Run client
-            .\pfs-portable\pfs.bat --help
             ```
 
             ### Quick Start
