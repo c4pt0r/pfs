@@ -400,23 +400,62 @@ func (fs *SQLFS) Remove(path string) error {
 func (fs *SQLFS) RemoveAll(path string) error {
 	path = normalizePath(path)
 
-	if path == "/" {
-		return fmt.Errorf("cannot remove root directory")
-	}
-
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
 
-	// Delete file and all children
-	_, err := fs.db.Exec("DELETE FROM files WHERE path = ? OR path LIKE ?", path, path+"/%")
+	// Use batched deletion to avoid long-running transactions and locks
+	const batchSize = 1000
 
-	// Invalidate cache for the path and all descendants
-	if err == nil {
-		fs.listCache.InvalidateParent(path)
-		fs.listCache.InvalidatePrefix(path)
+	// If path is root, remove all children but not the root itself
+	if path == "/" {
+		for {
+			result, err := fs.db.Exec("DELETE FROM files WHERE path != '/' LIMIT ?", batchSize)
+			if err != nil {
+				return err
+			}
+			affected, err := result.RowsAffected()
+			if err != nil {
+				return err
+			}
+			// If no rows were affected, we're done
+			if affected == 0 {
+				break
+			}
+			// If fewer rows than batch size were deleted, we're done
+			if affected < int64(batchSize) {
+				break
+			}
+		}
+		// Invalidate entire cache
+		fs.listCache.InvalidatePrefix("/")
+		return nil
 	}
 
-	return err
+	// Delete file and all children in batches
+	for {
+		result, err := fs.db.Exec("DELETE FROM files WHERE (path = ? OR path LIKE ?) LIMIT ?", path, path+"/%", batchSize)
+		if err != nil {
+			return err
+		}
+		affected, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		// If no rows were affected, we're done
+		if affected == 0 {
+			break
+		}
+		// If fewer rows than batch size were deleted, we're done
+		if affected < int64(batchSize) {
+			break
+		}
+	}
+
+	// Invalidate cache for the path and all descendants
+	fs.listCache.InvalidateParent(path)
+	fs.listCache.InvalidatePrefix(path)
+
+	return nil
 }
 
 func (fs *SQLFS) Read(path string, offset int64, size int64) ([]byte, error) {

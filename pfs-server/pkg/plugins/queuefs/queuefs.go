@@ -305,12 +305,14 @@ func (qfs *queueFS) RemoveAll(path string) error {
 		return fmt.Errorf("cannot remove: %s is not a directory", path)
 	}
 
-	if queueName == "" {
-		return fmt.Errorf("cannot remove root directory")
-	}
-
 	qfs.plugin.mu.Lock()
 	defer qfs.plugin.mu.Unlock()
+
+	// If path is root, remove all queues
+	if queueName == "" {
+		qfs.plugin.queues = make(map[string]*Queue)
+		return nil
+	}
 
 	// Check if queue exists
 	if _, exists := qfs.plugin.queues[queueName]; !exists {

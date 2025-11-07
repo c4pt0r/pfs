@@ -197,8 +197,10 @@ func (mfs *MemoryFS) RemoveAll(path string) error {
 	mfs.mu.Lock()
 	defer mfs.mu.Unlock()
 
+	// If path is root, remove all children but not the root itself
 	if normalizePath(path) == "/" {
-		return fmt.Errorf("cannot remove root directory")
+		mfs.root.Children = make(map[string]*Node)
+		return nil
 	}
 
 	parent, name, err := mfs.getParentNode(path)
