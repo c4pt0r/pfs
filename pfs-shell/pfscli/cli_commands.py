@@ -74,7 +74,7 @@ def cmd_ls(client, path: str):
         # Print with highlight disabled for mode, size, and time
         console.print(f"{mode_str} {size:>8} {mtime_display} ", end="", highlight=False)
         # Print name with highlight enabled (for directories)
-        console.print(name_display)
+        console.print(name_display, highlight=False)
 
 
 def cmd_cat(client, path: str, stream: bool = False):
