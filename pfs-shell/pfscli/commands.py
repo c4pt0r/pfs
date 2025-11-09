@@ -63,11 +63,11 @@ class CommandHandler:
             if cmd in self.commands:
                 return self.commands[cmd](args)
             else:
-                console.print(f"[red]Unknown command: {cmd}[/red]")
-                console.print("Type 'help' for available commands")
+                console.print(f"[red]Unknown command: {cmd}[/red]", highlight=False)
+                console.print("Type 'help' for available commands", highlight=False)
                 return True
         except Exception as e:
-            console.print(f"[red]Error: {e}[/red]")
+            console.print(f"[red]Error: {e}[/red]", highlight=False)
             return True
 
     def _normalize_path(self, path: str) -> str:
@@ -147,9 +147,9 @@ class CommandHandler:
                     if msg:
                         print(msg)
                 except Exception as e:
-                    console.print(self._format_error(cmd_name, source_path or dest_path, e))
+                    console.print(self._format_error(cmd_name, source_path or dest_path, e), highlight=False)
             else:
-                console.print(f"{cmd_name}: syntax error near unexpected token `newline'")
+                console.print(f"{cmd_name}: syntax error near unexpected token `newline'", highlight=False)
             return True
 
         return False
@@ -254,15 +254,15 @@ class CommandHandler:
             ("  ffmpeg -i in.mp4 -f mpegts - | pfs write --stream /mnt/streamfs/live", ""),
         ]
 
-        console.print("\nPFS CLI Commands\n")
+        console.print("\nPFS CLI Commands\n", highlight=False)
         for cmd, desc in commands_help:
             if not desc:
                 # Section header
-                console.print(f"[bold]{cmd}[/bold]")
+                console.print(f"[bold]{cmd}[/bold]", highlight=False)
             else:
                 # Command with description
-                console.print(f"{cmd:<40} {desc}")
-        console.print()
+                console.print(f"{cmd:<40} {desc}", highlight=False)
+        console.print(highlight=False)
         return True
 
     def cmd_ls(self, args: List[str]) -> bool:
@@ -274,7 +274,7 @@ class CommandHandler:
         try:
             cli_commands.cmd_ls(self.client, path)
         except Exception as e:
-            console.print(self._format_error("ls", path, e))
+            console.print(self._format_error("ls", path, e), highlight=False)
         return True
 
     def cmd_tree(self, args: List[str]) -> bool:
@@ -290,13 +290,13 @@ class CommandHandler:
                     max_depth = int(args[i + 1])
                     i += 2
                 except ValueError:
-                    console.print(f"tree: invalid depth: '{args[i + 1]}'")
+                    console.print(f"tree: invalid depth: '{args[i + 1]}'", highlight=False)
                     return True
             elif not args[i].startswith("-"):
                 path = args[i]
                 i += 1
             else:
-                console.print(f"tree: invalid option: '{args[i]}'")
+                console.print(f"tree: invalid option: '{args[i]}'", highlight=False)
                 return True
 
         # Use current path if no path specified
@@ -308,7 +308,7 @@ class CommandHandler:
         try:
             cli_commands.cmd_tree(self.client, path, max_depth)
         except Exception as e:
-            console.print(self._format_error("tree", path, e))
+            console.print(self._format_error("tree", path, e), highlight=False)
         return True
 
     def cmd_cd(self, args: List[str]) -> bool:
@@ -324,20 +324,20 @@ class CommandHandler:
             if info.get("isDir"):
                 self.current_path = path
             else:
-                console.print(f"cd: not a directory: {path}")
+                console.print(f"cd: not a directory: {path}", highlight=False)
         except Exception as e:
-            console.print(f"cd: {path}: No such file or directory")
+            console.print(f"cd: {path}: No such file or directory", highlight=False)
         return True
 
     def cmd_pwd(self, args: List[str]) -> bool:
         """Print working directory"""
-        console.print(self.current_path)
+        console.print(self.current_path, highlight=False)
         return True
 
     def cmd_cat(self, args: List[str]) -> bool:
         """Display file contents (supports > and >> redirection and --stream)"""
         if not args:
-            console.print("Usage: cat [--stream] <file> [> output] [>> output]")
+            console.print("Usage: cat [--stream] <file> [> output] [>> output]", highlight=False)
             return True
 
         # Check for --stream flag
@@ -345,7 +345,7 @@ class CommandHandler:
         args = [arg for arg in args if arg != "--stream"]
 
         if not args:
-            console.print("Usage: cat [--stream] <file> [> output] [>> output]")
+            console.print("Usage: cat [--stream] <file> [> output] [>> output]", highlight=False)
             return True
 
         def cat_content_getter(pre_redirect_args):
@@ -358,7 +358,7 @@ class CommandHandler:
         # Handle redirection if present (note: redirection doesn't work with --stream)
         if self._handle_redirection(args, cat_content_getter, "cat"):
             if stream:
-                console.print("cat: --stream cannot be used with redirection")
+                console.print("cat: --stream cannot be used with redirection", highlight=False)
             return True
 
         # Normal cat - display to console
@@ -366,13 +366,13 @@ class CommandHandler:
         try:
             cli_commands.cmd_cat(self.client, path, stream=stream)
         except Exception as e:
-            console.print(self._format_error("cat", path, e))
+            console.print(self._format_error("cat", path, e), highlight=False)
         return True
 
     def cmd_tail(self, args: List[str]) -> bool:
         """Display last N lines of a file"""
         if len(args) < 1:
-            console.print("Usage: tail [-n lines] <file>")
+            console.print("Usage: tail [-n lines] <file>", highlight=False)
             return True
 
         # Parse arguments
@@ -386,14 +386,14 @@ class CommandHandler:
                     lines = int(args[i + 1])
                     i += 2
                 except ValueError:
-                    console.print(f"tail: invalid number of lines: '{args[i + 1]}'")
+                    console.print(f"tail: invalid number of lines: '{args[i + 1]}'", highlight=False)
                     return True
             else:
                 path_arg = args[i]
                 i += 1
 
         if not path_arg:
-            console.print("Usage: tail [-n lines] <file>")
+            console.print("Usage: tail [-n lines] <file>", highlight=False)
             return True
 
         path = self._resolve_path(path_arg)
@@ -401,15 +401,15 @@ class CommandHandler:
         try:
             cli_commands.cmd_tail(self.client, path, lines)
         except Exception as e:
-            console.print(f"tail: {path_arg}: {e}")
+            console.print(f"tail: {path_arg}: {e}", highlight=False)
         return True
 
     def cmd_write(self, args: List[str]) -> bool:
         """Write content to file or stream from stdin (with --stream)"""
         if not args:
-            console.print("Usage: write [--stream] <file> [<content>]")
-            console.print("       write --stream <file>   # Read from stdin")
-            console.print("       write <file> <content>  # Write content directly")
+            console.print("Usage: write [--stream] <file> [<content>]", highlight=False)
+            console.print("       write --stream <file>   # Read from stdin", highlight=False)
+            console.print("       write <file> <content>  # Write content directly", highlight=False)
             return True
 
         # Check for --stream flag
@@ -417,7 +417,7 @@ class CommandHandler:
         args = [arg for arg in args if arg != "--stream"]
 
         if not args:
-            console.print("Usage: write [--stream] <file> [<content>]")
+            console.print("Usage: write [--stream] <file> [<content>]", highlight=False)
             return True
 
         path = self._resolve_path(args[0])
@@ -425,13 +425,13 @@ class CommandHandler:
         try:
             if stream:
                 # Streaming mode - note: this won't work well in REPL since stdin is used for prompt
-                console.print("[yellow]Note: --stream is not available in REPL mode[/yellow]")
-                console.print("[yellow]Use: cat file.dat | pfs write --stream /mnt/streamfs/stream[/yellow]")
-                console.print("[yellow]Or use shell redirection: command | pfs write --stream <path>[/yellow]")
+                console.print("[yellow]Note: --stream is not available in REPL mode[/yellow]", highlight=False)
+                console.print("[yellow]Use: cat file.dat | pfs write --stream /mnt/streamfs/stream[/yellow]", highlight=False)
+                console.print("[yellow]Or use shell redirection: command | pfs write --stream <path>[/yellow]", highlight=False)
             else:
                 # Normal mode
                 if len(args) < 2:
-                    console.print("Usage: write <file> <content>")
+                    console.print("Usage: write <file> <content>", highlight=False)
                     return True
 
                 content = " ".join(args[1:])
@@ -439,7 +439,7 @@ class CommandHandler:
                 if msg:
                     print(msg)
         except Exception as e:
-            console.print(self._format_error("write", path, e))
+            console.print(self._format_error("write", path, e), highlight=False)
         return True
 
     def cmd_echo(self, args: List[str]) -> bool:
@@ -460,65 +460,65 @@ class CommandHandler:
     def cmd_mkdir(self, args: List[str]) -> bool:
         """Create directory"""
         if not args:
-            console.print("Usage: mkdir <directory>")
+            console.print("Usage: mkdir <directory>", highlight=False)
             return True
 
         path = self._resolve_path(args[0])
         try:
             cli_commands.cmd_mkdir(self.client, path)
         except Exception as e:
-            console.print(self._format_error("mkdir", path, e))
+            console.print(self._format_error("mkdir", path, e), highlight=False)
         return True
 
     def cmd_rm(self, args: List[str]) -> bool:
         """Remove file or directory"""
         if not args:
-            console.print("Usage: rm <path> [-r]")
+            console.print("Usage: rm <path> [-r]", highlight=False)
             return True
 
         recursive = "-r" in args or "--recursive" in args
         path_args = [arg for arg in args if not arg.startswith("-")]
         if not path_args:
-            console.print("Usage: rm <path> [-r]")
+            console.print("Usage: rm <path> [-r]", highlight=False)
             return True
 
         path = self._resolve_path(path_args[0])
         try:
             cli_commands.cmd_rm(self.client, path, recursive)
         except Exception as e:
-            console.print(self._format_error("rm", path, e))
+            console.print(self._format_error("rm", path, e), highlight=False)
         return True
 
     def cmd_touch(self, args: List[str]) -> bool:
         """Create empty file"""
         if not args:
-            console.print("Usage: touch <file>")
+            console.print("Usage: touch <file>", highlight=False)
             return True
 
         path = self._resolve_path(args[0])
         try:
             cli_commands.cmd_touch(self.client, path)
         except Exception as e:
-            console.print(self._format_error("touch", path, e))
+            console.print(self._format_error("touch", path, e), highlight=False)
         return True
 
     def cmd_stat(self, args: List[str]) -> bool:
         """Show file/directory information"""
         if not args:
-            console.print("Usage: stat <path>")
+            console.print("Usage: stat <path>", highlight=False)
             return True
 
         path = self._resolve_path(args[0])
         try:
             cli_commands.cmd_stat(self.client, path)
         except Exception as e:
-            console.print(self._format_error('stat', path, e))
+            console.print(self._format_error('stat', path, e), highlight=False)
         return True
 
     def cmd_cp(self, args: List[str]) -> bool:
         """Copy file or directory"""
         if len(args) < 2:
-            console.print("Usage: cp [-r] <source> <destination>")
+            console.print("Usage: cp [-r] <source> <destination>", highlight=False)
             return True
 
         # Check for -r flag
@@ -526,7 +526,7 @@ class CommandHandler:
         path_args = [arg for arg in args if not arg.startswith("-")]
 
         if len(path_args) < 2:
-            console.print("Usage: cp [-r] <source> <destination>")
+            console.print("Usage: cp [-r] <source> <destination>", highlight=False)
             return True
 
         src = self._resolve_path(path_args[0])
@@ -536,13 +536,13 @@ class CommandHandler:
         try:
             src_stat = self.client.stat(src)
         except Exception as e:
-            console.print(self._format_error("cp", path_args[0], e))
+            console.print(self._format_error("cp", path_args[0], e), highlight=False)
             return True
 
         # Check if source is a directory
         if src_stat.get('isDir'):
             if not recursive:
-                console.print(f"cp: {path_args[0]}: is a directory (not copied)")
+                console.print(f"cp: {path_args[0]}: is a directory (not copied)", highlight=False)
                 return True
             # Recursive copy of directory
             self._copy_directory(src, dst, path_args[0])
@@ -566,7 +566,7 @@ class CommandHandler:
             content = self.client.cat(src)
             self.client.write(dst, content)
         except Exception as e:
-            console.print(self._format_error("cp", path_args[0], e))
+            console.print(self._format_error("cp", path_args[0], e), highlight=False)
         return True
 
     def _copy_directory(self, src_dir: str, dst_dir: str, original_src: str):
@@ -589,7 +589,7 @@ class CommandHandler:
         # Create the destination directory
         try:
             self.client.mkdir(dst_dir)
-            console.print(f"Created directory {dst_dir}/")
+            console.print(f"Created directory {dst_dir}/", highlight=False)
         except Exception as e:
             # Directory might already exist
             pass
@@ -608,7 +608,7 @@ class CommandHandler:
             try:
                 files = self.client.ls(current_src)
             except Exception as e:
-                console.print(self._format_error("cp", current_src, e))
+                console.print(self._format_error("cp", current_src, e), highlight=False)
                 continue
 
             for file_info in files:
@@ -622,10 +622,10 @@ class CommandHandler:
                     # Create subdirectory and add to queue
                     try:
                         self.client.mkdir(dst_path)
-                        console.print(f"Created directory {dst_path}/")
+                        console.print(f"Created directory {dst_path}/", highlight=False)
                         queue.append((src_path, dst_path))
                     except Exception as e:
-                        console.print(self._format_error("cp", src_path, e))
+                        console.print(self._format_error("cp", src_path, e), highlight=False)
                 else:
                     # Copy file
                     try:
@@ -646,23 +646,23 @@ class CommandHandler:
                             mb = size / (1024 * 1024)
                             print(f"  {src_path} -> {dst_path} ({mb:.2f} MB)")
                     except Exception as e:
-                        console.print(self._format_error("cp", src_path, e))
+                        console.print(self._format_error("cp", src_path, e), highlight=False)
 
         # Print summary
         if total_files > 0:
             if total_bytes < 1024:
-                console.print(f"\nCopied {total_files} files, {total_bytes} bytes total")
+                console.print(f"\nCopied {total_files} files, {total_bytes} bytes total", highlight=False)
             elif total_bytes < 1024 * 1024:
                 kb = total_bytes / 1024
-                console.print(f"\nCopied {total_files} files, {kb:.2f} KB total")
+                console.print(f"\nCopied {total_files} files, {kb:.2f} KB total", highlight=False)
             else:
                 mb = total_bytes / (1024 * 1024)
-                console.print(f"\nCopied {total_files} files, {mb:.2f} MB total")
+                console.print(f"\nCopied {total_files} files, {mb:.2f} MB total", highlight=False)
 
     def cmd_mv(self, args: List[str]) -> bool:
         """Move/rename file"""
         if len(args) < 2:
-            console.print("Usage: mv <source> <destination>")
+            console.print("Usage: mv <source> <destination>", highlight=False)
             return True
 
         src = self._resolve_path(args[0])
@@ -670,13 +670,13 @@ class CommandHandler:
         try:
             cli_commands.cmd_mv(self.client, src, dst)
         except Exception as e:
-            console.print(self._format_error("mv", src, e))
+            console.print(self._format_error("mv", src, e), highlight=False)
         return True
 
     def cmd_chmod(self, args: List[str]) -> bool:
         """Change file permissions"""
         if len(args) < 2:
-            console.print("Usage: chmod <mode> <path>")
+            console.print("Usage: chmod <mode> <path>", highlight=False)
             return True
 
         try:
@@ -684,12 +684,12 @@ class CommandHandler:
             path = self._resolve_path(args[1])
             cli_commands.cmd_chmod(self.client, mode, path)
         except ValueError:
-            console.print(f"chmod: invalid mode: '{args[0]}'")
+            console.print(f"chmod: invalid mode: '{args[0]}'", highlight=False)
         except Exception as e:
             if len(args) > 1:
-                console.print(self._format_error("chmod", args[1], e))
+                console.print(self._format_error("chmod", args[1], e), highlight=False)
             else:
-                console.print(f"chmod: {e}")
+                console.print(f"chmod: {e}", highlight=False)
         return True
 
     def cmd_mounts(self, args: List[str]) -> bool:
@@ -697,30 +697,30 @@ class CommandHandler:
         try:
             cli_commands.cmd_mounts(self.client)
         except Exception as e:
-            console.print(f"mounts: {e}")
+            console.print(f"mounts: {e}", highlight=False)
         return True
 
     def cmd_unmount(self, args: List[str]) -> bool:
         """Unmount a plugin"""
         if not args:
-            console.print("Usage: unmount <path>")
+            console.print("Usage: unmount <path>", highlight=False)
             return True
 
         path = args[0]
         try:
             cli_commands.cmd_unmount(self.client, path)
         except Exception as e:
-            console.print(f"unmount: {e}")
+            console.print(f"unmount: {e}", highlight=False)
         return True
 
     def cmd_mount(self, args: List[str]) -> bool:
         """Mount a plugin dynamically"""
         if len(args) < 2:
-            console.print("Usage: mount <fstype> <path> [key=value ...]")
-            console.print("\nExamples:")
-            console.print("  mount memfs /test/mem")
-            console.print("  mount sqlfs /test/db backend=sqlite db_path=/tmp/test.db")
-            console.print("  mount s3fs /test/s3 bucket=my-bucket region=us-west-1 access_key_id=xxx secret_access_key=yyy")
+            console.print("Usage: mount <fstype> <path> [key=value ...]", highlight=False)
+            console.print("\nExamples:", highlight=False)
+            console.print("  mount memfs /test/mem", highlight=False)
+            console.print("  mount sqlfs /test/db backend=sqlite db_path=/tmp/test.db", highlight=False)
+            console.print("  mount s3fs /test/s3 bucket=my-bucket region=us-west-1 access_key_id=xxx secret_access_key=yyy", highlight=False)
             return True
 
         fstype = args[0]
@@ -730,7 +730,7 @@ class CommandHandler:
         try:
             cli_commands.cmd_mount(self.client, fstype, path, config_args)
         except Exception as e:
-            console.print(f"mount: {e}")
+            console.print(f"mount: {e}", highlight=False)
         return True
 
     def cmd_plugins(self, args: List[str]) -> bool:
@@ -744,50 +744,50 @@ class CommandHandler:
 
         if subcommand == "load":
             if len(args) < 2:
-                console.print("Usage: plugins load <library_path|url>")
-                console.print("\nExamples:")
-                console.print("  plugins load ./examples/plugins/hellofs-c/hellofs-c.dylib")
-                console.print("  plugins load http://example.com/plugins/myplugin.so")
-                console.print("  plugins load https://example.com/plugins/myplugin.dylib")
+                console.print("Usage: plugins load <library_path|url>", highlight=False)
+                console.print("\nExamples:", highlight=False)
+                console.print("  plugins load ./examples/plugins/hellofs-c/hellofs-c.dylib", highlight=False)
+                console.print("  plugins load http://example.com/plugins/myplugin.so", highlight=False)
+                console.print("  plugins load https://example.com/plugins/myplugin.dylib", highlight=False)
                 return True
             library_path = args[1]
             try:
                 cli_commands.cmd_load_plugin(self.client, library_path)
             except Exception as e:
-                console.print(f"[red]Error loading plugin: {e}[/red]")
+                console.print(f"[red]Error loading plugin: {e}[/red]", highlight=False)
             return True
 
         elif subcommand == "unload":
             if len(args) < 2:
-                console.print("Usage: plugins unload <library_path>")
+                console.print("Usage: plugins unload <library_path>", highlight=False)
                 return True
             library_path = args[1]
             try:
                 cli_commands.cmd_unload_plugin(self.client, library_path)
             except Exception as e:
-                console.print(f"[red]Error unloading plugin: {e}[/red]")
+                console.print(f"[red]Error unloading plugin: {e}[/red]", highlight=False)
             return True
 
         elif subcommand == "list":
             try:
                 cli_commands.cmd_list_plugins(self.client)
             except Exception as e:
-                console.print(f"[red]Error listing plugins: {e}[/red]")
+                console.print(f"[red]Error listing plugins: {e}[/red]", highlight=False)
             return True
 
         else:
-            console.print(f"[red]Unknown subcommand: {subcommand}[/red]")
-            console.print("\nUsage:")
-            console.print("  plugins           - List mounted plugins")
-            console.print("  plugins load <library_path>   - Load external plugin")
-            console.print("  plugins unload <library_path> - Unload external plugin")
-            console.print("  plugins list      - List loaded external plugins")
+            console.print(f"[red]Unknown subcommand: {subcommand}[/red]", highlight=False)
+            console.print("\nUsage:", highlight=False)
+            console.print("  plugins           - List mounted plugins", highlight=False)
+            console.print("  plugins load <library_path>   - Load external plugin", highlight=False)
+            console.print("  plugins unload <library_path> - Unload external plugin", highlight=False)
+            console.print("  plugins list      - List loaded external plugins", highlight=False)
             return True
 
     def cmd_upload(self, args: List[str]) -> bool:
         """Upload local file or directory to PFS"""
         if len(args) < 2:
-            console.print("Usage: upload [-r] <local_path> <pfs_path>")
+            console.print("Usage: upload [-r] <local_path> <pfs_path>", highlight=False)
             return True
 
         # Check for -r flag
@@ -795,7 +795,7 @@ class CommandHandler:
         path_args = [arg for arg in args if not arg.startswith("-")]
 
         if len(path_args) < 2:
-            console.print("Usage: upload [-r] <local_path> <pfs_path>")
+            console.print("Usage: upload [-r] <local_path> <pfs_path>", highlight=False)
             return True
 
         local_path = path_args[0]
@@ -804,13 +804,13 @@ class CommandHandler:
         try:
             cli_commands.cmd_upload(self.client, local_path, pfs_path, recursive)
         except Exception as e:
-            console.print(f"upload: {e}")
+            console.print(f"upload: {e}", highlight=False)
         return True
 
     def cmd_download(self, args: List[str]) -> bool:
         """Download file or directory from PFS to local filesystem"""
         if len(args) < 2:
-            console.print("Usage: download [-r] <pfs_path> <local_path>")
+            console.print("Usage: download [-r] <pfs_path> <local_path>", highlight=False)
             return True
 
         # Check for -r flag
@@ -818,7 +818,7 @@ class CommandHandler:
         path_args = [arg for arg in args if not arg.startswith("-")]
 
         if len(path_args) < 2:
-            console.print("Usage: download [-r] <pfs_path> <local_path>")
+            console.print("Usage: download [-r] <pfs_path> <local_path>", highlight=False)
             return True
 
         pfs_path = self._resolve_path(path_args[0])
@@ -827,13 +827,13 @@ class CommandHandler:
         try:
             cli_commands.cmd_download(self.client, pfs_path, local_path, recursive)
         except Exception as e:
-            console.print(f"download: {e}")
+            console.print(f"download: {e}", highlight=False)
         return True
 
     def cmd_tailf(self, args: List[str]) -> bool:
         """Follow file changes (show last N lines, then follow new content to EOF)"""
         if len(args) < 1:
-            console.print("Usage: tailf [-n lines] <file>")
+            console.print("Usage: tailf [-n lines] <file>", highlight=False)
             return True
 
         # Parse arguments
@@ -847,14 +847,14 @@ class CommandHandler:
                     lines = int(args[i + 1])
                     i += 2
                 except ValueError:
-                    console.print(f"tailf: invalid number of lines: '{args[i + 1]}'")
+                    console.print(f"tailf: invalid number of lines: '{args[i + 1]}'", highlight=False)
                     return True
             else:
                 path_arg = args[i]
                 i += 1
 
         if not path_arg:
-            console.print("Usage: tailf [-n lines] <file>")
+            console.print("Usage: tailf [-n lines] <file>", highlight=False)
             return True
 
         path = self._resolve_path(path_arg)
@@ -862,17 +862,17 @@ class CommandHandler:
         try:
             cli_commands.cmd_tailf(self.client, path, lines)
         except Exception as e:
-            console.print(f"tailf: {path_arg}: {e}")
+            console.print(f"tailf: {path_arg}: {e}", highlight=False)
         return True
 
     def cmd_watch(self, args: List[str]) -> bool:
         """Watch a command - execute it repeatedly at intervals"""
         if not args:
-            console.print("Usage: watch [-n seconds] <command> [args...]")
-            console.print("Examples:")
-            console.print("  watch ls /queuefs")
-            console.print("  watch -n 1 cat /serverinfofs/uptime")
-            console.print("  watch -n 0.5 stat /memfs/file.txt")
+            console.print("Usage: watch [-n seconds] <command> [args...]", highlight=False)
+            console.print("Examples:", highlight=False)
+            console.print("  watch ls /queuefs", highlight=False)
+            console.print("  watch -n 1 cat /serverinfofs/uptime", highlight=False)
+            console.print("  watch -n 0.5 stat /memfs/file.txt", highlight=False)
             return True
 
         # Parse -n option
@@ -883,16 +883,16 @@ class CommandHandler:
             try:
                 interval = float(args[1])
                 if interval <= 0:
-                    console.print("[red]Error: interval must be positive[/red]")
+                    console.print("[red]Error: interval must be positive[/red]", highlight=False)
                     return True
                 command_start_idx = 2
             except ValueError:
-                console.print(f"[red]Error: invalid interval: {args[1]}[/red]")
+                console.print(f"[red]Error: invalid interval: {args[1]}[/red]", highlight=False)
                 return True
 
         # Get command and its arguments
         if command_start_idx >= len(args):
-            console.print("[red]Error: no command specified[/red]")
+            console.print("[red]Error: no command specified[/red]", highlight=False)
             return True
 
         cmd_name = args[command_start_idx].lower()
@@ -907,8 +907,8 @@ class CommandHandler:
         }
 
         if cmd_name not in command_map:
-            console.print(f"[red]Error: command '{cmd_name}' not supported in watch[/red]")
-            console.print("Supported commands: ls, cat, stat, mounts")
+            console.print(f"[red]Error: command '{cmd_name}' not supported in watch[/red]", highlight=False)
+            console.print("Supported commands: ls, cat, stat, mounts", highlight=False)
             return True
 
         # Resolve paths in arguments
@@ -924,7 +924,7 @@ class CommandHandler:
             command_func = command_map[cmd_name]
             cli_commands.cmd_watch(self.client, command_func, resolved_args, interval)
         except Exception as e:
-            console.print(f"[red]watch: {e}[/red]")
+            console.print(f"[red]watch: {e}[/red]", highlight=False)
 
         return True
 
@@ -935,5 +935,5 @@ class CommandHandler:
 
     def cmd_exit(self, args: List[str]) -> bool:
         """Exit REPL"""
-        console.print("Goodbye!")
+        console.print("Goodbye!", highlight=False)
         return False

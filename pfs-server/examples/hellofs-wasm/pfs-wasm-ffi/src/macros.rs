@@ -152,9 +152,8 @@ macro_rules! export_plugin {
         }
 
         #[no_mangle]
-        pub extern "C" fn fs_write(path_ptr: *const u8, data_ptr: *const u8, size: usize) -> *mut u8 {
-            use $crate::memory::CString;
-            use $crate::ffi::result_to_error_ptr;
+        pub extern "C" fn fs_write(path_ptr: *const u8, data_ptr: *const u8, size: usize) -> u64 {
+            use $crate::memory::{CString, Buffer, pack_u64};
             use $crate::FileSystem;
 
             let path = unsafe { CString::from_ptr(path_ptr) };
@@ -162,7 +161,15 @@ macro_rules! export_plugin {
 
             unsafe {
                 let p = PLUGIN.as_mut().expect("Not initialized");
-                result_to_error_ptr::<()>(<$plugin_type as $crate::FileSystem>::write(p, &path, data))
+                match <$plugin_type as $crate::FileSystem>::write(p, &path, data) {
+                    Ok(response) => {
+                        let len = response.len() as u32;
+                        let buffer = Buffer::from_bytes(&response);
+                        let ptr = buffer.into_raw() as u32;
+                        pack_u64(ptr, len)
+                    }
+                    Err(_) => 0,
+                }
             }
         }
 

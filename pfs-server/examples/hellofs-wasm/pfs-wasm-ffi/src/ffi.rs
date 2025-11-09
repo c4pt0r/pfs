@@ -105,11 +105,19 @@ pub fn handle_write<FS: FileSystem>(
     path_ptr: *const u8,
     data_ptr: *const u8,
     size: usize,
-) -> *mut u8 {
+) -> u64 {
     let path = unsafe { CString::from_ptr(path_ptr) };
     let data = unsafe { std::slice::from_raw_parts(data_ptr, size) };
 
-    result_to_error_ptr(fs.write(&path, data))
+    match fs.write(&path, data) {
+        Ok(response) => {
+            let len = response.len() as u32;
+            let buffer = Buffer::from_bytes(&response);
+            let ptr = buffer.into_raw() as u32;
+            pack_u64(ptr, len)
+        }
+        Err(_) => 0, // Return 0 to indicate error
+    }
 }
 
 /// Handle fs_create FFI call

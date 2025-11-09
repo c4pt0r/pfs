@@ -217,7 +217,7 @@ func (ph *PluginHandler) readPluginFromPFS(pfsPath string) (string, error) {
 
 	// Read file from the mountable filesystem
 	data, err := ph.mfs.Read(path, 0, -1)
-	if err != nil {
+	if err != nil && err != io.EOF {
 		return "", fmt.Errorf("failed to read from PFS path %s: %w", path, err)
 	}
 

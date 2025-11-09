@@ -360,14 +360,26 @@ func (wfs *WASMFileSystem) Write(path string, data []byte) ([]byte, error) {
 		return nil, fmt.Errorf("fs_write failed: %w", err)
 	}
 
-	if len(results) > 0 && results[0] != 0 {
-		if errMsg, ok := readStringFromMemory(wfs.module, uint32(results[0])); ok {
-			return nil, fmt.Errorf("%s", errMsg)
-		}
+	if len(results) < 1 {
+		return nil, fmt.Errorf("fs_write returned invalid results")
+	}
+
+	// Unpack u64: lower 32 bits = pointer, upper 32 bits = size
+	packed := results[0]
+	responsePtr := uint32(packed & 0xFFFFFFFF)
+	responseSize := uint32((packed >> 32) & 0xFFFFFFFF)
+
+	if responsePtr == 0 {
 		return nil, fmt.Errorf("write failed")
 	}
 
-	return []byte(""), nil
+	// Read response data from memory
+	response, ok := wfs.module.Memory().Read(responsePtr, responseSize)
+	if !ok {
+		return nil, fmt.Errorf("failed to read response data from memory")
+	}
+
+	return response, nil
 }
 
 func (wfs *WASMFileSystem) ReadDir(path string) ([]filesystem.FileInfo, error) {

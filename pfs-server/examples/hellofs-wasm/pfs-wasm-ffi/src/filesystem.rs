@@ -50,7 +50,8 @@ pub trait FileSystem {
     }
 
     /// Write data to a file
-    fn write(&mut self, _path: &str, _data: &[u8]) -> Result<()> {
+    /// Returns response data (can be used to return results back to caller)
+    fn write(&mut self, _path: &str, _data: &[u8]) -> Result<Vec<u8>> {
         Err(crate::types::Error::ReadOnly)
     }
 

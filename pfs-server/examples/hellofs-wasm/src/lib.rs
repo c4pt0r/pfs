@@ -42,7 +42,7 @@ impl FileSystem for HelloFS {
         }
     }
 
-    fn write(&mut self, _path: &str, _data: &[u8]) -> Result<()> {
+    fn write(&mut self, _path: &str, _data: &[u8]) -> Result<Vec<u8>> {
         Err(Error::PermissionDenied)
     }
 

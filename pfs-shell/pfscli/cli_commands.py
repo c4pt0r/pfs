@@ -31,7 +31,7 @@ def cmd_ls(client, path: str):
         if not files:
             return
     except Exception as e:
-        console.print(f"[red]ls: {path}: {e}[/red]")
+        console.print(f"[red]ls: {path}: {e}[/red]", highlight=False)
         return
     # Separate directories and files
     dirs = [f for f in files if f.get("isDir", False)]
@@ -93,9 +93,9 @@ def cmd_cat(client, path: str, stream: bool = False):
                     sys.stdout.buffer.write(chunk)
                     sys.stdout.buffer.flush()
         except KeyboardInterrupt:
-            console.print("\n[yellow]Stream interrupted[/yellow]")
+            console.print("\n[yellow]Stream interrupted[/yellow]", highlight=False)
         except Exception as e:
-            console.print(f"cat: {path}: {e}")
+            console.print(f"cat: {path}: {e}", highlight=False)
     else:
         # Normal mode - read all at once
         content = client.cat(path)
@@ -120,7 +120,7 @@ def cmd_tail(client, path: str, lines: int = 10):
     # Get file info
     stat_info = client.stat(path)
     if stat_info.get('isDir'):
-        console.print(f"tail: {path}: Is a directory")
+        console.print(f"tail: {path}: Is a directory", highlight=False)
         return
 
     file_size = stat_info['size']
@@ -189,10 +189,10 @@ def cmd_write(client, path: str, content: str = None, stream: bool = False):
         signal.signal(signal.SIGINT, signal_handler)
 
         try:
-            console.print(f"[yellow]Streaming to {path}[/yellow]")
-            console.print("[dim]Reading binary data from stdin...[/dim]")
-            console.print("[dim]Press Ctrl+C to stop[/dim]")
-            console.print()
+            console.print(f"[yellow]Streaming to {path}[/yellow]", highlight=False)
+            console.print("[dim]Reading binary data from stdin...[/dim]", highlight=False)
+            console.print("[dim]Press Ctrl+C to stop[/dim]", highlight=False)
+            console.print(highlight=False)
 
             while not should_exit:
                 try:
@@ -211,37 +211,37 @@ def cmd_write(client, path: str, content: str = None, stream: bool = False):
                     # Progress indicator every 100 chunks (~6.4MB)
                     if chunk_count % 100 == 0:
                         mb = total_bytes / (1024 * 1024)
-                        console.print(f"[dim]Progress: {mb:.2f} MB sent[/dim]")
+                        console.print(f"[dim]Progress: {mb:.2f} MB sent[/dim]", highlight=False)
 
                 except EOFError:
                     break
 
             # Final summary
             if total_bytes < 1024:
-                console.print(f"\n[green]Streaming complete: {total_bytes} bytes in {chunk_count} chunks[/green]")
+                console.print(f"\n[green]Streaming complete: {total_bytes} bytes in {chunk_count} chunks[/green]", highlight=False)
             elif total_bytes < 1024 * 1024:
                 kb = total_bytes / 1024
-                console.print(f"\n[green]Streaming complete: {kb:.2f} KB in {chunk_count} chunks[/green]")
+                console.print(f"\n[green]Streaming complete: {kb:.2f} KB in {chunk_count} chunks[/green]", highlight=False)
             else:
                 mb = total_bytes / (1024 * 1024)
-                console.print(f"\n[green]Streaming complete: {mb:.2f} MB in {chunk_count} chunks[/green]")
+                console.print(f"\n[green]Streaming complete: {mb:.2f} MB in {chunk_count} chunks[/green]", highlight=False)
 
         except KeyboardInterrupt:
             # This shouldn't be reached due to signal handler, but keep as fallback
             if total_bytes < 1024:
-                console.print(f"\n[yellow]Streaming stopped: {total_bytes} bytes written[/yellow]")
+                console.print(f"\n[yellow]Streaming stopped: {total_bytes} bytes written[/yellow]", highlight=False)
             elif total_bytes < 1024 * 1024:
                 kb = total_bytes / 1024
-                console.print(f"\n[yellow]Streaming stopped: {kb:.2f} KB written[/yellow]")
+                console.print(f"\n[yellow]Streaming stopped: {kb:.2f} KB written[/yellow]", highlight=False)
             else:
                 mb = total_bytes / (1024 * 1024)
-                console.print(f"\n[yellow]Streaming stopped: {mb:.2f} MB written[/yellow]")
+                console.print(f"\n[yellow]Streaming stopped: {mb:.2f} MB written[/yellow]", highlight=False)
         except Exception as e:
-            console.print(f"\n[red]Error during streaming: {e}[/red]")
+            console.print(f"\n[red]Error during streaming: {e}[/red]", highlight=False)
     else:
         # Normal mode - write content directly
         if content is None:
-            console.print("[red]Error: content is required for normal write mode[/red]")
+            console.print("[red]Error: content is required for normal write mode[/red]", highlight=False)
             return
 
         msg = client.write(path, content.encode())
@@ -253,16 +253,16 @@ def cmd_stat(client, path: str):
     info = client.stat(path)
 
     file_type = "Directory" if info.get("isDir") else "File"
-    console.print(f"  File: {info.get('name', '')}")
-    console.print(f"  Type: {file_type}")
-    console.print(f"  Size: {info.get('size', 0)}")
-    console.print(f"  Mode: {oct(info.get('mode', 0))[2:]}")
-    console.print(f"  Modified: {info.get('modTime', '')}")
+    console.print(f"  File: {info.get('name', '')}", highlight=False)
+    console.print(f"  Type: {file_type}", highlight=False)
+    console.print(f"  Size: {info.get('size', 0)}", highlight=False)
+    console.print(f"  Mode: {oct(info.get('mode', 0))[2:]}", highlight=False)
+    console.print(f"  Modified: {info.get('modTime', '')}", highlight=False)
 
     meta = info.get("meta", {})
     if meta:
         for key, value in meta.items():
-            console.print(f"  Meta.{key}: {value}")
+            console.print(f"  Meta.{key}: {value}", highlight=False)
 
 
 def cmd_cp(client, source: str, destination: str):
@@ -324,7 +324,7 @@ def cmd_mounts(client):
     mounts_list = client.mounts()
 
     if not mounts_list:
-        console.print("No plugins mounted")
+        console.print("No plugins mounted", highlight=False)
         return
 
     # Print mounts in Unix mount style: <fstype> on <mountpoint> (options...)
@@ -349,15 +349,15 @@ def cmd_mounts(client):
         # Format output line
         if options:
             options_str = ", ".join(options)
-            console.print(f"{plugin} on {path} (plugin: {plugin}, {options_str})")
+            console.print(f"{plugin} on {path} (plugin: {plugin}, {options_str})", highlight=False)
         else:
-            console.print(f"{plugin} on {path} (plugin: {plugin})")
+            console.print(f"{plugin} on {path} (plugin: {plugin})", highlight=False)
 
 
 def cmd_unmount(client, path: str):
     """Unmount a plugin"""
     client.unmount(path)
-    console.print(f"Unmounted plugin at {path}")
+    console.print(f"Unmounted plugin at {path}", highlight=False)
 
 
 def cmd_load_plugin(client, library_path: str):
@@ -369,8 +369,8 @@ def cmd_load_plugin(client, library_path: str):
     """
     result = client.load_plugin(library_path)
     plugin_name = result.get("plugin_name", "unknown")
-    console.print(f"[green]Loaded external plugin:[/green] [bold cyan]{plugin_name}[/bold cyan]")
-    console.print(f"  Library: {library_path}")
+    console.print(f"[green]Loaded external plugin:[/green] [bold cyan]{plugin_name}[/bold cyan]", highlight=False)
+    console.print(f"  Library: {library_path}", highlight=False)
 
 
 def cmd_unload_plugin(client, library_path: str):
@@ -381,7 +381,7 @@ def cmd_unload_plugin(client, library_path: str):
         library_path: Path to the shared library
     """
     client.unload_plugin(library_path)
-    console.print(f"[green]Unloaded external plugin:[/green] {library_path}")
+    console.print(f"[green]Unloaded external plugin:[/green] {library_path}", highlight=False)
 
 
 def cmd_list_plugins(client):
@@ -393,16 +393,16 @@ def cmd_list_plugins(client):
     plugins = client.list_plugins()
 
     if not plugins:
-        console.print("No external plugins loaded")
+        console.print("No external plugins loaded", highlight=False)
         return
 
-    console.print(f"[bold]Loaded External Plugins:[/bold] ({len(plugins)})")
+    console.print(f"[bold]Loaded External Plugins:[/bold] ({len(plugins)})", highlight=False)
     for plugin_path in plugins:
         # Extract just the filename for display
         import os
         filename = os.path.basename(plugin_path)
-        console.print(f"  [cyan]{filename}[/cyan]")
-        console.print(f"    {plugin_path}")
+        console.print(f"  [cyan]{filename}[/cyan]", highlight=False)
+        console.print(f"    {plugin_path}", highlight=False)
 
 
 def cmd_mount(client, fstype: str, path: str, config_args: list):
@@ -418,8 +418,8 @@ def cmd_mount(client, fstype: str, path: str, config_args: list):
     config = {}
     for arg in config_args:
         if "=" not in arg:
-            console.print(f"[red]Invalid config parameter: {arg}[/red]")
-            console.print("Config parameters must be in format key=value")
+            console.print(f"[red]Invalid config parameter: {arg}[/red]", highlight=False)
+            console.print("Config parameters must be in format key=value", highlight=False)
             return
 
         key, value = arg.split("=", 1)
@@ -450,9 +450,9 @@ def cmd_mount(client, fstype: str, path: str, config_args: list):
     try:
         result = client.mount(fstype, path, config)
         if result.get("message"):
-            console.print(f"  {result['message']}")
+            console.print(f"  {result['message']}", highlight=False)
     except Exception as e:
-        console.print(f"[red]Failed to mount {fstype} at {path}: {e}[/red]")
+        console.print(f"[red]Failed to mount {fstype} at {path}: {e}[/red]", highlight=False)
 
 
 def cmd_upload(client, local_path: str, pfs_path: str, recursive: bool = False):
@@ -461,13 +461,13 @@ def cmd_upload(client, local_path: str, pfs_path: str, recursive: bool = False):
 
     # Check if local path exists
     if not os.path.exists(local_path):
-        console.print(f"upload: {local_path}: No such file or directory")
+        console.print(f"upload: {local_path}: No such file or directory", highlight=False)
         return
 
     # Handle directory upload
     if os.path.isdir(local_path):
         if not recursive:
-            console.print(f"upload: {local_path}: Is a directory (use -r for recursive upload)")
+            console.print(f"upload: {local_path}: Is a directory (use -r for recursive upload)", highlight=False)
             return
 
         # Get the local directory name
@@ -480,7 +480,7 @@ def cmd_upload(client, local_path: str, pfs_path: str, recursive: bool = False):
                 # Remote path exists and is a directory
                 # Create subdirectory with same name as local directory
                 pfs_path = f"{pfs_path.rstrip('/')}/{local_dir_name}"
-                console.print(f"Target is a directory, uploading to {pfs_path}")
+                console.print(f"Target is a directory, uploading to {pfs_path}", highlight=False)
         except Exception:
             # Remote path doesn't exist, that's fine
             pass
@@ -495,7 +495,7 @@ def cmd_upload(client, local_path: str, pfs_path: str, recursive: bool = False):
                 # Remote path is a directory, append local filename
                 local_filename = os.path.basename(local_path)
                 pfs_path = f"{pfs_path.rstrip('/')}/{local_filename}"
-                console.print(f"Target is a directory, uploading to {pfs_path}")
+                console.print(f"Target is a directory, uploading to {pfs_path}", highlight=False)
         except Exception:
             # Remote path doesn't exist or stat failed, use as-is
             pass
@@ -518,7 +518,7 @@ def _upload_file(client, local_path: str, pfs_path: str):
         else:
             print(f"Uploaded {local_path} -> {pfs_path} ({size} bytes)")
     except Exception as e:
-        console.print(f"upload: {local_path}: {e}")
+        console.print(f"upload: {local_path}: {e}", highlight=False)
 
 
 def _upload_directory(client, local_dir: str, pfs_dir: str):
@@ -528,7 +528,7 @@ def _upload_directory(client, local_dir: str, pfs_dir: str):
     # Create the destination directory
     try:
         client.mkdir(pfs_dir)
-        console.print(f"Created directory {pfs_dir}")
+        console.print(f"Created directory {pfs_dir}", highlight=False)
     except Exception as e:
         # Directory might already exist, continue
         pass
@@ -554,7 +554,7 @@ def _upload_directory(client, local_dir: str, pfs_dir: str):
             subdir_pfs_path = f"{current_pfs_dir}/{dir_name}"
             try:
                 client.mkdir(subdir_pfs_path)
-                console.print(f"Created directory {subdir_pfs_path}")
+                console.print(f"Created directory {subdir_pfs_path}", highlight=False)
             except Exception as e:
                 # Directory might already exist, continue
                 pass
@@ -578,9 +578,9 @@ def _upload_directory(client, local_dir: str, pfs_dir: str):
                 total_files += 1
                 total_bytes += size
             except Exception as e:
-                console.print(f"upload: {local_file_path}: {e}")
+                console.print(f"upload: {local_file_path}: {e}", highlight=False)
 
-    console.print(f"\nUploaded {total_files} files, {total_bytes} bytes total")
+    console.print(f"\nUploaded {total_files} files, {total_bytes} bytes total", highlight=False)
 
 
 def _get_unique_filename(filepath: str) -> str:
@@ -614,13 +614,13 @@ def cmd_download(client, pfs_path: str, local_path: str, recursive: bool = False
     try:
         stat_info = client.stat(pfs_path)
     except Exception as e:
-        console.print(f"download: {pfs_path}: {e}")
+        console.print(f"download: {pfs_path}: {e}", highlight=False)
         return
 
     if stat_info.get('isDir'):
         # Download directory
         if not recursive:
-            console.print(f"download: {pfs_path}: Is a directory (use -r for recursive download)")
+            console.print(f"download: {pfs_path}: Is a directory (use -r for recursive download)", highlight=False)
             return
 
         # Get the PFS directory name
@@ -632,9 +632,9 @@ def cmd_download(client, pfs_path: str, local_path: str, recursive: bool = False
                 # Local path exists and is a directory
                 # Create subdirectory with same name as PFS directory
                 local_path = os.path.join(local_path, pfs_dir_name)
-                console.print(f"Target is a directory, downloading to {local_path}")
+                console.print(f"Target is a directory, downloading to {local_path}", highlight=False)
             else:
-                console.print(f"download: {local_path}: File exists (not a directory)")
+                console.print(f"download: {local_path}: File exists (not a directory)", highlight=False)
                 return
 
         _download_directory(client, pfs_path, local_path)
@@ -671,7 +671,7 @@ def _download_file(client, pfs_path: str, local_path: str):
         size = len(content)
         print(f"Downloaded {pfs_path} -> {local_path} ({size} bytes)")
     except Exception as e:
-        console.print(f"download: {pfs_path}: {e}")
+        console.print(f"download: {pfs_path}: {e}", highlight=False)
 
 
 def _download_directory(client, pfs_dir: str, local_dir: str):
@@ -681,9 +681,9 @@ def _download_directory(client, pfs_dir: str, local_dir: str):
     # Create the destination directory
     try:
         os.makedirs(local_dir, exist_ok=True)
-        console.print(f"Created directory {local_dir}")
+        console.print(f"Created directory {local_dir}", highlight=False)
     except Exception as e:
-        console.print(f"download: {local_dir}: {e}")
+        console.print(f"download: {local_dir}: {e}", highlight=False)
         return
 
     total_files = 0
@@ -700,7 +700,7 @@ def _download_directory(client, pfs_dir: str, local_dir: str):
         try:
             files = client.ls(current_pfs_dir)
         except Exception as e:
-            console.print(f"download: {current_pfs_dir}: {e}")
+            console.print(f"download: {current_pfs_dir}: {e}", highlight=False)
             continue
 
         for file_info in files:
@@ -714,10 +714,10 @@ def _download_directory(client, pfs_dir: str, local_dir: str):
                 # Create subdirectory and add to queue
                 try:
                     os.makedirs(local_file_path, exist_ok=True)
-                    console.print(f"Created directory {local_file_path}")
+                    console.print(f"Created directory {local_file_path}", highlight=False)
                     queue.append((pfs_file_path, local_file_path))
                 except Exception as e:
-                    console.print(f"download: {local_file_path}: {e}")
+                    console.print(f"download: {local_file_path}: {e}", highlight=False)
             else:
                 # Download file
                 try:
@@ -732,9 +732,9 @@ def _download_directory(client, pfs_dir: str, local_dir: str):
                     total_files += 1
                     total_bytes += size
                 except Exception as e:
-                    console.print(f"download: {pfs_file_path}: {e}")
+                    console.print(f"download: {pfs_file_path}: {e}", highlight=False)
 
-    console.print(f"\nDownloaded {total_files} files, {total_bytes} bytes total")
+    console.print(f"\nDownloaded {total_files} files, {total_bytes} bytes total", highlight=False)
 
 
 def cmd_tailf(client, path: str, lines: int = 10):
@@ -751,7 +751,7 @@ def cmd_tailf(client, path: str, lines: int = 10):
         # 1. Get initial file info
         stat_info = client.stat(path)
         if stat_info.get('isDir'):
-            console.print(f"tailf: {path}: Is a directory")
+            console.print(f"tailf: {path}: Is a directory", highlight=False)
             return
 
         file_size = stat_info['size']
@@ -790,7 +790,7 @@ def cmd_tailf(client, path: str, lines: int = 10):
                 stat_info = client.stat(path)
                 new_size = stat_info['size']
             except Exception as e:
-                console.print(f"tailf: {path}: {e}")
+                console.print(f"tailf: {path}: {e}", highlight=False)
                 break
 
             if new_size > last_offset:
@@ -815,7 +815,7 @@ def cmd_tailf(client, path: str, lines: int = 10):
                     # Speed up polling when file is actively changing
                     poll_interval = max(0.1, poll_interval * 0.8)
                 except Exception as e:
-                    console.print(f"tailf: {path}: {e}")
+                    console.print(f"tailf: {path}: {e}", highlight=False)
                     break
             elif new_size < last_offset:
                 # File truncated - restart from beginning
@@ -828,7 +828,7 @@ def cmd_tailf(client, path: str, lines: int = 10):
                     poll_interval = min(2.0, poll_interval * 1.2)
 
     except KeyboardInterrupt:
-        console.print("\n")
+        console.print("\n", highlight=False)
     except Exception as e:
         # Re-raise to let the CLI command handler add the prefix
         raise
@@ -860,22 +860,22 @@ def cmd_watch(client, command_func, args: list, interval: float = 2.0):
             # Display header with timestamp and interval
             now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             header = f"Every {interval}s: {command_func.__name__[4:]} {' '.join(args)}    {now}"
-            console.print(f"[bold cyan]{header}[/bold cyan]\n")
+            console.print(f"[bold cyan]{header}[/bold cyan]\n", highlight=False)
 
             # Execute the command
             try:
                 command_func(client, *args)
             except Exception as e:
-                console.print(f"[red]Command error: {e}[/red]")
+                console.print(f"[red]Command error: {e}[/red]", highlight=False)
 
             # Wait for next iteration
             iteration += 1
             time.sleep(interval)
 
     except KeyboardInterrupt:
-        console.print("\n[yellow]Watch stopped[/yellow]")
+        console.print("\n[yellow]Watch stopped[/yellow]", highlight=False)
     except Exception as e:
-        console.print(f"\n[red]Watch error: {e}[/red]")
+        console.print(f"\n[red]Watch error: {e}[/red]", highlight=False)
         raise
 
 
@@ -950,7 +950,7 @@ def cmd_tree(client, path: str = "/", max_depth: Optional[int] = None):
                 # Print the entry
                 try:
                     if is_dir:
-                        console.print(f"{current_prefix}[bold cyan]{name}/[/bold cyan]")
+                        console.print(f"{current_prefix}[bold cyan]{name}/[/bold cyan]", highlight=False)
                         stats["dirs"] += 1
                         # Recursively process subdirectory
                         child_path = f"{current_path.rstrip('/')}/{name}"
@@ -967,7 +967,7 @@ def cmd_tree(client, path: str = "/", max_depth: Optional[int] = None):
                         else:
                             size_str = f"{size/(1024*1024*1024):.1f}G"
 
-                        console.print(f"{current_prefix}{name} [{size_str}]")
+                        console.print(f"{current_prefix}{name} [{size_str}]", highlight=False)
                         stats["files"] += 1
                 except UnicodeEncodeError:
                     # If encoding fails, try printing without formatting
@@ -982,13 +982,13 @@ def cmd_tree(client, path: str = "/", max_depth: Optional[int] = None):
         except Exception as e:
             # Print error but continue
             try:
-                console.print(f"{prefix}[red]Error reading {current_path}: {e}[/red]")
+                console.print(f"{prefix}[red]Error reading {current_path}: {e}[/red]", highlight=False)
             except UnicodeEncodeError:
                 print(f"{prefix}Error reading {current_path}: {e}")
 
     # Print the root path
     try:
-        console.print(f"[bold cyan]{path}[/bold cyan]")
+        console.print(f"[bold cyan]{path}[/bold cyan]", highlight=False)
     except UnicodeEncodeError:
         print(path)
 
@@ -997,6 +997,6 @@ def cmd_tree(client, path: str = "/", max_depth: Optional[int] = None):
 
     # Print statistics
     try:
-        console.print(f"\n{stats['dirs']} directories, {stats['files']} files")
+        console.print(f"\n{stats['dirs']} directories, {stats['files']} files", highlight=False)
     except UnicodeEncodeError:
         print(f"\n{stats['dirs']} directories, {stats['files']} files")

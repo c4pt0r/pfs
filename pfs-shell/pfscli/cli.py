@@ -105,19 +105,19 @@ def start_repl(api_base_url: str):
  / ____/ __/  ___/ /
 /_/   /_/    /____/
 """)
-        console.print(f"[dim]Client: {get_version_string()}[/dim]")
+        console.print(f"[dim]Client: {get_version_string()}[/dim]", highlight=False)
 
         # Display server version info if available
         server_version = health_info.get("version", "unknown")
         server_commit = health_info.get("gitCommit", "unknown")
         server_build_time = health_info.get("buildTime", "unknown")
-        console.print(f"[dim]Server: version={server_version}, commit={server_commit}, build={server_build_time}[/dim]")
+        console.print(f"[dim]Server: version={server_version}, commit={server_commit}, build={server_build_time}[/dim]", highlight=False)
 
-        console.print(f"Connected to pfs server at {api_base_url}")
-        console.print("press 'help' or '?' for help")
+        console.print(f"Connected to pfs server at {api_base_url}", highlight=False)
+        console.print("press 'help' or '?' for help", highlight=False)
         print()
     except Exception as e:
-        console.print(f"Failed to connect to {api_base_url}\n{e}")
+        console.print(f"Failed to connect to {api_base_url}\n{e}", highlight=False)
         sys.exit(1)
 
     # Initialize command handler
@@ -145,7 +145,8 @@ def start_repl(api_base_url: str):
         temp_history_path = temp_history.name
         temp_history.close()
         console.print(
-            f"[yellow]Warning: Cannot use {history_path}, using temporary history file[/yellow]"
+            f"[yellow]Warning: Cannot use {history_path}, using temporary history file[/yellow]",
+            highlight=False
         )
         history = FileHistory(temp_history_path)
 
@@ -171,13 +172,13 @@ def start_repl(api_base_url: str):
                 break
 
         except KeyboardInterrupt:
-            console.print("\nUse 'exit' or 'quit' to leave")
+            console.print("\nUse 'exit' or 'quit' to leave", highlight=False)
             continue
         except EOFError:
-            console.print("\nGoodbye!")
+            console.print("\nGoodbye!", highlight=False)
             break
         except Exception as e:
-            console.print(f"Unexpected error: {e}")
+            console.print(f"Unexpected error: {e}", highlight=False)
 
 
 @click.group()
@@ -218,9 +219,9 @@ def ls(ctx, path):
     try:
         cli_commands.cmd_ls(ctx.obj["client"], path)
     except PFSClientError as e:
-        console.print(f"ls: {e}")
+        console.print(f"ls: {e}", highlight=False)
     except Exception as e:
-        console.print(f"ls: {path}: {e}")
+        console.print(f"ls: {path}: {e}", highlight=False)
 
 
 @main.command()
@@ -239,9 +240,9 @@ def tree(ctx, path, max_depth):
     try:
         cli_commands.cmd_tree(ctx.obj["client"], path, max_depth)
     except PFSClientError as e:
-        console.print(f"tree: {e}")
+        console.print(f"tree: {e}", highlight=False)
     except Exception as e:
-        console.print(f"tree: {path}: {e}")
+        console.print(f"tree: {path}: {e}", highlight=False)
 
 
 @main.command()
@@ -255,7 +256,7 @@ def cat(ctx, path, stream):
     try:
         cli_commands.cmd_cat(ctx.obj["client"], path, stream=stream)
     except Exception as e:
-        console.print(f"cat: {path}: {e}")
+        console.print(f"cat: {path}: {e}", highlight=False)
 
 
 @main.command()
@@ -269,7 +270,7 @@ def tail(ctx, path, lines):
     try:
         cli_commands.cmd_tail(ctx.obj["client"], path, lines)
     except Exception as e:
-        console.print(f"tail: {path}: {e}")
+        console.print(f"tail: {path}: {e}", highlight=False)
 
 
 @main.command()
@@ -280,7 +281,7 @@ def mkdir(ctx, path):
     try:
         cli_commands.cmd_mkdir(ctx.obj["client"], path)
     except Exception as e:
-        console.print(f"mkdir: {path}: {e}")
+        console.print(f"mkdir: {path}: {e}", highlight=False)
 
 
 @main.command()
@@ -292,7 +293,7 @@ def rm(ctx, path, recursive):
     try:
         cli_commands.cmd_rm(ctx.obj["client"], path, recursive)
     except Exception as e:
-        console.print(f"rm: {path}: {e}")
+        console.print(f"rm: {path}: {e}", highlight=False)
 
 
 @main.command()
@@ -303,7 +304,7 @@ def touch(ctx, path):
     try:
         cli_commands.cmd_touch(ctx.obj["client"], path)
     except Exception as e:
-        console.print(f"touch: {path}: {e}")
+        console.print(f"touch: {path}: {e}", highlight=False)
 
 
 @main.command()
@@ -321,12 +322,13 @@ def write(ctx, path, content, stream):
             # Normal mode with content argument
             if not content:
                 console.print(
-                    "write: content is required (or use --stream to read from stdin)"
+                    "write: content is required (or use --stream to read from stdin)",
+                    highlight=False
                 )
                 return
             cli_commands.cmd_write(ctx.obj["client"], path, " ".join(content))
     except Exception as e:
-        console.print(f"write: {path}: {e}")
+        console.print(f"write: {path}: {e}", highlight=False)
 
 
 @main.command()
@@ -337,7 +339,7 @@ def stat(ctx, path):
     try:
         cli_commands.cmd_stat(ctx.obj["client"], path)
     except Exception as e:
-        console.print(f"stat: {path}: {e}")
+        console.print(f"stat: {path}: {e}", highlight=False)
 
 
 @main.command()
@@ -349,7 +351,7 @@ def cp(ctx, source, destination):
     try:
         cli_commands.cmd_cp(ctx.obj["client"], source, destination)
     except Exception as e:
-        console.print(f"cp: {source}: {e}")
+        console.print(f"cp: {source}: {e}", highlight=False)
 
 
 @main.command()
@@ -361,7 +363,7 @@ def mv(ctx, source, destination):
     try:
         cli_commands.cmd_mv(ctx.obj["client"], source, destination)
     except Exception as e:
-        console.print(f"mv: {source}: {e}")
+        console.print(f"mv: {source}: {e}", highlight=False)
 
 
 @main.command()
@@ -374,9 +376,9 @@ def chmod(ctx, mode, path):
         mode_int = int(mode, 8)
         cli_commands.cmd_chmod(ctx.obj["client"], mode_int, path)
     except ValueError:
-        console.print(f"chmod: invalid mode: '{mode}'")
+        console.print(f"chmod: invalid mode: '{mode}'", highlight=False)
     except Exception as e:
-        console.print(f"chmod: {path}: {e}")
+        console.print(f"chmod: {path}: {e}", highlight=False)
 
 
 @main.command()
@@ -389,7 +391,7 @@ def upload(ctx, local_path, pfs_path, recursive):
     try:
         cli_commands.cmd_upload(ctx.obj["client"], local_path, pfs_path, recursive)
     except Exception as e:
-        console.print(f"upload: {e}")
+        console.print(f"upload: {e}", highlight=False)
 
 
 @main.command()
@@ -402,7 +404,7 @@ def download(ctx, pfs_path, local_path, recursive):
     try:
         cli_commands.cmd_download(ctx.obj["client"], pfs_path, local_path, recursive)
     except Exception as e:
-        console.print(f"download: {e}")
+        console.print(f"download: {e}", highlight=False)
 
 
 @main.command()
@@ -412,7 +414,7 @@ def mounts(ctx):
     try:
         cli_commands.cmd_mounts(ctx.obj["client"])
     except Exception as e:
-        console.print(f"mounts: {e}")
+        console.print(f"mounts: {e}", highlight=False)
 
 
 @main.command()
@@ -432,7 +434,7 @@ def mount(ctx, fstype, path, config_args):
     try:
         cli_commands.cmd_mount(ctx.obj["client"], fstype, path, list(config_args))
     except Exception as e:
-        console.print(f"mount: {e}")
+        console.print(f"mount: {e}", highlight=False)
 
 
 @main.command()
@@ -443,7 +445,7 @@ def unmount(ctx, path):
     try:
         cli_commands.cmd_unmount(ctx.obj["client"], path)
     except Exception as e:
-        console.print(f"unmount: {e}")
+        console.print(f"unmount: {e}", highlight=False)
 
 
 @main.command()
@@ -461,7 +463,7 @@ def tailf(ctx, path, lines):
     try:
         cli_commands.cmd_tailf(ctx.obj["client"], path, lines)
     except Exception as e:
-        console.print(f"tailf: {path}: {e}")
+        console.print(f"tailf: {path}: {e}", highlight=False)
 
 
 @main.group()
@@ -486,7 +488,7 @@ def plugins_load(ctx, library_path):
     try:
         cli_commands.cmd_load_plugin(ctx.obj["client"], library_path)
     except Exception as e:
-        console.print(f"[red]Error loading plugin: {e}[/red]")
+        console.print(f"[red]Error loading plugin: {e}[/red]", highlight=False)
 
 
 @plugins.command(name="unload")
@@ -497,7 +499,7 @@ def plugins_unload(ctx, library_path):
     try:
         cli_commands.cmd_unload_plugin(ctx.obj["client"], library_path)
     except Exception as e:
-        console.print(f"[red]Error unloading plugin: {e}[/red]")
+        console.print(f"[red]Error unloading plugin: {e}[/red]", highlight=False)
 
 
 @plugins.command(name="list")
@@ -507,7 +509,7 @@ def plugins_list(ctx):
     try:
         cli_commands.cmd_list_plugins(ctx.obj["client"])
     except Exception as e:
-        console.print(f"[red]Error listing plugins: {e}[/red]")
+        console.print(f"[red]Error listing plugins: {e}[/red]", highlight=False)
 
 
 if __name__ == "__main__":
