@@ -409,3 +409,67 @@ func (c *Client) ReadStream(path string) (io.ReadCloser, error) {
 	// Caller must close it when done
 	return resp.Body, nil
 }
+
+// GrepRequest represents a grep search request
+type GrepRequest struct {
+	Path            string `json:"path"`
+	Pattern         string `json:"pattern"`
+	Recursive       bool   `json:"recursive"`
+	CaseInsensitive bool   `json:"case_insensitive"`
+}
+
+// GrepMatch represents a single match result
+type GrepMatch struct {
+	File    string `json:"file"`
+	Line    int    `json:"line"`
+	Content string `json:"content"`
+}
+
+// GrepResponse represents the grep search results
+type GrepResponse struct {
+	Matches []GrepMatch `json:"matches"`
+	Count   int         `json:"count"`
+}
+
+// Grep searches for a pattern in files using regular expressions
+func (c *Client) Grep(path, pattern string, recursive, caseInsensitive bool) (*GrepResponse, error) {
+	reqBody := GrepRequest{
+		Path:            path,
+		Pattern:         pattern,
+		Recursive:       recursive,
+		CaseInsensitive: caseInsensitive,
+	}
+
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	reqURL := fmt.Sprintf("%s/grep", c.baseURL)
+	req, err := http.NewRequest(http.MethodPost, reqURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		var errResp ErrorResponse
+		if err := json.NewDecoder(resp.Body).Decode(&errResp); err != nil {
+			return nil, fmt.Errorf("HTTP %d: failed to decode error response", resp.StatusCode)
+		}
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, errResp.Error)
+	}
+
+	var grepResp GrepResponse
+	if err := json.NewDecoder(resp.Body).Decode(&grepResp); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &grepResp, nil
+}

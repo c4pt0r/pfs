@@ -6,6 +6,9 @@ Interactive command-line client for PFS (Plugin-based File System) Server
 
 - **Interactive REPL**: Command-line interface with auto-completion and history
 - **Unix-like Commands**: ls, cd, cat, mkdir, rm, mv, chmod, cp, etc.
+- **Pipeline Support**: Chain commands together with `|` operator for data flow
+- **Chained Redirection**: Chain multiple redirections for data transformation (e.g., `echo 'query' > file1 > file2`)
+- **Tee Command**: Split data flow to multiple destinations while passing through (`echo 'hello' | tee output`)
 - **File Streaming**: Stream file contents for video/audio playback and continuous data feeds
 - **Upload/Download**: Transfer files between local filesystem and PFS
 - **Directory Tree**: Visualize filesystem structure with tree command
@@ -30,9 +33,7 @@ uv run pfs --help
 cd ../pfs-server
 make
 ./build/pfs-server -c config.yaml
-```
-
-### Run PFS Shell
+``
 
 ```bash
 # Interactive shell (default server: http://localhost:8080/api/v1)
@@ -170,6 +171,62 @@ pfs:/> cat /file2.txt >> /combined.txt
 # Echo to file
 pfs:/> echo "Hello World" > /greeting.txt
 pfs:/> echo "More text" >> /greeting.txt
+```
+
+### Pipelines and Chained Redirections
+
+PFS Shell supports Unix-like pipelines and powerful chained redirections for data transformation workflows.
+
+#### Pipelines
+
+Chain multiple commands together using the `|` operator:
+
+```bash
+# Basic pipeline
+pfs:/> cat /data.txt | tee /backup.txt
+
+# Multiple stages
+pfs:/> cat /log.txt | tee /log-backup.txt | tee /log-archive.txt
+
+# Tee with append mode
+pfs:/> echo "new entry" | tee -a /file1.txt /file2.txt /file3.txt
+```
+
+#### Chained Redirections
+
+Chain multiple redirections to transform data through multiple PFS files. This is especially powerful with dynamic PFS filesystems that transform data on write:
+
+```bash
+# Example: Query database and save to S3
+pfs:/sqlfs/mydb> echo 'select * from feeds limit 100' > query > /s3fs/aws/backup.json
+```
+
+**How Chained Redirection Works:**
+1. Initial command generates content (e.g., `echo 'select * from users'`)
+2. Content is written to first file (e.g., `/sqlfs/query`)
+3. If the write returns a response (e.g., query results), that response becomes input for the next redirection
+4. The process continues through all redirections in the chain
+5. Final result is silently saved (no console output)
+
+**Use Cases:**
+- Query SQL databases and save results to S3/file storage
+- Transform data through multiple processing stages
+- Chain API calls where each response feeds the next request
+- Multi-step data pipelines within the filesystem
+
+#### Tee Command
+
+Split data to multiple destinations while passing it through:
+
+```bash
+# Write to one file and continue in pipeline
+pfs:/> echo "important data" | tee /backup.txt
+
+# Write to multiple files
+pfs:/> cat /source.txt | tee /dest1.txt /dest2.txt /dest3.txt
+
+# Append mode with -a flag
+pfs:/> echo "log entry" | tee -a /logs/app.log /logs/all.log
 ```
 
 ### Plugin Management
@@ -325,6 +382,7 @@ uv run pfs --pfs-api-baseurl http://remote:8080/api/v1 ls /
 | `write --stream <file>` | Stream write from stdin | `cat video \| pfs write --stream /f` |
 | `echo <content> > <file>` | Write to file | `echo hello > /f.txt` |
 | `echo <content> >> <file>` | Append to file | `echo more >> /f.txt` |
+| `tee [-a] <file> [files...]` | Write stdin to file(s) and stdout | `echo hi \| tee f1.txt f2.txt` |
 | `mkdir <dir>` | Create directory | `mkdir /mydir` |
 | `rm [-r] <path>` | Remove file/directory | `rm -r /mydir` |
 | `touch <file>` | Create empty file | `touch /new.txt` |
@@ -348,6 +406,15 @@ uv run pfs --pfs-api-baseurl http://remote:8080/api/v1 ls /
 | `mount <type> <path> [k=v...]` | Mount plugin | `mount memfs /test` |
 | `unmount <path>` | Unmount plugin | `unmount /test` |
 | `plugins` | Alias for mounts | `plugins` |
+
+### Pipelines and Redirections
+
+| Operator | Description | Example |
+|---------|-------------|---------|
+| `\|` | Pipe output to next command | `cat file.txt \| tee backup.txt` |
+| `>` | Redirect output to file (overwrite) | `echo hello > file.txt` |
+| `>>` | Redirect output to file (append) | `echo world >> file.txt` |
+| `> file1 > file2` | Chained redirection | `echo 'query' > /sqlfs/q > /s3/result.json` |
 
 ### Monitoring
 
@@ -505,6 +572,66 @@ Every 2s: ls /mnt/queue    2025-01-15 10:30:45
 -rw-r--r--        0 2025-01-15 10:30:45 clear
 ```
 
+### Example 8: Pipeline with Tee
+
+```bash
+# Save data to multiple files while passing through
+pfs:/> echo "Important log entry" | tee /logs/app.log /logs/backup.log
+Important log entry
+
+# Verify both files were written
+pfs:/> cat /logs/app.log
+Important log entry
+
+pfs:/> cat /logs/backup.log
+Important log entry
+
+# Append to multiple files
+pfs:/> echo "Another entry" | tee -a /logs/app.log /logs/backup.log /logs/archive.log
+Another entry
+
+# Chain tee commands
+pfs:/> cat /data.json | tee /backup/$(date).json | tee /archive/data.json
+{"status": "success", "count": 42}
+```
+
+### Example 9: Chained Redirections for Data Transformation
+
+```bash
+# Query SQL database and save results to S3 (single command!)
+pfs:/sqlfs/mydb> echo 'select * from feeds limit 10' > query > /s3fs/aws/results.json
+
+# The command silently completes. Verify the result:
+pfs:/sqlfs/mydb> cat /s3fs/aws/results.json
+[
+  {
+    "id": "41014298",
+    "title": "A GIF animation loop, 2015, Duration 1k years",
+    "URL": "https://www.aslongaspossible.com/",
+    "created_at": "2024-07-19T22:27:09Z"
+  },
+  ...
+]
+
+# Chain multiple transformations
+pfs:/> echo "raw data" > /transform/step1 > /transform/step2 > /final/output.txt
+
+# Mix append and overwrite in chain
+pfs:/> echo "new entry" >> /accumulator/data > /processor/analyze > /output/report.json
+```
+
+**How Example 9 Works:**
+1. `echo 'select * from feeds limit 10'` generates the SQL query text
+2. First `> query` writes the query to `/sqlfs/mydb/query` file
+3. The sqlfs filesystem executes the query and returns JSON results
+4. Second `> /s3fs/aws/results.json` writes those results to S3
+5. No console output (silent execution)
+
+This enables powerful data pipelines:
+- Database → Cloud Storage
+- API → Transformation → Storage
+- Queue → Processing → Multiple Destinations
+
 ## Advanced Features
 
 ### Path Completion
@@ -523,7 +650,7 @@ pfs:/> cat /mnt/queue/    # Completes path
 
 Use `↑` and `↓` arrow keys to navigate command history. History is saved to `~/.pfscli_history`.
 
-### Redirection Operators
+### Redirection Operators and Pipelines
 
 ```bash
 # Write (overwrite)
@@ -533,6 +660,17 @@ pfs:/> echo "Hello" > /greeting.txt
 # Append
 pfs:/> cat /file1.txt >> /combined.txt
 pfs:/> echo "More" >> /greeting.txt
+
+# Chained redirections (data flows through multiple files)
+pfs:/> echo 'select * from users' > /sqlfs/query > /s3fs/backup.json
+pfs:/> echo "data" >> /step1 > /step2 >> /final.txt
+
+# Pipelines with tee
+pfs:/> echo "log entry" | tee /log1.txt /log2.txt
+pfs:/> cat /data.txt | tee /backup.txt | tee /archive.txt
+
+# Pipeline with append
+pfs:/> echo "entry" | tee -a /log.txt /backup.log
 ```
 
 ### Streaming Mode

@@ -1,10 +1,14 @@
 package handlers
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
+	"path/filepath"
+	"regexp"
 	"strconv"
 	"time"
 
@@ -435,6 +439,13 @@ func (h *Handler) SetupRoutes(mux *http.ServeMux) {
 		}
 		h.Chmod(w, r)
 	})
+	mux.HandleFunc("/api/v1/grep", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		h.Grep(w, r)
+	})
 }
 
 // streamFile handles streaming file reads with HTTP chunked transfer encoding
@@ -535,6 +546,297 @@ func (h *Handler) streamFromStreamReader(w http.ResponseWriter, r *http.Request,
 			return
 		}
 	}
+}
+
+// GrepRequest represents a grep search request
+type GrepRequest struct {
+	Path            string `json:"path"`              // Path to file or directory to search
+	Pattern         string `json:"pattern"`           // Regular expression pattern
+	Recursive       bool   `json:"recursive"`         // Whether to search recursively in directories
+	CaseInsensitive bool   `json:"case_insensitive"`  // Case-insensitive matching
+	Stream          bool   `json:"stream"`            // Stream results as NDJSON (one match per line)
+}
+
+// GrepMatch represents a single match result
+type GrepMatch struct {
+	File    string `json:"file"`     // File path
+	Line    int    `json:"line"`     // Line number (1-indexed)
+	Content string `json:"content"`  // Matched line content
+}
+
+// GrepResponse represents the grep search results
+type GrepResponse struct {
+	Matches []GrepMatch `json:"matches"` // All matches
+	Count   int         `json:"count"`   // Total number of matches
+}
+
+// Grep searches for a pattern in files
+func (h *Handler) Grep(w http.ResponseWriter, r *http.Request) {
+	var req GrepRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		return
+	}
+
+	// Validate request
+	if req.Path == "" {
+		writeError(w, http.StatusBadRequest, "path is required")
+		return
+	}
+	if req.Pattern == "" {
+		writeError(w, http.StatusBadRequest, "pattern is required")
+		return
+	}
+
+	// Compile regex pattern
+	var re *regexp.Regexp
+	var err error
+	if req.CaseInsensitive {
+		re, err = regexp.Compile("(?i)" + req.Pattern)
+	} else {
+		re, err = regexp.Compile(req.Pattern)
+	}
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid regex pattern: "+err.Error())
+		return
+	}
+
+	// Check if path exists and get file info
+	info, err := h.fs.Stat(req.Path)
+	if err != nil {
+		status := mapErrorToStatus(err)
+		writeError(w, status, "failed to stat path: "+err.Error())
+		return
+	}
+
+	// Handle stream mode
+	if req.Stream {
+		h.grepStream(w, req.Path, re, info.IsDir, req.Recursive)
+		return
+	}
+
+	// Non-stream mode: collect all matches
+	var matches []GrepMatch
+
+	// Search in file or directory
+	if info.IsDir {
+		if req.Recursive {
+			matches, err = h.grepDirectory(req.Path, re)
+		} else {
+			writeError(w, http.StatusBadRequest, "path is a directory, use recursive=true to search")
+			return
+		}
+	} else {
+		matches, err = h.grepFile(req.Path, re)
+	}
+
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "grep failed: "+err.Error())
+		return
+	}
+
+	response := GrepResponse{
+		Matches: matches,
+		Count:   len(matches),
+	}
+
+	writeJSON(w, http.StatusOK, response)
+}
+
+// grepStream handles streaming grep results as NDJSON
+func (h *Handler) grepStream(w http.ResponseWriter, path string, re *regexp.Regexp, isDir bool, recursive bool) {
+	// Set headers for NDJSON streaming
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	w.Header().Set("Transfer-Encoding", "chunked")
+	w.WriteHeader(http.StatusOK)
+
+	// Get flusher for chunked encoding
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		log.Error("Streaming not supported")
+		return
+	}
+
+	matchCount := 0
+	encoder := json.NewEncoder(w)
+
+	// Callback function to send each match
+	sendMatch := func(match GrepMatch) error {
+		matchCount++
+		if err := encoder.Encode(match); err != nil {
+			return err
+		}
+		flusher.Flush()
+		return nil
+	}
+
+	// Search and stream results
+	var err error
+	if isDir {
+		if !recursive {
+			// Send error as JSON
+			errMatch := map[string]interface{}{
+				"error": "path is a directory, use recursive=true to search",
+			}
+			encoder.Encode(errMatch)
+			flusher.Flush()
+			return
+		}
+		err = h.grepDirectoryStream(path, re, sendMatch)
+	} else {
+		err = h.grepFileStream(path, re, sendMatch)
+	}
+
+	// Send final summary with count
+	summary := map[string]interface{}{
+		"type":  "summary",
+		"count": matchCount,
+	}
+	if err != nil {
+		summary["error"] = err.Error()
+	}
+	encoder.Encode(summary)
+	flusher.Flush()
+}
+
+// grepFileStream searches for pattern in a single file and calls callback for each match
+func (h *Handler) grepFileStream(path string, re *regexp.Regexp, callback func(GrepMatch) error) error {
+	// Read file content
+	data, err := h.fs.Read(path, 0, -1)
+	// io.EOF is normal when reading entire file, only return error for other errors
+	if err != nil && err != io.EOF {
+		return err
+	}
+
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	lineNum := 1
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if re.MatchString(line) {
+			match := GrepMatch{
+				File:    path,
+				Line:    lineNum,
+				Content: line,
+			}
+			if err := callback(match); err != nil {
+				return err
+			}
+		}
+		lineNum++
+	}
+
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// grepDirectoryStream recursively searches for pattern in a directory and calls callback for each match
+func (h *Handler) grepDirectoryStream(dirPath string, re *regexp.Regexp, callback func(GrepMatch) error) error {
+	// List directory contents
+	entries, err := h.fs.ReadDir(dirPath)
+	if err != nil {
+		return err
+	}
+
+	for _, entry := range entries {
+		// Build full path
+		fullPath := filepath.Join(dirPath, entry.Name)
+		// Clean path to use forward slashes
+		fullPath = filepath.ToSlash(fullPath)
+
+		if entry.IsDir {
+			// Recursively search subdirectories
+			if err := h.grepDirectoryStream(fullPath, re, callback); err != nil {
+				// Log error but continue searching other files
+				log.Warnf("failed to search directory %s: %v", fullPath, err)
+				continue
+			}
+		} else {
+			// Search in file
+			if err := h.grepFileStream(fullPath, re, callback); err != nil {
+				// Log error but continue searching other files
+				log.Warnf("failed to search file %s: %v", fullPath, err)
+				continue
+			}
+		}
+	}
+
+	return nil
+}
+
+// grepFile searches for pattern in a single file
+func (h *Handler) grepFile(path string, re *regexp.Regexp) ([]GrepMatch, error) {
+	// Read file content
+	data, err := h.fs.Read(path, 0, -1)
+	// io.EOF is normal when reading entire file, only return error for other errors
+	if err != nil && err != io.EOF {
+		return nil, err
+	}
+
+	var matches []GrepMatch
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	lineNum := 1
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if re.MatchString(line) {
+			matches = append(matches, GrepMatch{
+				File:    path,
+				Line:    lineNum,
+				Content: line,
+			})
+		}
+		lineNum++
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	return matches, nil
+}
+
+// grepDirectory recursively searches for pattern in a directory
+func (h *Handler) grepDirectory(dirPath string, re *regexp.Regexp) ([]GrepMatch, error) {
+	var allMatches []GrepMatch
+
+	// List directory contents
+	entries, err := h.fs.ReadDir(dirPath)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, entry := range entries {
+		// Build full path
+		fullPath := filepath.Join(dirPath, entry.Name)
+		// Clean path to use forward slashes
+		fullPath = filepath.ToSlash(fullPath)
+
+		if entry.IsDir {
+			// Recursively search subdirectories
+			subMatches, err := h.grepDirectory(fullPath, re)
+			if err != nil {
+				// Log error but continue searching other files
+				log.Warnf("failed to search directory %s: %v", fullPath, err)
+				continue
+			}
+			allMatches = append(allMatches, subMatches...)
+		} else {
+			// Search in file
+			matches, err := h.grepFile(fullPath, re)
+			if err != nil {
+				// Log error but continue searching other files
+				log.Warnf("failed to search file %s: %v", fullPath, err)
+				continue
+			}
+			allMatches = append(allMatches, matches...)
+		}
+	}
+
+	return allMatches, nil
 }
 
 // LoggingMiddleware logs HTTP requests

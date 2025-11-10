@@ -512,5 +512,42 @@ def plugins_list(ctx):
         console.print(f"[red]Error listing plugins: {e}[/red]", highlight=False)
 
 
+@main.command()
+@click.argument("pattern")
+@click.argument("path")
+@click.option("-r", "--recursive", is_flag=True, help="Search recursively in directories")
+@click.option("-i", "--ignore-case", "case_insensitive", is_flag=True, help="Ignore case distinctions")
+@click.option("-c", "--count", "count_only", is_flag=True, help="Only print count of matching lines")
+@click.option("--stream", is_flag=True, help="Stream results as they are found (for large searches)")
+@click.pass_context
+def grep(ctx, pattern, path, recursive, case_insensitive, count_only, stream):
+    """Search for PATTERN in files at PATH using regular expressions
+
+    PATH supports wildcards (* and ?) to match multiple files.
+
+    \b
+    Examples:
+      pfs grep "error" /local/test-grep/file.txt
+      pfs grep -i "error|warning" /var/log/*.log
+      pfs grep -r "test" /local/test-grep
+      pfs grep -i "ERROR" /local/logs
+      pfs grep -r -i "warning|error" /local/logs
+      pfs grep -c "test" /local/test-grep/*.txt
+      pfs grep --stream -r "pattern" /large/directory
+    """
+    try:
+        cli_commands.cmd_grep(
+            ctx.obj["client"],
+            path,
+            pattern,
+            recursive=recursive,
+            case_insensitive=case_insensitive,
+            count_only=count_only,
+            stream=stream
+        )
+    except Exception as e:
+        console.print(f"[red]grep: {e}[/red]", highlight=False)
+
+
 if __name__ == "__main__":
     main()

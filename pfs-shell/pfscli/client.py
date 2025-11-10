@@ -342,3 +342,64 @@ class PFSClient:
             return data.get("loaded_plugins", [])
         except Exception as e:
             self._handle_request_error(e)
+
+    def grep(self, path: str, pattern: str, recursive: bool = False, case_insensitive: bool = False, stream: bool = False):
+        """Search for a pattern in files using regular expressions
+
+        Args:
+            path: Path to file or directory to search
+            pattern: Regular expression pattern to search for
+            recursive: Whether to search recursively in directories (default: False)
+            case_insensitive: Whether to perform case-insensitive matching (default: False)
+            stream: Whether to stream results as NDJSON (default: False)
+
+        Returns:
+            If stream=False: Dict with 'matches' (list of match objects) and 'count'
+            If stream=True: Iterator yielding match dicts and a final summary dict
+
+        Example (non-stream):
+            >>> result = client.grep("/local/test-grep", "error", recursive=True)
+            >>> print(result['count'])
+            2
+
+        Example (stream):
+            >>> for item in client.grep("/local/test-grep", "error", recursive=True, stream=True):
+            ...     if item.get('type') == 'summary':
+            ...         print(f"Total: {item['count']}")
+            ...     else:
+            ...         print(f"{item['file']}:{item['line']}: {item['content']}")
+        """
+        try:
+            response = self.session.post(
+                f"{self.api_base}/grep",
+                json={
+                    "path": path,
+                    "pattern": pattern,
+                    "recursive": recursive,
+                    "case_insensitive": case_insensitive,
+                    "stream": stream
+                },
+                timeout=None if stream else self.timeout,
+                stream=stream
+            )
+            response.raise_for_status()
+
+            if stream:
+                # Return iterator for streaming results
+                return self._parse_ndjson_stream(response)
+            else:
+                # Return complete result
+                return response.json()
+        except Exception as e:
+            self._handle_request_error(e)
+
+    def _parse_ndjson_stream(self, response):
+        """Parse NDJSON streaming response line by line"""
+        import json
+        for line in response.iter_lines():
+            if line:
+                try:
+                    yield json.loads(line)
+                except json.JSONDecodeError as e:
+                    # Skip malformed lines
+                    continue
