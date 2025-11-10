@@ -172,6 +172,29 @@ func (fs *sqlfs2FS) Read(path string, offset int64, size int64) ([]byte, error) 
 		return plugin.ApplyRangeRead(data, offset, size)
 	}
 
+	// Support reading count file
+	if operation == "count" {
+		if dbName == "" || tableName == "" {
+			return nil, fmt.Errorf("invalid path for count: %s", path)
+		}
+
+		// Switch to database if needed
+		if err := fs.plugin.backend.SwitchDatabase(fs.plugin.db, dbName); err != nil {
+			return nil, err
+		}
+
+		// Execute count query
+		sqlStmt := fmt.Sprintf("SELECT COUNT(*) FROM %s.%s", dbName, tableName)
+		var count int64
+		err := fs.plugin.db.QueryRow(sqlStmt).Scan(&count)
+		if err != nil {
+			return nil, fmt.Errorf("count query error: %w", err)
+		}
+
+		data := []byte(fmt.Sprintf("%d\n", count))
+		return plugin.ApplyRangeRead(data, offset, size)
+	}
+
 	if operation == "query" || operation == "execute" {
 		return nil, fmt.Errorf("%s is write-only", operation)
 	}
@@ -352,11 +375,19 @@ func (fs *sqlfs2FS) ReadDir(path string) ([]filesystem.FileInfo, error) {
 		return tables, nil
 	}
 
-	// Table level: list operations (schema, execute, query)
+	// Table level: list operations (schema, execute, query, count)
 	if operation == "" {
 		return []filesystem.FileInfo{
 			{
 				Name:    "schema",
+				Size:    0,
+				Mode:    0444, // read-only
+				ModTime: now,
+				IsDir:   false,
+				Meta:    filesystem.MetaData{Name: PluginName, Type: "operation"},
+			},
+			{
+				Name:    "count",
 				Size:    0,
 				Mode:    0444, // read-only
 				ModTime: now,
@@ -431,7 +462,7 @@ func (fs *sqlfs2FS) Stat(path string) (*filesystem.FileInfo, error) {
 
 	// Operation files
 	mode := uint32(0644)
-	if operation == "schema" {
+	if operation == "schema" || operation == "count" {
 		mode = 0444 // read-only
 	} else if operation == "query" || operation == "execute" {
 		mode = 0222 // write-only
@@ -489,10 +520,11 @@ func getReadme() string {
 This plugin provides a SQL interface through file system operations.
 
 DIRECTORY STRUCTURE:
-  /sqlfs2/<dbName>/<tableName>/{schema, execute, query}
+  /sqlfs2/<dbName>/<tableName>/{schema, count, execute, query}
 
 FILES:
   schema  - Read-only file that returns SHOW CREATE TABLE output
+  count   - Read-only file that returns SELECT COUNT(*) result
   query   - Write-only file for SELECT queries (returns JSON results)
   execute - Write-only file for DML statements (INSERT/UPDATE/DELETE)
 
@@ -556,6 +588,9 @@ USAGE:
   View table schema:
     cat /sqlfs2/mydb/users/schema
 
+  Get row count:
+    cat /sqlfs2/mydb/users/count
+
   Execute SELECT query:
     echo 'SELECT * FROM users LIMIT 10' > /sqlfs2/mydb/users/query
     # Results are returned as JSON
@@ -598,6 +633,10 @@ EXAMPLES:
   # View schema
   pfs:/> cat /sqlfs2/main/test/schema
   CREATE TABLE test (id INT, name VARCHAR(100))
+
+  # Get row count
+  pfs:/> cat /sqlfs2/main/test/count
+  1
 
 ADVANTAGES:
   - Direct SQL access through file system interface

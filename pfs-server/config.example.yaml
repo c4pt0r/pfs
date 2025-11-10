@@ -96,7 +96,6 @@ plugins:
         cache_ttl_seconds: 5
 
   sqlfs2:
-    sqlfs2:
     enabled: true
     path: "/sqlfs2/tidb"
     config:
