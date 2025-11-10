@@ -21,6 +21,7 @@ import (
 	"github.com/c4pt0r/pfs/pfs-server/pkg/plugins/s3fs"
 	"github.com/c4pt0r/pfs/pfs-server/pkg/plugins/serverinfofs"
 	"github.com/c4pt0r/pfs/pfs-server/pkg/plugins/sqlfs"
+	"github.com/c4pt0r/pfs/pfs-server/pkg/plugins/sqlfs2"
 	"github.com/c4pt0r/pfs/pfs-server/pkg/plugins/streamfs"
 	log "github.com/sirupsen/logrus"
 )
@@ -47,6 +48,7 @@ var availablePlugins = map[string]PluginFactory{
 	"s3fs":         func(configFile string) plugin.ServicePlugin { return s3fs.NewS3FSPlugin() },
 	"streamfs":     func(configFile string) plugin.ServicePlugin { return streamfs.NewStreamFSPlugin() },
 	"sqlfs":        func(configFile string) plugin.ServicePlugin { return sqlfs.NewSQLFSPlugin() },
+	"sqlfs2":       func(configFile string) plugin.ServicePlugin { return sqlfs2.NewSQLFS2Plugin() },
 	"localfs":      func(configFile string) plugin.ServicePlugin { return localfs.NewLocalFSPlugin() },
 }
 

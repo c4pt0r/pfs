@@ -90,10 +90,19 @@ plugins:
       path: /sqlfs_tidb
       config:
         backend: tidb
-        dsn: "xxx:yyy@tcp(zzz:4000)/sqlfs?charset=utf8mb4&parseTime=True&tls=tidb"
+        dsn: "<username>:<password>@tcp(addr)/<dbname>?charset=utf8mb4&parseTime=True&tls=tidb"
         cache_enabled: true
         cache_max_size: 1000
         cache_ttl_seconds: 5
+
+  sqlfs2:
+    sqlfs2:
+    enabled: true
+    path: "/sqlfs2/tidb"
+    config:
+      backend: "tidb"
+      dsn: "<username>:<password>@tcp(addr)/<dbname>?charset=utf8mb4&parseTime=True&tls=tidb"
+
 
   # ============================================================================
   # ProxyFS - Remote PFS Proxy (Multiple Instances)
