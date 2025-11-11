@@ -12,11 +12,14 @@ authors = [
     { name = "pfs authors" }
 ]
 dependencies = [
-    "requests>=2.31.0",
+    "pypfs",
     "prompt-toolkit>=3.0.0",
     "rich>=13.0.0",
     "click>=8.0.0",
 ]
+
+[tool.uv.sources]
+pypfs = { path = "../pfs-sdk/python", editable = true }
 
 [project.scripts]
 pfs = "pfscli.cli:main"

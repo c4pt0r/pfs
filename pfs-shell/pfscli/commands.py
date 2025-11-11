@@ -11,7 +11,7 @@ import requests
 from rich.console import Console
 
 from . import cli_commands
-from .client import PFSClientError
+from pypfs import PFSClientError
 
 console = Console()
 

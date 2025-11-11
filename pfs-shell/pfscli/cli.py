@@ -10,7 +10,7 @@ from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 from prompt_toolkit.completion import Completer, Completion
 from rich.console import Console
 
-from .client import PFSClient, PFSClientError
+from pypfs import PFSClient, PFSClientError
 from .commands import CommandHandler
 from . import cli_commands
 from .version import get_version_string, __version__
