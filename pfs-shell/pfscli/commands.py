@@ -712,8 +712,7 @@ class CommandHandler:
         # Check if this is a chained redirection (multiple > or >>)
         redirect_count = args.count(">") + args.count(">>")
         if redirect_count > 1:
-            # Construct command string for chained redirection
-            # First, get the content before any redirection
+            # Find where the first redirection starts
             first_redirect_idx = None
             for i, arg in enumerate(args):
                 if arg == ">" or arg == ">>":
@@ -721,20 +720,33 @@ class CommandHandler:
                     break
 
             if first_redirect_idx is not None:
-                # Build command string: cmd_name + args_before_redirect + redirections
+                # Get content before any redirection
                 args_before_redirect = args[:first_redirect_idx]
                 redirect_part = args[first_redirect_idx:]
 
-                # Quote arguments if needed
+                # Get the initial content from the command
+                try:
+                    result = content_getter(args_before_redirect)
+                    if result is None:
+                        return True
+                    content, source_path = result
+                except Exception as e:
+                    console.print(
+                        self._format_error(cmd_name, "", e),
+                        highlight=False,
+                    )
+                    return True
+
+                # Build command string for parsing redirections
                 quoted_args = [shlex.quote(arg) for arg in args_before_redirect]
                 cmd_str = (
                     f"{cmd_name} {' '.join(quoted_args)} {' '.join(redirect_part)}"
                 )
 
-                # Parse and execute as redirect chain
+                # Parse and execute as redirect chain using unified system
                 redirect_chain = self._parse_redirections(cmd_str)
-                if redirect_chain:
-                    self._execute_redirect_chain(redirect_chain, is_last=True)
+                if redirect_chain and redirect_chain.get('redirects'):
+                    self._apply_redirections(content, redirect_chain['redirects'], is_last=True)
                     return True
 
         # Check for >> (append) redirection
