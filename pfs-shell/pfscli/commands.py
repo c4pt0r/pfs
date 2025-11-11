@@ -1,15 +1,19 @@
 """REPL Command Handlers"""
 
-import shlex
 import os
+import re
+import shlex
+import sys
 from typing import List
-from rich.console import Console
+
 import requests
+from rich.console import Console
 
 from . import cli_commands
 from .client import PFSClientError
 
 console = Console()
+
 
 class CommandHandler:
     """Handler for REPL commands"""
@@ -59,7 +63,7 @@ class CommandHandler:
 
         try:
             # Check for pipe operator
-            if '|' in line:
+            if "|" in line:
                 return self._execute_pipeline(line)
 
             parts = shlex.split(line)
@@ -78,9 +82,6 @@ class CommandHandler:
 
     def _execute_pipeline(self, line: str) -> bool:
         """Execute a pipeline of commands separated by |"""
-        import io
-        import sys
-
         # Split by pipe, but respect quotes
         # We'll use a simple approach: split by '|' but handle quotes properly
         commands = []
@@ -92,7 +93,7 @@ class CommandHandler:
         while i < len(line):
             char = line[i]
 
-            if char in ('"', "'") and (i == 0 or line[i-1] != '\\'):
+            if char in ('"', "'") and (i == 0 or line[i - 1] != "\\"):
                 if not in_quotes:
                     in_quotes = True
                     quote_char = char
@@ -100,9 +101,9 @@ class CommandHandler:
                     in_quotes = False
                     quote_char = None
                 current_cmd.append(char)
-            elif char == '|' and not in_quotes:
+            elif char == "|" and not in_quotes:
                 # Found a pipe separator
-                cmd_str = ''.join(current_cmd).strip()
+                cmd_str = "".join(current_cmd).strip()
                 if cmd_str:
                     commands.append(cmd_str)
                 current_cmd = []
@@ -112,12 +113,15 @@ class CommandHandler:
             i += 1
 
         # Don't forget the last command
-        cmd_str = ''.join(current_cmd).strip()
+        cmd_str = "".join(current_cmd).strip()
         if cmd_str:
             commands.append(cmd_str)
 
         if len(commands) < 2:
-            console.print("[red]Error: pipeline requires at least 2 commands[/red]", highlight=False)
+            console.print(
+                "[red]Error: pipeline requires at least 2 commands[/red]",
+                highlight=False,
+            )
             return True
 
         try:
@@ -125,8 +129,10 @@ class CommandHandler:
             current_input = None
 
             for i, cmd_str in enumerate(commands):
-                is_last = (i == len(commands) - 1)
-                current_input = self._execute_command_with_input(cmd_str, current_input, is_last)
+                is_last = i == len(commands) - 1
+                current_input = self._execute_command_with_input(
+                    cmd_str, current_input, is_last
+                )
 
                 if current_input is None:
                     # Command failed or returned exit signal
@@ -140,7 +146,9 @@ class CommandHandler:
             console.print(f"[red]Pipeline error: {e}[/red]", highlight=False)
             return True
 
-    def _execute_command_with_input(self, cmd_str: str, pipe_input: bytes = None, is_last: bool = False):
+    def _execute_command_with_input(
+        self, cmd_str: str, pipe_input: bytes = None, is_last: bool = False
+    ):
         """Execute a command with optional piped input and return its output.
 
         Args:
@@ -151,9 +159,6 @@ class CommandHandler:
         Returns:
             bytes: Output of the command, or None if command failed
         """
-        import io
-        import sys
-
         try:
             # Check if command has redirection operators (> or >>)
             # Parse redirections to support chained redirections like: echo 'query' > file1 > file2
@@ -177,8 +182,8 @@ class CommandHandler:
                 if not args and pipe_input is not None:
                     if is_last:
                         sys.stdout.buffer.write(pipe_input)
-                        if pipe_input and not pipe_input.endswith(b'\n'):
-                            sys.stdout.buffer.write(b'\n')
+                        if pipe_input and not pipe_input.endswith(b"\n"):
+                            sys.stdout.buffer.write(b"\n")
                         sys.stdout.buffer.flush()
                         return None
                     else:
@@ -189,8 +194,8 @@ class CommandHandler:
                     content = self.client.cat(path)
                     if is_last:
                         sys.stdout.buffer.write(content)
-                        if content and not content.endswith(b'\n'):
-                            sys.stdout.buffer.write(b'\n')
+                        if content and not content.endswith(b"\n"):
+                            sys.stdout.buffer.write(b"\n")
                         sys.stdout.buffer.flush()
                         return None
                     else:
@@ -207,15 +212,23 @@ class CommandHandler:
             elif cmd == "grep":
                 # Grep command - filter piped input
                 if pipe_input is None:
-                    console.print(f"[red]Error: grep requires piped input when used without path[/red]", highlight=False)
+                    console.print(
+                        f"[red]Error: grep requires piped input when used without path[/red]",
+                        highlight=False,
+                    )
                     return None
                 return self._cmd_grep_pipe(args, pipe_input, is_last)
             else:
-                console.print(f"[red]Error: command '{cmd}' does not support piping[/red]", highlight=False)
+                console.print(
+                    f"[red]Error: command '{cmd}' does not support piping[/red]",
+                    highlight=False,
+                )
                 return None
 
         except Exception as e:
-            console.print(f"[red]Error executing '{cmd_str}': {e}[/red]", highlight=False)
+            console.print(
+                f"[red]Error executing '{cmd_str}': {e}[/red]", highlight=False
+            )
             return None
 
     def _parse_redirections(self, cmd_str: str):
@@ -240,7 +253,7 @@ class CommandHandler:
             char = cmd_str[i]
 
             # Handle quotes
-            if char in ('"', "'") and (i == 0 or cmd_str[i-1] != '\\'):
+            if char in ('"', "'") and (i == 0 or cmd_str[i - 1] != "\\"):
                 if not in_quotes:
                     in_quotes = True
                     quote_char = char
@@ -254,49 +267,49 @@ class CommandHandler:
             # Check for redirection operators outside quotes
             if not in_quotes:
                 # Check for >>
-                if i < len(cmd_str) - 1 and cmd_str[i:i+2] == '>>':
+                if i < len(cmd_str) - 1 and cmd_str[i : i + 2] == ">>":
                     # Found append redirection
-                    cmd_before = ''.join(command_part).strip()
+                    cmd_before = "".join(command_part).strip()
                     if not redirects:
                         # First redirection, save command
                         command = cmd_before
                     # Find the path after >>
                     i += 2
                     # Skip whitespace
-                    while i < len(cmd_str) and cmd_str[i] in ' \t':
+                    while i < len(cmd_str) and cmd_str[i] in " \t":
                         i += 1
                     # Extract path (until next > or end)
                     path_chars = []
                     while i < len(cmd_str):
-                        if cmd_str[i] == '>' and (i == 0 or cmd_str[i-1] != '>'):
+                        if cmd_str[i] == ">" and (i == 0 or cmd_str[i - 1] != ">"):
                             break
                         path_chars.append(cmd_str[i])
                         i += 1
-                    path = ''.join(path_chars).strip()
-                    redirects.append({'path': path, 'append': True})
+                    path = "".join(path_chars).strip()
+                    redirects.append({"path": path, "append": True})
                     command_part = []
                     continue
                 # Check for single >
-                elif cmd_str[i] == '>':
+                elif cmd_str[i] == ">":
                     # Found write redirection
-                    cmd_before = ''.join(command_part).strip()
+                    cmd_before = "".join(command_part).strip()
                     if not redirects:
                         # First redirection, save command
                         command = cmd_before
                     # Find the path after >
                     i += 1
                     # Skip whitespace
-                    while i < len(cmd_str) and cmd_str[i] in ' \t':
+                    while i < len(cmd_str) and cmd_str[i] in " \t":
                         i += 1
                     # Extract path (until next > or end)
                     path_chars = []
                     while i < len(cmd_str):
-                        if cmd_str[i] == '>':
+                        if cmd_str[i] == ">":
                             break
                         path_chars.append(cmd_str[i])
                         i += 1
-                    path = ''.join(path_chars).strip()
-                    redirects.append({'path': path, 'append': False})
+                    path = "".join(path_chars).strip()
+                    redirects.append({"path": path, "append": False})
                     command_part = []
                     continue
 
@@ -306,10 +319,7 @@ class CommandHandler:
         if not redirects:
             return None
 
-        return {
-            'command': command,
-            'redirects': redirects
-        }
+        return {"command": command, "redirects": redirects}
 
     def _execute_redirect_chain(self, redirect_chain: dict, is_last: bool = False):
         """Execute a chain of redirections.
@@ -321,11 +331,9 @@ class CommandHandler:
         Returns:
             bytes: Final output, or None if last command
         """
-        import sys
-
         try:
-            command = redirect_chain['command']
-            redirects = redirect_chain['redirects']
+            command = redirect_chain["command"]
+            redirects = redirect_chain["redirects"]
 
             # Execute the initial command to get content
             parts = shlex.split(command)
@@ -339,13 +347,16 @@ class CommandHandler:
             if cmd == "echo":
                 current_content = (" ".join(args) + "\n").encode()
             else:
-                console.print(f"[red]Error: command '{cmd}' not supported in redirection chain[/red]", highlight=False)
+                console.print(
+                    f"[red]Error: command '{cmd}' not supported in redirection chain[/red]",
+                    highlight=False,
+                )
                 return None
 
             # Execute each redirection in sequence
             for i, redirect in enumerate(redirects):
-                path = self._resolve_path(redirect['path'])
-                append = redirect['append']
+                path = self._resolve_path(redirect["path"])
+                append = redirect["append"]
 
                 # Handle append mode
                 if append:
@@ -361,9 +372,15 @@ class CommandHandler:
                 try:
                     response = self.client.write(path, write_content)
                 except Exception as write_error:
-                    console.print(f"[red]Error writing to {path}: {write_error}[/red]", highlight=False)
+                    console.print(
+                        f"[red]Error writing to {path}: {write_error}[/red]",
+                        highlight=False,
+                    )
                     if i < len(redirects) - 1:
-                        console.print(f"[yellow]Chain stopped at redirect {i+1}[/yellow]", highlight=False)
+                        console.print(
+                            f"[yellow]Chain stopped at redirect {i + 1}[/yellow]",
+                            highlight=False,
+                        )
                     return None
 
                 # Convert response to bytes for next iteration
@@ -378,8 +395,14 @@ class CommandHandler:
                     # No response from write
                     if i < len(redirects) - 1:
                         # Not the last redirect, but no response - we can't continue the chain
-                        console.print(f"[red]Error: Write to {path} succeeded but returned no response. Cannot continue chain to next redirect.[/red]", highlight=False)
-                        console.print(f"[red]Chain stopped at redirect {i+1}/{len(redirects)}[/red]", highlight=False)
+                        console.print(
+                            f"[red]Error: Write to {path} succeeded but returned no response. Cannot continue chain to next redirect.[/red]",
+                            highlight=False,
+                        )
+                        console.print(
+                            f"[red]Chain stopped at redirect {i + 1}/{len(redirects)}[/red]",
+                            highlight=False,
+                        )
                         return None
                     else:
                         # Last redirect, no response is OK
@@ -396,10 +419,14 @@ class CommandHandler:
                 return None
 
         except Exception as e:
-            console.print(f"[red]Error in redirection chain: {e}[/red]", highlight=False)
+            console.print(
+                f"[red]Error in redirection chain: {e}[/red]", highlight=False
+            )
             return None
 
-    def _execute_with_redirection(self, cmd_part: str, dest_path: str, append: bool = False, is_last: bool = False):
+    def _execute_with_redirection(
+        self, cmd_part: str, dest_path: str, append: bool = False, is_last: bool = False
+    ):
         """Execute a command with redirection and return the write response.
 
         Args:
@@ -411,8 +438,6 @@ class CommandHandler:
         Returns:
             bytes: Response from write operation, or None if failed
         """
-        import sys
-
         try:
             # Parse the command
             parts = shlex.split(cmd_part)
@@ -427,7 +452,10 @@ class CommandHandler:
                 content = " ".join(args)
                 content_bytes = (content + "\n").encode()
             else:
-                console.print(f"[red]Error: command '{cmd}' with redirection not supported in pipeline[/red]", highlight=False)
+                console.print(
+                    f"[red]Error: command '{cmd}' with redirection not supported in pipeline[/red]",
+                    highlight=False,
+                )
                 return None
 
             # Resolve the destination path
@@ -457,8 +485,8 @@ class CommandHandler:
                 # Output if last command, otherwise return for piping
                 if is_last:
                     sys.stdout.buffer.write(response_bytes)
-                    if response_bytes and not response_bytes.endswith(b'\n'):
-                        sys.stdout.buffer.write(b'\n')
+                    if response_bytes and not response_bytes.endswith(b"\n"):
+                        sys.stdout.buffer.write(b"\n")
                     sys.stdout.buffer.flush()
                     return None
                 else:
@@ -494,7 +522,9 @@ class CommandHandler:
         # Normalize the path to handle .. and .
         return self._normalize_path(resolved)
 
-    def _handle_redirection(self, args: List[str], content_getter, cmd_name: str) -> bool:
+    def _handle_redirection(
+        self, args: List[str], content_getter, cmd_name: str
+    ) -> bool:
         """
         Handle > and >> redirection for commands.
 
@@ -524,7 +554,9 @@ class CommandHandler:
 
                 # Quote arguments if needed
                 quoted_args = [shlex.quote(arg) for arg in args_before_redirect]
-                cmd_str = f"{cmd_name} {' '.join(quoted_args)} {' '.join(redirect_part)}"
+                cmd_str = (
+                    f"{cmd_name} {' '.join(quoted_args)} {' '.join(redirect_part)}"
+                )
 
                 # Parse and execute as redirect chain
                 redirect_chain = self._parse_redirections(cmd_str)
@@ -554,9 +586,13 @@ class CommandHandler:
                     if msg:
                         print(msg)
                 except Exception as e:
-                    console.print(self._format_error(cmd_name, source_path or dest_path, e))
+                    console.print(
+                        self._format_error(cmd_name, source_path or dest_path, e)
+                    )
             else:
-                console.print(f"{cmd_name}: syntax error near unexpected token `newline'")
+                console.print(
+                    f"{cmd_name}: syntax error near unexpected token `newline'"
+                )
             return True
 
         # Check for > (write) redirection
@@ -574,9 +610,15 @@ class CommandHandler:
                     if msg:
                         print(msg)
                 except Exception as e:
-                    console.print(self._format_error(cmd_name, source_path or dest_path, e), highlight=False)
+                    console.print(
+                        self._format_error(cmd_name, source_path or dest_path, e),
+                        highlight=False,
+                    )
             else:
-                console.print(f"{cmd_name}: syntax error near unexpected token `newline'", highlight=False)
+                console.print(
+                    f"{cmd_name}: syntax error near unexpected token `newline'",
+                    highlight=False,
+                )
             return True
 
         return False
@@ -638,7 +680,10 @@ class CommandHandler:
             ("  cat <file> > <dest>", "Copy file content to destination"),
             ("  cat <file> >> <dest>", "Append file content to destination"),
             ("  tail [-n N] <file>", "Display last N lines of file (default: 10)"),
-            ("  echo <text> | tee [-a] <file> [file2...]", "Write to file(s) and stdout"),
+            (
+                "  echo <text> | tee [-a] <file> [file2...]",
+                "Write to file(s) and stdout",
+            ),
             ("  write <file> <content>", "Write content to file"),
             ("  write --stream <file>", "Stream write from stdin (use outside REPL)"),
             ("  echo <content> > <file>", "Write content to file"),
@@ -652,15 +697,24 @@ class CommandHandler:
             ("  chmod <mode> <path>", "Change permissions (e.g., chmod 755 file)"),
             ("  upload [-r] <local> <pfs>", "Upload local file/dir to PFS"),
             ("  download [-r] <pfs> <local>", "Download PFS file/dir to local"),
-            ("  tailf [-n N] <file>", "Show last N lines, then follow to EOF on changes"),
-            ("  grep [-r] [-i] [-c] [--stream] <pattern> <path>", "Search for pattern in files (regex supported)"),
+            (
+                "  tailf [-n N] <file>",
+                "Show last N lines, then follow to EOF on changes",
+            ),
+            (
+                "  grep [-r] [-i] [-c] [--stream] <pattern> <path>",
+                "Search for pattern in files (regex supported)",
+            ),
             ("", ""),
             ("Plugin Management", ""),
             ("  mounts", "List mounted plugins"),
             ("  mount <fstype> <path> [k=v ...]", "Mount plugin dynamically"),
             ("  unmount <path>", "Unmount plugin"),
             ("  plugins", "Show mounted plugins"),
-            ("  plugins load <lib|url>", "Load external plugin from file or HTTP(S) URL"),
+            (
+                "  plugins load <lib|url>",
+                "Load external plugin from file or HTTP(S) URL",
+            ),
             ("  plugins unload <lib>", "Unload external plugin"),
             ("  plugins list", "List loaded external plugins"),
             ("", ""),
@@ -682,16 +736,28 @@ class CommandHandler:
             ("  echo 'world' | tee -a output.txt", "Append to file and stdout"),
             ("  echo 'data' | tee f1.txt f2.txt f3.txt", "Write to multiple files"),
             ("  cat input.txt | tee backup.txt", "Copy file and display"),
-            ("  echo 'select 1+1' > /sqlfs/query | tee result.txt", "Query DB, save and display result"),
+            (
+                "  echo 'select 1+1' > /sqlfs/query | tee result.txt",
+                "Query DB, save and display result",
+            ),
             ("", ""),
             ("Chained Redirection Examples", ""),
-            ("  echo 'select * from users' > query > result.json", "Query and chain results"),
-            ("  echo 'select count(*)' > /sqlfs/q > /s3/backup.txt", "Query, save to S3"),
+            (
+                "  echo 'select * from users' > query > result.json",
+                "Query and chain results",
+            ),
+            (
+                "  echo 'select count(*)' > /sqlfs/q > /s3/backup.txt",
+                "Query, save to S3",
+            ),
             ("", ""),
             ("Streaming Examples (outside REPL)", ""),
             ("  cat video.mp4 | pfs write --stream /mnt/streamfs/video", ""),
             ("  pfs cat --stream /mnt/streamfs/video | ffplay -", ""),
-            ("  ffmpeg -i in.mp4 -f mpegts - | pfs write --stream /mnt/streamfs/live", ""),
+            (
+                "  ffmpeg -i in.mp4 -f mpegts - | pfs write --stream /mnt/streamfs/live",
+                "",
+            ),
         ]
 
         console.print("\nPFS CLI Commands\n", highlight=False)
@@ -730,7 +796,9 @@ class CommandHandler:
                     max_depth = int(args[i + 1])
                     i += 2
                 except ValueError:
-                    console.print(f"tree: invalid depth: '{args[i + 1]}'", highlight=False)
+                    console.print(
+                        f"tree: invalid depth: '{args[i + 1]}'", highlight=False
+                    )
                     return True
             elif not args[i].startswith("-"):
                 path = args[i]
@@ -777,7 +845,9 @@ class CommandHandler:
     def cmd_cat(self, args: List[str]) -> bool:
         """Display file contents (supports > and >> redirection and --stream)"""
         if not args:
-            console.print("Usage: cat [--stream] <file> [> output] [>> output]", highlight=False)
+            console.print(
+                "Usage: cat [--stream] <file> [> output] [>> output]", highlight=False
+            )
             return True
 
         # Check for --stream flag
@@ -785,7 +855,9 @@ class CommandHandler:
         args = [arg for arg in args if arg != "--stream"]
 
         if not args:
-            console.print("Usage: cat [--stream] <file> [> output] [>> output]", highlight=False)
+            console.print(
+                "Usage: cat [--stream] <file> [> output] [>> output]", highlight=False
+            )
             return True
 
         def cat_content_getter(pre_redirect_args):
@@ -798,7 +870,9 @@ class CommandHandler:
         # Handle redirection if present (note: redirection doesn't work with --stream)
         if self._handle_redirection(args, cat_content_getter, "cat"):
             if stream:
-                console.print("cat: --stream cannot be used with redirection", highlight=False)
+                console.print(
+                    "cat: --stream cannot be used with redirection", highlight=False
+                )
             return True
 
         # Normal cat - display to console
@@ -826,7 +900,10 @@ class CommandHandler:
                     lines = int(args[i + 1])
                     i += 2
                 except ValueError:
-                    console.print(f"tail: invalid number of lines: '{args[i + 1]}'", highlight=False)
+                    console.print(
+                        f"tail: invalid number of lines: '{args[i + 1]}'",
+                        highlight=False,
+                    )
                     return True
             else:
                 path_arg = args[i]
@@ -848,8 +925,13 @@ class CommandHandler:
         """Write content to file or stream from stdin (with --stream)"""
         if not args:
             console.print("Usage: write [--stream] <file> [<content>]", highlight=False)
-            console.print("       write --stream <file>   # Read from stdin", highlight=False)
-            console.print("       write <file> <content>  # Write content directly", highlight=False)
+            console.print(
+                "       write --stream <file>   # Read from stdin", highlight=False
+            )
+            console.print(
+                "       write <file> <content>  # Write content directly",
+                highlight=False,
+            )
             return True
 
         # Check for --stream flag
@@ -865,9 +947,18 @@ class CommandHandler:
         try:
             if stream:
                 # Streaming mode - note: this won't work well in REPL since stdin is used for prompt
-                console.print("[yellow]Note: --stream is not available in REPL mode[/yellow]", highlight=False)
-                console.print("[yellow]Use: cat file.dat | pfs write --stream /mnt/streamfs/stream[/yellow]", highlight=False)
-                console.print("[yellow]Or use shell redirection: command | pfs write --stream <path>[/yellow]", highlight=False)
+                console.print(
+                    "[yellow]Note: --stream is not available in REPL mode[/yellow]",
+                    highlight=False,
+                )
+                console.print(
+                    "[yellow]Use: cat file.dat | pfs write --stream /mnt/streamfs/stream[/yellow]",
+                    highlight=False,
+                )
+                console.print(
+                    "[yellow]Or use shell redirection: command | pfs write --stream <path>[/yellow]",
+                    highlight=False,
+                )
             else:
                 # Normal mode
                 if len(args) < 2:
@@ -884,6 +975,7 @@ class CommandHandler:
 
     def cmd_echo(self, args: List[str]) -> bool:
         """Echo content (can redirect to file with > or append with >>)"""
+
         def echo_content_getter(pre_redirect_args):
             content = " ".join(pre_redirect_args)
             # Echo always adds newline
@@ -952,7 +1044,7 @@ class CommandHandler:
         try:
             cli_commands.cmd_stat(self.client, path)
         except Exception as e:
-            console.print(self._format_error('stat', path, e), highlight=False)
+            console.print(self._format_error("stat", path, e), highlight=False)
         return True
 
     def cmd_cp(self, args: List[str]) -> bool:
@@ -980,9 +1072,11 @@ class CommandHandler:
             return True
 
         # Check if source is a directory
-        if src_stat.get('isDir'):
+        if src_stat.get("isDir"):
             if not recursive:
-                console.print(f"cp: {path_args[0]}: is a directory (not copied)", highlight=False)
+                console.print(
+                    f"cp: {path_args[0]}: is a directory (not copied)", highlight=False
+                )
                 return True
             # Recursive copy of directory
             self._copy_directory(src, dst, path_args[0])
@@ -993,10 +1087,9 @@ class CommandHandler:
             # Check if destination is a directory
             try:
                 dst_stat = self.client.stat(dst)
-                if dst_stat.get('isDir'):
+                if dst_stat.get("isDir"):
                     # Destination is a directory, append source filename
-                    import os
-                    src_filename = os.path.basename(src.rstrip('/'))
+                    src_filename = os.path.basename(src.rstrip("/"))
                     dst = f"{dst.rstrip('/')}/{src_filename}"
             except:
                 # Destination doesn't exist, that's fine
@@ -1011,15 +1104,13 @@ class CommandHandler:
 
     def _copy_directory(self, src_dir: str, dst_dir: str, original_src: str):
         """Copy a directory recursively"""
-        import os
-
         # Get the source directory name
-        src_dir_name = os.path.basename(src_dir.rstrip('/'))
+        src_dir_name = os.path.basename(src_dir.rstrip("/"))
 
         # Check if destination exists and is a directory
         try:
             dst_stat = self.client.stat(dst_dir)
-            if dst_stat.get('isDir'):
+            if dst_stat.get("isDir"):
                 # Destination is a directory, create subdirectory with source name
                 dst_dir = f"{dst_dir.rstrip('/')}/{src_dir_name}"
         except:
@@ -1039,6 +1130,7 @@ class CommandHandler:
 
         # Queue for BFS traversal
         from collections import deque
+
         queue = deque([(src_dir, dst_dir)])
 
         while queue:
@@ -1052,8 +1144,8 @@ class CommandHandler:
                 continue
 
             for file_info in files:
-                file_name = file_info.get('name', '')
-                is_dir = file_info.get('isDir', False)
+                file_name = file_info.get("name", "")
+                is_dir = file_info.get("isDir", False)
 
                 src_path = f"{current_src.rstrip('/')}/{file_name}"
                 dst_path = f"{current_dst.rstrip('/')}/{file_name}"
@@ -1065,7 +1157,9 @@ class CommandHandler:
                         console.print(f"Created directory {dst_path}/", highlight=False)
                         queue.append((src_path, dst_path))
                     except Exception as e:
-                        console.print(self._format_error("cp", src_path, e), highlight=False)
+                        console.print(
+                            self._format_error("cp", src_path, e), highlight=False
+                        )
                 else:
                     # Copy file
                     try:
@@ -1086,18 +1180,27 @@ class CommandHandler:
                             mb = size / (1024 * 1024)
                             print(f"  {src_path} -> {dst_path} ({mb:.2f} MB)")
                     except Exception as e:
-                        console.print(self._format_error("cp", src_path, e), highlight=False)
+                        console.print(
+                            self._format_error("cp", src_path, e), highlight=False
+                        )
 
         # Print summary
         if total_files > 0:
             if total_bytes < 1024:
-                console.print(f"\nCopied {total_files} files, {total_bytes} bytes total", highlight=False)
+                console.print(
+                    f"\nCopied {total_files} files, {total_bytes} bytes total",
+                    highlight=False,
+                )
             elif total_bytes < 1024 * 1024:
                 kb = total_bytes / 1024
-                console.print(f"\nCopied {total_files} files, {kb:.2f} KB total", highlight=False)
+                console.print(
+                    f"\nCopied {total_files} files, {kb:.2f} KB total", highlight=False
+                )
             else:
                 mb = total_bytes / (1024 * 1024)
-                console.print(f"\nCopied {total_files} files, {mb:.2f} MB total", highlight=False)
+                console.print(
+                    f"\nCopied {total_files} files, {mb:.2f} MB total", highlight=False
+                )
 
     def cmd_mv(self, args: List[str]) -> bool:
         """Move/rename file"""
@@ -1156,11 +1259,19 @@ class CommandHandler:
     def cmd_mount(self, args: List[str]) -> bool:
         """Mount a plugin dynamically"""
         if len(args) < 2:
-            console.print("Usage: mount <fstype> <path> [key=value ...]", highlight=False)
+            console.print(
+                "Usage: mount <fstype> <path> [key=value ...]", highlight=False
+            )
             console.print("\nExamples:", highlight=False)
             console.print("  mount memfs /test/mem", highlight=False)
-            console.print("  mount sqlfs /test/db backend=sqlite db_path=/tmp/test.db", highlight=False)
-            console.print("  mount s3fs /test/s3 bucket=my-bucket region=us-west-1 access_key_id=xxx secret_access_key=yyy", highlight=False)
+            console.print(
+                "  mount sqlfs /test/db backend=sqlite db_path=/tmp/test.db",
+                highlight=False,
+            )
+            console.print(
+                "  mount s3fs /test/s3 bucket=my-bucket region=us-west-1 access_key_id=xxx secret_access_key=yyy",
+                highlight=False,
+            )
             return True
 
         fstype = args[0]
@@ -1186,9 +1297,18 @@ class CommandHandler:
             if len(args) < 2:
                 console.print("Usage: plugins load <library_path|url>", highlight=False)
                 console.print("\nExamples:", highlight=False)
-                console.print("  plugins load ./examples/plugins/hellofs-c/hellofs-c.dylib", highlight=False)
-                console.print("  plugins load http://example.com/plugins/myplugin.so", highlight=False)
-                console.print("  plugins load https://example.com/plugins/myplugin.dylib", highlight=False)
+                console.print(
+                    "  plugins load ./examples/plugins/hellofs-c/hellofs-c.dylib",
+                    highlight=False,
+                )
+                console.print(
+                    "  plugins load http://example.com/plugins/myplugin.so",
+                    highlight=False,
+                )
+                console.print(
+                    "  plugins load https://example.com/plugins/myplugin.dylib",
+                    highlight=False,
+                )
                 return True
             library_path = args[1]
             try:
@@ -1205,7 +1325,9 @@ class CommandHandler:
             try:
                 cli_commands.cmd_unload_plugin(self.client, library_path)
             except Exception as e:
-                console.print(f"[red]Error unloading plugin: {e}[/red]", highlight=False)
+                console.print(
+                    f"[red]Error unloading plugin: {e}[/red]", highlight=False
+                )
             return True
 
         elif subcommand == "list":
@@ -1216,12 +1338,22 @@ class CommandHandler:
             return True
 
         else:
-            console.print(f"[red]Unknown subcommand: {subcommand}[/red]", highlight=False)
+            console.print(
+                f"[red]Unknown subcommand: {subcommand}[/red]", highlight=False
+            )
             console.print("\nUsage:", highlight=False)
             console.print("  plugins           - List mounted plugins", highlight=False)
-            console.print("  plugins load <library_path>   - Load external plugin", highlight=False)
-            console.print("  plugins unload <library_path> - Unload external plugin", highlight=False)
-            console.print("  plugins list      - List loaded external plugins", highlight=False)
+            console.print(
+                "  plugins load <library_path>   - Load external plugin",
+                highlight=False,
+            )
+            console.print(
+                "  plugins unload <library_path> - Unload external plugin",
+                highlight=False,
+            )
+            console.print(
+                "  plugins list      - List loaded external plugins", highlight=False
+            )
             return True
 
     def cmd_upload(self, args: List[str]) -> bool:
@@ -1250,7 +1382,9 @@ class CommandHandler:
     def cmd_download(self, args: List[str]) -> bool:
         """Download file or directory from PFS to local filesystem"""
         if len(args) < 2:
-            console.print("Usage: download [-r] <pfs_path> <local_path>", highlight=False)
+            console.print(
+                "Usage: download [-r] <pfs_path> <local_path>", highlight=False
+            )
             return True
 
         # Check for -r flag
@@ -1258,7 +1392,9 @@ class CommandHandler:
         path_args = [arg for arg in args if not arg.startswith("-")]
 
         if len(path_args) < 2:
-            console.print("Usage: download [-r] <pfs_path> <local_path>", highlight=False)
+            console.print(
+                "Usage: download [-r] <pfs_path> <local_path>", highlight=False
+            )
             return True
 
         pfs_path = self._resolve_path(path_args[0])
@@ -1287,7 +1423,10 @@ class CommandHandler:
                     lines = int(args[i + 1])
                     i += 2
                 except ValueError:
-                    console.print(f"tailf: invalid number of lines: '{args[i + 1]}'", highlight=False)
+                    console.print(
+                        f"tailf: invalid number of lines: '{args[i + 1]}'",
+                        highlight=False,
+                    )
                     return True
             else:
                 path_arg = args[i]
@@ -1308,7 +1447,9 @@ class CommandHandler:
     def cmd_watch(self, args: List[str]) -> bool:
         """Watch a command - execute it repeatedly at intervals"""
         if not args:
-            console.print("Usage: watch [-n seconds] <command> [args...]", highlight=False)
+            console.print(
+                "Usage: watch [-n seconds] <command> [args...]", highlight=False
+            )
             console.print("Examples:", highlight=False)
             console.print("  watch ls /queuefs", highlight=False)
             console.print("  watch -n 1 cat /serverinfofs/uptime", highlight=False)
@@ -1323,11 +1464,15 @@ class CommandHandler:
             try:
                 interval = float(args[1])
                 if interval <= 0:
-                    console.print("[red]Error: interval must be positive[/red]", highlight=False)
+                    console.print(
+                        "[red]Error: interval must be positive[/red]", highlight=False
+                    )
                     return True
                 command_start_idx = 2
             except ValueError:
-                console.print(f"[red]Error: invalid interval: {args[1]}[/red]", highlight=False)
+                console.print(
+                    f"[red]Error: invalid interval: {args[1]}[/red]", highlight=False
+                )
                 return True
 
         # Get command and its arguments
@@ -1336,7 +1481,7 @@ class CommandHandler:
             return True
 
         cmd_name = args[command_start_idx].lower()
-        cmd_args = args[command_start_idx + 1:]
+        cmd_args = args[command_start_idx + 1 :]
 
         # Map command names to functions
         command_map = {
@@ -1347,7 +1492,10 @@ class CommandHandler:
         }
 
         if cmd_name not in command_map:
-            console.print(f"[red]Error: command '{cmd_name}' not supported in watch[/red]", highlight=False)
+            console.print(
+                f"[red]Error: command '{cmd_name}' not supported in watch[/red]",
+                highlight=False,
+            )
             console.print("Supported commands: ls, cat, stat, mounts", highlight=False)
             return True
 
@@ -1370,10 +1518,14 @@ class CommandHandler:
 
     def cmd_tee(self, args: List[str]) -> bool:
         """Tee command - read from stdin and write to file and stdout (REPL mode)"""
-        console.print("[yellow]Note: tee command requires piped input[/yellow]", highlight=False)
+        console.print(
+            "[yellow]Note: tee command requires piped input[/yellow]", highlight=False
+        )
         console.print("Usage:", highlight=False)
         console.print("  echo 'hello' | tee output.txt", highlight=False)
-        console.print("  echo 'hello' | tee file1.txt file2.txt file3.txt", highlight=False)
+        console.print(
+            "  echo 'hello' | tee file1.txt file2.txt file3.txt", highlight=False
+        )
         console.print("  echo 'world' | tee -a output.txt", highlight=False)
         console.print("  cat file.txt | tee backup.txt", highlight=False)
         return True
@@ -1389,8 +1541,6 @@ class CommandHandler:
         Returns:
             bytes: The input bytes (passed through), or None if last command
         """
-        import sys
-
         if not args:
             console.print("[red]tee: missing file argument[/red]", highlight=False)
             return None
@@ -1406,10 +1556,12 @@ class CommandHandler:
         for arg in args:
             if arg == "-a" or arg == "--append":
                 append_mode = True
-            elif not arg.startswith('-'):
+            elif not arg.startswith("-"):
                 file_paths.append(arg)
             else:
-                console.print(f"[yellow]tee: unknown option: {arg}[/yellow]", highlight=False)
+                console.print(
+                    f"[yellow]tee: unknown option: {arg}[/yellow]", highlight=False
+                )
 
         if not file_paths:
             console.print("[red]tee: missing file argument[/red]", highlight=False)
@@ -1440,8 +1592,8 @@ class CommandHandler:
         # Output to stdout if this is the last command, otherwise pass through
         if is_last:
             sys.stdout.buffer.write(pipe_input)
-            if pipe_input and not pipe_input.endswith(b'\n'):
-                sys.stdout.buffer.write(b'\n')
+            if pipe_input and not pipe_input.endswith(b"\n"):
+                sys.stdout.buffer.write(b"\n")
             sys.stdout.buffer.flush()
             return None
         else:
@@ -1458,9 +1610,6 @@ class CommandHandler:
         Returns:
             bytes: Filtered output, or None if last command
         """
-        import re
-        import sys
-
         if pipe_input is None:
             console.print("[red]grep: no input provided[/red]", highlight=False)
             return None
@@ -1481,7 +1630,9 @@ class CommandHandler:
             elif not arg.startswith("-"):
                 remaining_args.append(arg)
             else:
-                console.print(f"[yellow]grep: unknown option: {arg}[/yellow]", highlight=False)
+                console.print(
+                    f"[yellow]grep: unknown option: {arg}[/yellow]", highlight=False
+                )
 
         if not remaining_args:
             console.print("[red]grep: missing pattern[/red]", highlight=False)
@@ -1499,13 +1650,15 @@ class CommandHandler:
 
         # Decode input and split into lines
         try:
-            text = pipe_input.decode('utf-8')
+            text = pipe_input.decode("utf-8")
         except UnicodeDecodeError:
             # Try latin-1 as fallback
             try:
-                text = pipe_input.decode('latin-1')
+                text = pipe_input.decode("latin-1")
             except Exception as e:
-                console.print(f"[red]grep: failed to decode input: {e}[/red]", highlight=False)
+                console.print(
+                    f"[red]grep: failed to decode input: {e}[/red]", highlight=False
+                )
                 return None
 
         lines = text.splitlines(keepends=True)
@@ -1528,19 +1681,19 @@ class CommandHandler:
                 print(len(matching_lines))
                 return None
             else:
-                return count_str.encode('utf-8')
+                return count_str.encode("utf-8")
         else:
             # Normal mode: output matching lines
-            output = ''.join(matching_lines)
+            output = "".join(matching_lines)
             if is_last:
                 if output:
                     sys.stdout.write(output)
-                    if not output.endswith('\n'):
-                        sys.stdout.write('\n')
+                    if not output.endswith("\n"):
+                        sys.stdout.write("\n")
                 sys.stdout.flush()
                 return None
             else:
-                return output.encode('utf-8')
+                return output.encode("utf-8")
 
     def cmd_grep(self, args: List[str]) -> bool:
         """Search for pattern in files using regular expressions
@@ -1577,7 +1730,9 @@ class CommandHandler:
             cat /local/file.txt | grep -c "pattern"
         """
         if not args:
-            console.print("Usage: grep [-r] [-i] [-c] [--stream] PATTERN PATH", highlight=False)
+            console.print(
+                "Usage: grep [-r] [-i] [-c] [--stream] PATTERN PATH", highlight=False
+            )
             console.print("       ... | grep [-i] [-c] [-v] PATTERN", highlight=False)
             return True
 
@@ -1604,7 +1759,9 @@ class CommandHandler:
                 return True
 
         if len(remaining_args) < 2:
-            console.print("Usage: grep [-r] [-i] [-c] [--stream] PATTERN PATH", highlight=False)
+            console.print(
+                "Usage: grep [-r] [-i] [-c] [--stream] PATTERN PATH", highlight=False
+            )
             return True
 
         pattern = remaining_args[0]
@@ -1618,7 +1775,7 @@ class CommandHandler:
                 recursive=recursive,
                 case_insensitive=case_insensitive,
                 count_only=count_only,
-                stream=stream
+                stream=stream,
             )
         except Exception as e:
             console.print(self._format_error("grep", path, e), highlight=False)

@@ -1,6 +1,9 @@
 import json
+import os
+import signal
 import sys
 import time
+from datetime import datetime
 from typing import Optional
 from rich.console import Console
 
@@ -23,8 +26,6 @@ def format_permissions(mode: int, is_dir: bool) -> str:
 
 def cmd_ls(client, path: str):
     """List directory contents"""
-    from datetime import datetime
-
     files = []
     try:
         files = client.ls(path)
@@ -172,9 +173,6 @@ def cmd_write(client, path: str, content: str = None, stream: bool = False):
     """
     if stream:
         # Streaming mode - read from stdin in binary chunks
-        import sys
-        import signal
-
         total_bytes = 0
         chunk_count = 0
         should_exit = False
@@ -267,8 +265,6 @@ def cmd_stat(client, path: str):
 
 def cmd_cp(client, source: str, destination: str):
     """Copy file"""
-    import os
-
     # If destination ends with / or is a directory, append source filename
     if destination.endswith('/'):
         # Destination is explicitly a directory
@@ -293,8 +289,6 @@ def cmd_cp(client, source: str, destination: str):
 
 def cmd_mv(client, source: str, destination: str):
     """Move/rename file"""
-    import os
-
     # If destination ends with / or is a directory, append source filename
     if destination.endswith('/'):
         # Destination is explicitly a directory
@@ -399,7 +393,6 @@ def cmd_list_plugins(client):
     console.print(f"[bold]Loaded External Plugins:[/bold] ({len(plugins)})", highlight=False)
     for plugin_path in plugins:
         # Extract just the filename for display
-        import os
         filename = os.path.basename(plugin_path)
         console.print(f"  [cyan]{filename}[/cyan]", highlight=False)
         console.print(f"    {plugin_path}", highlight=False)
@@ -457,8 +450,6 @@ def cmd_mount(client, fstype: str, path: str, config_args: list):
 
 def cmd_upload(client, local_path: str, pfs_path: str, recursive: bool = False):
     """Upload local file or directory to PFS"""
-    import os
-
     # Check if local path exists
     if not os.path.exists(local_path):
         console.print(f"upload: {local_path}: No such file or directory", highlight=False)
@@ -523,8 +514,6 @@ def _upload_file(client, local_path: str, pfs_path: str):
 
 def _upload_directory(client, local_dir: str, pfs_dir: str):
     """Upload a directory recursively"""
-    import os
-
     # Create the destination directory
     try:
         client.mkdir(pfs_dir)
@@ -592,8 +581,6 @@ def _get_unique_filename(filepath: str) -> str:
     Returns:
         Unique file path that doesn't exist
     """
-    import os
-
     if not os.path.exists(filepath):
         return filepath
 
@@ -608,8 +595,6 @@ def _get_unique_filename(filepath: str) -> str:
 
 def cmd_download(client, pfs_path: str, local_path: str, recursive: bool = False):
     """Download file or directory from PFS to local filesystem"""
-    import os
-
     # Get info about the PFS path
     try:
         stat_info = client.stat(pfs_path)
@@ -652,8 +637,6 @@ def cmd_download(client, pfs_path: str, local_path: str, recursive: bool = False
 
 def _download_file(client, pfs_path: str, local_path: str):
     """Download a single file"""
-    import os
-
     try:
         # Download from PFS
         content = client.cat(pfs_path)
@@ -676,8 +659,6 @@ def _download_file(client, pfs_path: str, local_path: str):
 
 def _download_directory(client, pfs_dir: str, local_dir: str):
     """Download a directory recursively"""
-    import os
-
     # Create the destination directory
     try:
         os.makedirs(local_dir, exist_ok=True)
@@ -844,9 +825,7 @@ def cmd_watch(client, command_func, args: list, interval: float = 2.0):
         args: Arguments to pass to the command
         interval: Interval in seconds between executions (default: 2.0)
     """
-    import os
     import platform
-    from datetime import datetime
 
     try:
         iteration = 0
@@ -886,8 +865,6 @@ def cmd_tree(client, path: str = "/", max_depth: Optional[int] = None):
         path: Root path to display tree from
         max_depth: Maximum depth to traverse (None for unlimited)
     """
-    import sys
-
     # Detect if we can use Unicode box-drawing characters
     # Try to encode them to check if the terminal supports it
     use_unicode = True
@@ -1071,7 +1048,6 @@ def cmd_grep(client, path: str, pattern: str, recursive: bool = False, case_inse
         stream: Stream results as they are found (useful for large searches)
     """
     import fnmatch
-    import os
 
     # Check if path contains wildcards
     if '*' in path or '?' in path:
