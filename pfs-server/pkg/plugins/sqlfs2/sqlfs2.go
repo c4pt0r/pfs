@@ -322,7 +322,45 @@ func (fs *sqlfs2FS) Remove(path string) error {
 }
 
 func (fs *sqlfs2FS) RemoveAll(path string) error {
-	return fmt.Errorf("operation not supported: removeall")
+	dbName, tableName, operation, err := fs.parsePath(path)
+	if err != nil {
+		return err
+	}
+
+	// Support removing database (DROP DATABASE)
+	// Path should be /dbName
+	if dbName != "" && tableName == "" && operation == "" {
+		// Execute DROP DATABASE
+		sqlStmt := fmt.Sprintf("DROP DATABASE IF EXISTS %s", dbName)
+		_, err := fs.plugin.db.Exec(sqlStmt)
+		if err != nil {
+			return fmt.Errorf("failed to drop database: %w", err)
+		}
+
+		log.Infof("[sqlfs2] Dropped database: %s", dbName)
+		return nil
+	}
+
+	// Support removing tables (DROP TABLE)
+	// Path should be /dbName/tableName
+	if dbName != "" && tableName != "" && operation == "" {
+		// Switch to database if needed
+		if err := fs.plugin.backend.SwitchDatabase(fs.plugin.db, dbName); err != nil {
+			return err
+		}
+
+		// Execute DROP TABLE
+		sqlStmt := fmt.Sprintf("DROP TABLE IF EXISTS %s.%s", dbName, tableName)
+		_, err := fs.plugin.db.Exec(sqlStmt)
+		if err != nil {
+			return fmt.Errorf("failed to drop table: %w", err)
+		}
+
+		log.Infof("[sqlfs2] Dropped table: %s.%s", dbName, tableName)
+		return nil
+	}
+
+	return fmt.Errorf("operation not supported: can only remove databases or tables")
 }
 
 func (fs *sqlfs2FS) ReadDir(path string) ([]filesystem.FileInfo, error) {
