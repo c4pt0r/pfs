@@ -548,13 +548,13 @@ class CommandHandler:
         """
         import fnmatch
 
+        # Resolve relative paths first (always, even without wildcards)
+        resolved_path = self._resolve_path(path)
+
         # Check if path contains wildcards
         if '*' not in path and '?' not in path:
-            # No wildcards, return as-is
-            return [path]
-
-        # Resolve relative paths first
-        resolved_path = self._resolve_path(path)
+            # No wildcards, return resolved path
+            return [resolved_path]
 
         # Split into directory and pattern parts
         dir_path = os.path.dirname(resolved_path)
@@ -627,6 +627,73 @@ class CommandHandler:
                 all_matches.extend(expanded)
 
         return all_matches
+
+    def _wrap_cli_command(
+        self,
+        cli_func,
+        args: List[str],
+        min_args: int = 1,
+        usage: str = "",
+        resolve_paths: bool = True,
+        path_indices: Optional[List[int]] = None,
+    ) -> bool:
+        """Generic wrapper for cli_commands functions to eliminate code duplication.
+
+        This method handles common patterns:
+        - Argument validation
+        - Path resolution
+        - Error handling
+        - Delegation to cli_commands
+
+        Args:
+            cli_func: Function from cli_commands module to call
+            args: Command arguments from user
+            min_args: Minimum number of arguments required
+            usage: Usage string to display if arguments are insufficient
+            resolve_paths: Whether to resolve relative paths to absolute
+            path_indices: Indices of arguments that are paths (default: [0])
+
+        Returns:
+            bool: True to continue REPL, False to exit
+
+        Example:
+            def cmd_mkdir(self, args):
+                return self._wrap_cli_command(
+                    cli_commands.cmd_mkdir, args,
+                    min_args=1, usage="mkdir <directory>"
+                )
+        """
+        # Validate arguments
+        if len(args) < min_args:
+            if usage:
+                console.print(f"Usage: {usage}", highlight=False)
+            else:
+                # Try to infer usage from function name
+                cmd_name = cli_func.__name__.replace('cmd_', '')
+                console.print(f"Usage: {cmd_name} <arguments>", highlight=False)
+            return True
+
+        # Resolve paths if requested
+        if resolve_paths:
+            if path_indices is None:
+                path_indices = [0]  # Default: first argument is a path
+
+            resolved_args = list(args)  # Create a copy
+            for idx in path_indices:
+                if idx < len(resolved_args):
+                    resolved_args[idx] = self._resolve_path(resolved_args[idx])
+            args = resolved_args
+
+        # Call the cli_commands function
+        try:
+            cli_func(self.client, *args)
+        except Exception as e:
+            # Extract command name for error message
+            cmd_name = cli_func.__name__.replace('cmd_', '')
+            error_path = args[0] if args else "unknown"
+            console.print(self._format_error(cmd_name, error_path, e), highlight=False)
+
+        return True
 
     def _handle_redirection(
         self, args: List[str], content_getter, cmd_name: str
@@ -1176,16 +1243,10 @@ class CommandHandler:
 
     def cmd_mkdir(self, args: List[str]) -> bool:
         """Create directory"""
-        if not args:
-            console.print("Usage: mkdir <directory>", highlight=False)
-            return True
-
-        path = self._resolve_path(args[0])
-        try:
-            cli_commands.cmd_mkdir(self.client, path)
-        except Exception as e:
-            console.print(self._format_error("mkdir", path, e), highlight=False)
-        return True
+        return self._wrap_cli_command(
+            cli_commands.cmd_mkdir, args,
+            min_args=1, usage="mkdir <directory>"
+        )
 
     def cmd_rm(self, args: List[str]) -> bool:
         """Remove file or directory (supports wildcards)"""
@@ -1218,16 +1279,10 @@ class CommandHandler:
 
     def cmd_touch(self, args: List[str]) -> bool:
         """Create empty file"""
-        if not args:
-            console.print("Usage: touch <file>", highlight=False)
-            return True
-
-        path = self._resolve_path(args[0])
-        try:
-            cli_commands.cmd_touch(self.client, path)
-        except Exception as e:
-            console.print(self._format_error("touch", path, e), highlight=False)
-        return True
+        return self._wrap_cli_command(
+            cli_commands.cmd_touch, args,
+            min_args=1, usage="touch <file>"
+        )
 
     def cmd_stat(self, args: List[str]) -> bool:
         """Show file/directory information (supports wildcards)"""
@@ -1513,24 +1568,18 @@ class CommandHandler:
 
     def cmd_mounts(self, args: List[str]) -> bool:
         """List mounted plugins"""
-        try:
-            cli_commands.cmd_mounts(self.client)
-        except Exception as e:
-            console.print(f"mounts: {e}", highlight=False)
-        return True
+        return self._wrap_cli_command(
+            cli_commands.cmd_mounts, args,
+            min_args=0, resolve_paths=False
+        )
 
     def cmd_unmount(self, args: List[str]) -> bool:
         """Unmount a plugin"""
-        if not args:
-            console.print("Usage: unmount <path>", highlight=False)
-            return True
-
-        path = args[0]
-        try:
-            cli_commands.cmd_unmount(self.client, path)
-        except Exception as e:
-            console.print(f"unmount: {e}", highlight=False)
-        return True
+        return self._wrap_cli_command(
+            cli_commands.cmd_unmount, args,
+            min_args=1, usage="unmount <path>",
+            resolve_paths=False  # Mount paths don't need resolution
+        )
 
     def cmd_mount(self, args: List[str]) -> bool:
         """Mount a plugin dynamically"""
