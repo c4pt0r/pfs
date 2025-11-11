@@ -186,7 +186,7 @@ func main() {
 		FullTimestamp: true,
 		CallerPrettyfier: func(f *runtime.Frame) (string, string) {
 			filename := filepath.Base(f.File)
-			return "", fmt.Sprintf(" %s:%d\t", filename, f.Line)
+			return "", fmt.Sprintf(" | %s:%d | ", filename, f.Line)
 		},
 	})
 	log.SetReportCaller(true)
@@ -223,7 +223,7 @@ func main() {
 			// Try to get external plugin from mfs
 			p = mfs.CreatePlugin(pluginName)
 			if p == nil {
-				log.Warnf("  Unknown plugin: %s, skipping instance '%s'", pluginName, instanceName)
+				log.Warnf("Unknown plugin: %s, skipping instance '%s'", pluginName, instanceName)
 				return
 			}
 		} else {
@@ -266,7 +266,7 @@ func main() {
 			}
 
 			// Log success
-			log.Infof("  %s instance '%s' mounted at %s", pluginName, instanceName, mountPath)
+			log.Infof("%s instance '%s' mounted at %s", pluginName, instanceName, mountPath)
 		}()
 	}
 
@@ -276,27 +276,27 @@ func main() {
 
 		// Auto-load from plugin directory
 		if cfg.ExternalPlugins.AutoLoad && cfg.ExternalPlugins.PluginDir != "" {
-			log.Infof("  Auto-loading plugins from: %s", cfg.ExternalPlugins.PluginDir)
+			log.Infof("Auto-loading plugins from: %s", cfg.ExternalPlugins.PluginDir)
 			loaded, errors := mfs.LoadExternalPluginsFromDirectory(cfg.ExternalPlugins.PluginDir)
 			if len(errors) > 0 {
-				log.Warnf("  Encountered %d error(s) while loading plugins:", len(errors))
+				log.Warnf("Encountered %d error(s) while loading plugins:", len(errors))
 				for _, err := range errors {
-					log.Warnf("    - %v", err)
+					log.Warnf("- %v", err)
 				}
 			}
 			if len(loaded) > 0 {
-				log.Infof("  Auto-loaded %d plugin(s)", len(loaded))
+				log.Infof("Auto-loaded %d plugin(s)", len(loaded))
 			}
 		}
 
 		// Load specific plugin paths
 		for _, pluginPath := range cfg.ExternalPlugins.PluginPaths {
-			log.Infof("  Loading plugin: %s", pluginPath)
+			log.Infof("Loading plugin: %s", pluginPath)
 			p, err := mfs.LoadExternalPlugin(pluginPath)
 			if err != nil {
-				log.Errorf("  Failed to load plugin %s: %v", pluginPath, err)
+				log.Errorf("Failed to load plugin %s: %v", pluginPath, err)
 			} else {
-				log.Infof("  Loaded plugin: %s", p.Name())
+				log.Infof("Loaded plugin: %s", p.Name())
 			}
 		}
 	}
@@ -321,7 +321,7 @@ func main() {
 		// Mount all instances
 		for _, instance := range instances {
 			if !instance.Enabled {
-				log.Infof("  %s instance '%s' is disabled, skipping", pluginName, instance.Name)
+				log.Infof("%s instance '%s' is disabled, skipping", pluginName, instance.Name)
 				continue
 			}
 
