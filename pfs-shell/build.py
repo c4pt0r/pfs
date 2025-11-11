@@ -88,11 +88,43 @@ def main():
         print("Installing dependencies to portable directory...")
         # Install dependencies directly to a lib directory (no venv)
         lib_dir = portable_dir / "lib"
+
+        # First copy pypfs SDK source directly (bypass uv's editable mode)
+        pypfs_src_dir = script_dir.parent / "pfs-sdk" / "python" / "pypfs"
+        if pypfs_src_dir.exists():
+            print(f"Copying local pypfs from {pypfs_src_dir}...")
+            pypfs_dest_dir = lib_dir / "pypfs"
+            shutil.copytree(pypfs_src_dir, pypfs_dest_dir)
+
+            # Also install pypfs dependencies
+            pypfs_project_dir = script_dir.parent / "pfs-sdk" / "python"
+            subprocess.check_call([
+                "uv", "pip", "install",
+                "--target", str(lib_dir),
+                "--python", sys.executable,
+                "--no-deps",  # Don't install pypfs itself
+                "requests>=2.31.0"  # Install pypfs's dependencies
+            ], cwd=str(script_dir))
+        else:
+            print(f"Warning: pypfs SDK not found at {pypfs_src_dir}")
+
+        # Then install pfs-cli and remaining dependencies
         subprocess.check_call([
             "uv", "pip", "install",
             "--target", str(lib_dir),
             "--python", sys.executable,
+            "--no-deps",  # Don't install dependencies, we'll do it separately
             str(script_dir)
+        ], cwd=str(script_dir))
+
+        # Install pfs-cli dependencies (excluding pypfs which we already copied)
+        subprocess.check_call([
+            "uv", "pip", "install",
+            "--target", str(lib_dir),
+            "--python", sys.executable,
+            "prompt-toolkit>=3.0.0",
+            "rich>=13.0.0",
+            "click>=8.0.0"
         ], cwd=str(script_dir))
 
         # Create launcher script
