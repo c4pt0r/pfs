@@ -509,7 +509,63 @@ func (mfs *MountableFS) ReadDir(path string) ([]filesystem.FileInfo, error) {
 	// Check if path is a mount point or within a mount
 	mount, relPath, found := mfs.findMount(path)
 	if found {
-		return mount.Plugin.GetFileSystem().ReadDir(relPath)
+		// Get contents from the mounted filesystem
+		infos, err := mount.Plugin.GetFileSystem().ReadDir(relPath)
+		if err != nil {
+			return nil, err
+		}
+
+		// Check if there are any child mounts under this path that should be shown
+		// Build the full path we're listing
+		fullPath := path
+		if relPath != "/" {
+			// We're listing a subdirectory within a mount
+			fullPath = mount.Path
+			if relPath != "/" {
+				fullPath = fullPath + relPath
+			}
+		}
+		pathPrefix := fullPath + "/"
+
+		// Find child mount points
+		seenDirs := make(map[string]bool)
+		for _, info := range infos {
+			seenDirs[info.Name] = true
+		}
+
+		// Look for mounts that are children of the current path
+		for mountPath := range mfs.mounts {
+			if strings.HasPrefix(mountPath, pathPrefix) {
+				// Extract the next level directory/mount name
+				remainder := strings.TrimPrefix(mountPath, pathPrefix)
+
+				// Get the first component of the remainder
+				var name string
+				slashIdx := strings.Index(remainder, "/")
+				if slashIdx > 0 {
+					name = remainder[:slashIdx]
+				} else {
+					name = remainder
+				}
+
+				// Add if not already seen
+				if !seenDirs[name] {
+					seenDirs[name] = true
+					infos = append(infos, filesystem.FileInfo{
+						Name:    name,
+						Size:    0,
+						Mode:    0755,
+						ModTime: time.Now(),
+						IsDir:   true,
+						Meta: filesystem.MetaData{
+							Type: MetaValueMountPoint,
+						},
+					})
+				}
+			}
+		}
+
+		return infos, nil
 	}
 
 	// Check if path is a parent directory of mount points
