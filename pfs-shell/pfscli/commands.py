@@ -4,7 +4,8 @@ import os
 import re
 import shlex
 import sys
-from typing import List
+from abc import ABC, abstractmethod
+from typing import List, Optional
 
 import requests
 from rich.console import Console
@@ -13,6 +14,53 @@ from . import cli_commands
 from .client import PFSClientError
 
 console = Console()
+
+
+class PipelineCommand(ABC):
+    """Base class for commands that support pipeline operations.
+
+    Pipeline-aware commands can:
+    - Accept input from previous commands in a pipeline (pipe_input)
+    - Generate output for next commands in a pipeline
+    - Support output redirection (> and >>)
+    """
+
+    def __init__(self, handler):
+        """Initialize with reference to CommandHandler.
+
+        Args:
+            handler: CommandHandler instance for accessing client and utilities
+        """
+        self.handler = handler
+
+    @abstractmethod
+    def execute(
+        self, args: List[str], pipe_input: Optional[bytes] = None, is_last: bool = False
+    ) -> Optional[bytes]:
+        """Execute the command with optional piped input.
+
+        Args:
+            args: Command arguments (not including the command name itself)
+            pipe_input: Input bytes from previous command in pipeline (None if no input)
+            is_last: Whether this is the last command in pipeline (affects output behavior)
+
+        Returns:
+            bytes: Output to pass to next command in pipeline
+            None: If this is the last command or command failed
+        """
+        pass
+
+    def supports_pipe_input(self) -> bool:
+        """Whether this command can accept input from a pipe."""
+        return True
+
+    def supports_pipe_output(self) -> bool:
+        """Whether this command can output to a pipe."""
+        return True
+
+    def supports_redirection(self) -> bool:
+        """Whether this command supports output redirection (> and >>)."""
+        return True
 
 
 class CommandHandler:
@@ -53,6 +101,14 @@ class CommandHandler:
             "clear": self.cmd_clear,
             "exit": self.cmd_exit,
             "quit": self.cmd_exit,
+        }
+
+        # Registry of pipeline-aware commands (used in pipeline execution)
+        self.pipeline_commands = {
+            "tee": TeeCommand(self),
+            "echo": EchoCommand(self),
+            "cat": CatCommand(self),
+            "grep": GrepCommand(self),
         }
 
     def execute(self, line: str) -> bool:
@@ -151,6 +207,8 @@ class CommandHandler:
     ):
         """Execute a command with optional piped input and return its output.
 
+        This is the new unified implementation using the PipelineCommand abstraction.
+
         Args:
             cmd_str: Command string to execute
             pipe_input: Input bytes from previous command in pipeline
@@ -160,64 +218,38 @@ class CommandHandler:
             bytes: Output of the command, or None if command failed
         """
         try:
-            # Check if command has redirection operators (> or >>)
-            # Parse redirections to support chained redirections like: echo 'query' > file1 > file2
+            # Parse command string to check for redirections
             redirect_chain = self._parse_redirections(cmd_str)
 
+            # Extract command name and arguments
             if redirect_chain:
-                return self._execute_redirect_chain(redirect_chain, is_last)
+                # Command has redirections, parse from redirect_chain
+                command_str = redirect_chain["command"]
+                redirects = redirect_chain["redirects"]
+                parts = shlex.split(command_str)
+            else:
+                # No redirections, parse directly
+                parts = shlex.split(cmd_str)
+                redirects = None
 
-            parts = shlex.split(cmd_str)
             if not parts:
                 return None
 
             cmd = parts[0].lower()
             args = parts[1:]
 
-            # Special handling for commands that support piped input
-            if cmd == "tee":
-                return self._cmd_tee_pipe(args, pipe_input, is_last)
-            elif cmd == "cat":
-                # For cat without arguments, output the piped input
-                if not args and pipe_input is not None:
-                    if is_last:
-                        sys.stdout.buffer.write(pipe_input)
-                        if pipe_input and not pipe_input.endswith(b"\n"):
-                            sys.stdout.buffer.write(b"\n")
-                        sys.stdout.buffer.flush()
-                        return None
-                    else:
-                        return pipe_input
-                else:
-                    # Cat with file argument - read the file
-                    path = self._resolve_path(args[0])
-                    content = self.client.cat(path)
-                    if is_last:
-                        sys.stdout.buffer.write(content)
-                        if content and not content.endswith(b"\n"):
-                            sys.stdout.buffer.write(b"\n")
-                        sys.stdout.buffer.flush()
-                        return None
-                    else:
-                        return content
-            elif cmd == "echo":
-                # Echo command - output text
-                text = " ".join(args)
-                output = (text + "\n").encode()
-                if is_last:
-                    print(text)
-                    return None
+            # Check if command is in pipeline registry
+            if cmd in self.pipeline_commands:
+                pipeline_cmd = self.pipeline_commands[cmd]
+
+                # Execute the command to get output
+                output = pipeline_cmd.execute(args, pipe_input, is_last=(is_last and not redirects))
+
+                # If there are redirections, apply them to the output
+                if redirects and output:
+                    return self._apply_redirections(output, redirects, is_last)
                 else:
                     return output
-            elif cmd == "grep":
-                # Grep command - filter piped input
-                if pipe_input is None:
-                    console.print(
-                        f"[red]Error: grep requires piped input when used without path[/red]",
-                        highlight=False,
-                    )
-                    return None
-                return self._cmd_grep_pipe(args, pipe_input, is_last)
             else:
                 console.print(
                     f"[red]Error: command '{cmd}' does not support piping[/red]",
@@ -321,67 +353,45 @@ class CommandHandler:
 
         return {"command": command, "redirects": redirects}
 
-    def _execute_redirect_chain(self, redirect_chain: dict, is_last: bool = False):
-        """Execute a chain of redirections.
+    def _apply_redirections(
+        self, content: bytes, redirects: List[dict], is_last: bool = False
+    ) -> Optional[bytes]:
+        """Apply a chain of redirections to content.
+
+        This is the unified redirection handler used by all commands.
 
         Args:
-            redirect_chain: Parsed redirection chain from _parse_redirections
-            is_last: Whether this is the last command in the pipeline
+            content: The content to redirect (as bytes)
+            redirects: List of redirect specs [{'path': str, 'append': bool}, ...]
+            is_last: Whether this is the last command in pipeline
 
         Returns:
-            bytes: Final output, or None if last command
+            bytes: Final output after all redirections (for pipeline continuation)
+            None: If this is the last command or an error occurred
         """
-        try:
-            command = redirect_chain["command"]
-            redirects = redirect_chain["redirects"]
+        if not content:
+            return None
 
-            # Execute the initial command to get content
-            parts = shlex.split(command)
-            if not parts:
-                return None
+        current_content = content
 
-            cmd = parts[0].lower()
-            args = parts[1:]
+        for i, redirect in enumerate(redirects):
+            path = self._resolve_path(redirect["path"])
+            append = redirect["append"]
 
-            # Generate initial content
-            if cmd == "echo":
-                current_content = (" ".join(args) + "\n").encode()
-            else:
-                console.print(
-                    f"[red]Error: command '{cmd}' not supported in redirection chain[/red]",
-                    highlight=False,
-                )
-                return None
-
-            # Execute each redirection in sequence
-            for i, redirect in enumerate(redirects):
-                path = self._resolve_path(redirect["path"])
-                append = redirect["append"]
-
-                # Handle append mode
-                if append:
-                    try:
-                        existing = self.client.cat(path)
-                        write_content = existing + current_content
-                    except Exception:
-                        write_content = current_content
-                else:
-                    write_content = current_content
-
-                # Write and get response
+            # Handle append mode
+            if append:
                 try:
-                    response = self.client.write(path, write_content)
-                except Exception as write_error:
-                    console.print(
-                        f"[red]Error writing to {path}: {write_error}[/red]",
-                        highlight=False,
-                    )
-                    if i < len(redirects) - 1:
-                        console.print(
-                            f"[yellow]Chain stopped at redirect {i + 1}[/yellow]",
-                            highlight=False,
-                        )
-                    return None
+                    existing = self.client.cat(path)
+                    write_content = existing + current_content
+                except Exception:
+                    # File doesn't exist, just use current content
+                    write_content = current_content
+            else:
+                write_content = current_content
+
+            # Write and get response
+            try:
+                response = self.client.write(path, write_content)
 
                 # Convert response to bytes for next iteration
                 if response:
@@ -394,9 +404,9 @@ class CommandHandler:
                 else:
                     # No response from write
                     if i < len(redirects) - 1:
-                        # Not the last redirect, but no response - we can't continue the chain
+                        # Not the last redirect, but no response - can't continue chain
                         console.print(
-                            f"[red]Error: Write to {path} succeeded but returned no response. Cannot continue chain to next redirect.[/red]",
+                            f"[red]Error: Write to {path} succeeded but returned no response. Cannot continue chain.[/red]",
                             highlight=False,
                         )
                         console.print(
@@ -406,23 +416,25 @@ class CommandHandler:
                         return None
                     else:
                         # Last redirect, no response is OK
-                        current_content = None
+                        current_content = write_content
 
-            # Output or return final result
-            # For redirect chains, we don't output to stdout (silent execution)
-            # Only return content if this is part of a pipeline
-            if current_content and not is_last:
-                # This redirect chain is part of a pipeline, return content to next command
-                return current_content
-            else:
-                # Silent execution - don't output anything
+            except Exception as write_error:
+                console.print(
+                    f"[red]Error writing to {path}: {write_error}[/red]",
+                    highlight=False,
+                )
+                if i < len(redirects) - 1:
+                    console.print(
+                        f"[yellow]Chain stopped at redirect {i + 1}[/yellow]",
+                        highlight=False,
+                    )
                 return None
 
-        except Exception as e:
-            console.print(
-                f"[red]Error in redirection chain: {e}[/red]", highlight=False
-            )
+        # Return final content for pipeline continuation, or None if last command
+        if is_last:
             return None
+        else:
+            return current_content
 
     def _execute_with_redirection(
         self, cmd_part: str, dest_path: str, append: bool = False, is_last: bool = False
@@ -521,6 +533,62 @@ class CommandHandler:
             resolved = f"{self.current_path}/{path}"
         # Normalize the path to handle .. and .
         return self._normalize_path(resolved)
+
+    def _expand_wildcards(self, path: str, include_dirs: bool = True) -> List[str]:
+        """Expand wildcards in path to list of matching files/directories.
+
+        Args:
+            path: Path that may contain wildcards (* or ?)
+            include_dirs: Whether to include directories in results (default: True)
+
+        Returns:
+            List of absolute paths matching the pattern.
+            If no wildcards, returns [path].
+            If wildcards but no matches, returns empty list.
+        """
+        import fnmatch
+
+        # Check if path contains wildcards
+        if '*' not in path and '?' not in path:
+            # No wildcards, return as-is
+            return [path]
+
+        # Resolve relative paths first
+        resolved_path = self._resolve_path(path)
+
+        # Split into directory and pattern parts
+        dir_path = os.path.dirname(resolved_path)
+        file_pattern = os.path.basename(resolved_path)
+
+        # If directory part also has wildcards, we don't support that (yet)
+        if '*' in dir_path or '?' in dir_path:
+            console.print(
+                f"[yellow]Warning: Wildcards in directory path not supported: {dir_path}[/yellow]",
+                highlight=False
+            )
+            return []
+
+        try:
+            # List directory
+            files = self.client.ls(dir_path or '/')
+
+            # Filter files matching the pattern
+            matched_paths = []
+            for file_info in files:
+                if fnmatch.fnmatch(file_info['name'], file_pattern):
+                    # Include based on type
+                    if include_dirs or not file_info.get('isDir', False):
+                        full_path = os.path.join(dir_path or '/', file_info['name'])
+                        matched_paths.append(full_path)
+
+            return sorted(matched_paths)
+
+        except Exception as e:
+            console.print(
+                f"[yellow]Warning: Failed to expand wildcards in {path}: {e}[/yellow]",
+                highlight=False
+            )
+            return []
 
     def _handle_redirection(
         self, args: List[str], content_getter, cmd_name: str
@@ -740,6 +808,10 @@ class CommandHandler:
                 "  echo 'select 1+1' > /sqlfs/query | tee result.txt",
                 "Query DB, save and display result",
             ),
+            (
+                "  cat /s3fs/aws/hello | tee -a /local/access.log > /queuefs/tasks/enqueue",
+                "Read S3 file, append to log, enqueue to task queue",
+            ),
             ("", ""),
             ("Chained Redirection Examples", ""),
             (
@@ -843,11 +915,13 @@ class CommandHandler:
         return True
 
     def cmd_cat(self, args: List[str]) -> bool:
-        """Display file contents (supports > and >> redirection and --stream)"""
+        """Display file contents (supports wildcards, > and >> redirection and --stream)"""
         if not args:
             console.print(
                 "Usage: cat [--stream] <file> [> output] [>> output]", highlight=False
             )
+            console.print("       cat <file1> [file2...]", highlight=False)
+            console.print("Supports wildcards: *.txt, file?.log, etc.", highlight=False)
             return True
 
         # Check for --stream flag
@@ -867,7 +941,7 @@ class CommandHandler:
             content = self.client.cat(source_path)
             return (content, source_path)
 
-        # Handle redirection if present (note: redirection doesn't work with --stream)
+        # Handle redirection if present (note: redirection doesn't work with --stream or wildcards)
         if self._handle_redirection(args, cat_content_getter, "cat"):
             if stream:
                 console.print(
@@ -875,12 +949,27 @@ class CommandHandler:
                 )
             return True
 
-        # Normal cat - display to console
-        path = self._resolve_path(args[0])
-        try:
-            cli_commands.cmd_cat(self.client, path, stream=stream)
-        except Exception as e:
-            console.print(self._format_error("cat", path, e), highlight=False)
+        # Expand wildcards in all file arguments
+        all_files = []
+        for pattern in args:
+            expanded = self._expand_wildcards(pattern, include_dirs=False)
+            if not expanded:
+                console.print(f"[yellow]cat: no match: {pattern}[/yellow]", highlight=False)
+                return True
+            all_files.extend(expanded)
+
+        # Cat each file
+        for i, path in enumerate(all_files):
+            try:
+                if len(all_files) > 1:
+                    # Print separator for multiple files
+                    if i > 0:
+                        console.print("", highlight=False)
+                    console.print(f"==> {path} <==", highlight=False)
+                cli_commands.cmd_cat(self.client, path, stream=stream)
+            except Exception as e:
+                console.print(self._format_error("cat", path, e), highlight=False)
+
         return True
 
     def cmd_tail(self, args: List[str]) -> bool:
@@ -1003,9 +1092,11 @@ class CommandHandler:
         return True
 
     def cmd_rm(self, args: List[str]) -> bool:
-        """Remove file or directory"""
+        """Remove file or directory (supports wildcards)"""
         if not args:
             console.print("Usage: rm <path> [-r]", highlight=False)
+            console.print("       rm <path1> [path2...] [-r]", highlight=False)
+            console.print("Supports wildcards: *.txt, file?.log, etc.", highlight=False)
             return True
 
         recursive = "-r" in args or "--recursive" in args
@@ -1014,11 +1105,26 @@ class CommandHandler:
             console.print("Usage: rm <path> [-r]", highlight=False)
             return True
 
-        path = self._resolve_path(path_args[0])
-        try:
-            cli_commands.cmd_rm(self.client, path, recursive)
-        except Exception as e:
-            console.print(self._format_error("rm", path, e), highlight=False)
+        # Expand wildcards in all path arguments
+        all_paths = []
+        for pattern in path_args:
+            expanded = self._expand_wildcards(pattern, include_dirs=True)
+            if not expanded:
+                console.print(f"[yellow]rm: no match: {pattern}[/yellow]", highlight=False)
+                continue
+            all_paths.extend(expanded)
+
+        if not all_paths:
+            return True
+
+        # Remove each path
+        for path in all_paths:
+            try:
+                cli_commands.cmd_rm(self.client, path, recursive)
+                console.print(f"  removed '{path}'", highlight=False)
+            except Exception as e:
+                console.print(self._format_error("rm", path, e), highlight=False)
+
         return True
 
     def cmd_touch(self, args: List[str]) -> bool:
@@ -1048,9 +1154,11 @@ class CommandHandler:
         return True
 
     def cmd_cp(self, args: List[str]) -> bool:
-        """Copy file or directory"""
+        """Copy file or directory (supports wildcards)"""
         if len(args) < 2:
             console.print("Usage: cp [-r] <source> <destination>", highlight=False)
+            console.print("       cp [-r] <source1> [source2...] <destination>", highlight=False)
+            console.print("Supports wildcards: *.txt, file?.log, etc.", highlight=False)
             return True
 
         # Check for -r flag
@@ -1061,45 +1169,72 @@ class CommandHandler:
             console.print("Usage: cp [-r] <source> <destination>", highlight=False)
             return True
 
-        src = self._resolve_path(path_args[0])
-        dst = self._resolve_path(path_args[1])
+        # Destination is always the last argument
+        dst = self._resolve_path(path_args[-1])
 
-        # Check if source exists and get its info
-        try:
-            src_stat = self.client.stat(src)
-        except Exception as e:
-            console.print(self._format_error("cp", path_args[0], e), highlight=False)
-            return True
+        # All other arguments are sources (may contain wildcards)
+        source_patterns = path_args[:-1]
 
-        # Check if source is a directory
-        if src_stat.get("isDir"):
-            if not recursive:
-                console.print(
-                    f"cp: {path_args[0]}: is a directory (not copied)", highlight=False
-                )
+        # Expand wildcards in all source patterns
+        all_sources = []
+        for pattern in source_patterns:
+            expanded = self._expand_wildcards(pattern, include_dirs=True)
+            if not expanded:
+                console.print(f"[yellow]cp: no match: {pattern}[/yellow]", highlight=False)
                 return True
-            # Recursive copy of directory
-            self._copy_directory(src, dst, path_args[0])
-            return True
+            all_sources.extend(expanded)
 
-        # Source is a file
-        try:
-            # Check if destination is a directory
+        # If multiple sources, destination must be a directory
+        if len(all_sources) > 1:
             try:
                 dst_stat = self.client.stat(dst)
-                if dst_stat.get("isDir"):
-                    # Destination is a directory, append source filename
-                    src_filename = os.path.basename(src.rstrip("/"))
-                    dst = f"{dst.rstrip('/')}/{src_filename}"
+                if not dst_stat.get("isDir"):
+                    console.print(f"cp: target '{path_args[-1]}' is not a directory", highlight=False)
+                    return True
             except:
-                # Destination doesn't exist, that's fine
-                pass
+                console.print(f"cp: target '{path_args[-1]}' does not exist", highlight=False)
+                return True
 
-            # Read source file and write to destination
-            content = self.client.cat(src)
-            self.client.write(dst, content)
-        except Exception as e:
-            console.print(self._format_error("cp", path_args[0], e), highlight=False)
+        # Copy each source
+        for src in all_sources:
+            try:
+                src_stat = self.client.stat(src)
+            except Exception as e:
+                console.print(self._format_error("cp", src, e), highlight=False)
+                continue
+
+            # Check if source is a directory
+            if src_stat.get("isDir"):
+                if not recursive:
+                    console.print(
+                        f"cp: {src}: is a directory (not copied, use -r)", highlight=False
+                    )
+                    continue
+                # Recursive copy of directory
+                self._copy_directory(src, dst, src)
+                continue
+
+            # Source is a file
+            try:
+                # Determine final destination path
+                final_dst = dst
+                try:
+                    dst_stat = self.client.stat(dst)
+                    if dst_stat.get("isDir"):
+                        # Destination is a directory, append source filename
+                        src_filename = os.path.basename(src.rstrip("/"))
+                        final_dst = f"{dst.rstrip('/')}/{src_filename}"
+                except:
+                    # Destination doesn't exist, use as-is
+                    pass
+
+                # Read source file and write to destination
+                content = self.client.cat(src)
+                self.client.write(final_dst, content)
+                console.print(f"  {src} -> {final_dst}", highlight=False)
+            except Exception as e:
+                console.print(self._format_error("cp", src, e), highlight=False)
+
         return True
 
     def _copy_directory(self, src_dir: str, dst_dir: str, original_src: str):
@@ -1203,17 +1338,59 @@ class CommandHandler:
                 )
 
     def cmd_mv(self, args: List[str]) -> bool:
-        """Move/rename file"""
+        """Move/rename file (supports wildcards)"""
         if len(args) < 2:
             console.print("Usage: mv <source> <destination>", highlight=False)
+            console.print("       mv <source1> [source2...] <destination>", highlight=False)
+            console.print("Supports wildcards: *.txt, file?.log, etc.", highlight=False)
             return True
 
-        src = self._resolve_path(args[0])
-        dst = self._resolve_path(args[1])
-        try:
-            cli_commands.cmd_mv(self.client, src, dst)
-        except Exception as e:
-            console.print(self._format_error("mv", src, e), highlight=False)
+        # Destination is always the last argument
+        dst = self._resolve_path(args[-1])
+
+        # All other arguments are sources (may contain wildcards)
+        source_patterns = args[:-1]
+
+        # Expand wildcards in all source patterns
+        all_sources = []
+        for pattern in source_patterns:
+            expanded = self._expand_wildcards(pattern, include_dirs=True)
+            if not expanded:
+                console.print(f"[yellow]mv: no match: {pattern}[/yellow]", highlight=False)
+                return True
+            all_sources.extend(expanded)
+
+        # If multiple sources, destination must be a directory
+        if len(all_sources) > 1:
+            try:
+                dst_stat = self.client.stat(dst)
+                if not dst_stat.get("isDir"):
+                    console.print(f"mv: target '{args[-1]}' is not a directory", highlight=False)
+                    return True
+            except:
+                console.print(f"mv: target '{args[-1]}' does not exist", highlight=False)
+                return True
+
+        # Move each source
+        for src in all_sources:
+            try:
+                # Determine final destination path
+                final_dst = dst
+                try:
+                    dst_stat = self.client.stat(dst)
+                    if dst_stat.get("isDir"):
+                        # Destination is a directory, append source filename
+                        src_filename = os.path.basename(src.rstrip("/"))
+                        final_dst = f"{dst.rstrip('/')}/{src_filename}"
+                except:
+                    # Destination doesn't exist, use as-is (only for single file)
+                    pass
+
+                cli_commands.cmd_mv(self.client, src, final_dst)
+                console.print(f"  {src} -> {final_dst}", highlight=False)
+            except Exception as e:
+                console.print(self._format_error("mv", src, e), highlight=False)
+
         return True
 
     def cmd_chmod(self, args: List[str]) -> bool:
@@ -1528,172 +1705,11 @@ class CommandHandler:
         )
         console.print("  echo 'world' | tee -a output.txt", highlight=False)
         console.print("  cat file.txt | tee backup.txt", highlight=False)
+        console.print("  cat file.txt | tee -a log.txt > output.txt", highlight=False)
         return True
 
-    def _cmd_tee_pipe(self, args: List[str], pipe_input: bytes, is_last: bool):
-        """Tee command for pipeline - write input to file(s) and pass through to stdout.
-
-        Args:
-            args: List of file paths to write to (supports -a flag for append mode)
-            pipe_input: Input bytes from previous command
-            is_last: Whether this is the last command in the pipeline
-
-        Returns:
-            bytes: The input bytes (passed through), or None if last command
-        """
-        if not args:
-            console.print("[red]tee: missing file argument[/red]", highlight=False)
-            return None
-
-        if pipe_input is None:
-            console.print("[red]tee: no input provided[/red]", highlight=False)
-            return None
-
-        # Parse arguments to check for -a flag
-        append_mode = False
-        file_paths = []
-
-        for arg in args:
-            if arg == "-a" or arg == "--append":
-                append_mode = True
-            elif not arg.startswith("-"):
-                file_paths.append(arg)
-            else:
-                console.print(
-                    f"[yellow]tee: unknown option: {arg}[/yellow]", highlight=False
-                )
-
-        if not file_paths:
-            console.print("[red]tee: missing file argument[/red]", highlight=False)
-            return None
-
-        # Write to each file specified
-        for file_arg in file_paths:
-            try:
-                file_path = self._resolve_path(file_arg)
-
-                if append_mode:
-                    # Append mode: read existing content and append (Unix standard behavior)
-                    try:
-                        existing_content = self.client.cat(file_path)
-                        new_content = existing_content + pipe_input
-                    except:
-                        # File doesn't exist, just use pipe_input
-                        new_content = pipe_input
-                    self.client.write(file_path, new_content)
-                else:
-                    # Write mode: overwrite file
-                    self.client.write(file_path, pipe_input)
-
-            except Exception as e:
-                console.print(f"[red]tee: {file_arg}: {e}[/red]", highlight=False)
-                # Continue to other files even if one fails
-
-        # Output to stdout if this is the last command, otherwise pass through
-        if is_last:
-            sys.stdout.buffer.write(pipe_input)
-            if pipe_input and not pipe_input.endswith(b"\n"):
-                sys.stdout.buffer.write(b"\n")
-            sys.stdout.buffer.flush()
-            return None
-        else:
-            return pipe_input
-
-    def _cmd_grep_pipe(self, args: List[str], pipe_input: bytes, is_last: bool):
-        """Grep command for pipeline - filter input by pattern.
-
-        Args:
-            args: Pattern and flags (e.g., ['-i', 'pattern'])
-            pipe_input: Input bytes from previous command
-            is_last: Whether this is the last command in the pipeline
-
-        Returns:
-            bytes: Filtered output, or None if last command
-        """
-        if pipe_input is None:
-            console.print("[red]grep: no input provided[/red]", highlight=False)
-            return None
-
-        # Parse flags
-        case_insensitive = False
-        count_only = False
-        invert_match = False
-        remaining_args = []
-
-        for arg in args:
-            if arg in ["-i", "--ignore-case"]:
-                case_insensitive = True
-            elif arg in ["-c", "--count"]:
-                count_only = True
-            elif arg in ["-v", "--invert-match"]:
-                invert_match = True
-            elif not arg.startswith("-"):
-                remaining_args.append(arg)
-            else:
-                console.print(
-                    f"[yellow]grep: unknown option: {arg}[/yellow]", highlight=False
-                )
-
-        if not remaining_args:
-            console.print("[red]grep: missing pattern[/red]", highlight=False)
-            return None
-
-        pattern = remaining_args[0]
-
-        # Compile regex pattern
-        try:
-            flags = re.IGNORECASE if case_insensitive else 0
-            regex = re.compile(pattern, flags)
-        except re.error as e:
-            console.print(f"[red]grep: invalid pattern: {e}[/red]", highlight=False)
-            return None
-
-        # Decode input and split into lines
-        try:
-            text = pipe_input.decode("utf-8")
-        except UnicodeDecodeError:
-            # Try latin-1 as fallback
-            try:
-                text = pipe_input.decode("latin-1")
-            except Exception as e:
-                console.print(
-                    f"[red]grep: failed to decode input: {e}[/red]", highlight=False
-                )
-                return None
-
-        lines = text.splitlines(keepends=True)
-
-        # Filter lines
-        matching_lines = []
-        for line in lines:
-            matches = bool(regex.search(line))
-            # Apply invert match if specified
-            if invert_match:
-                matches = not matches
-            if matches:
-                matching_lines.append(line)
-
-        # Handle output
-        if count_only:
-            # Count mode: just output the count
-            count_str = f"{len(matching_lines)}\n"
-            if is_last:
-                print(len(matching_lines))
-                return None
-            else:
-                return count_str.encode("utf-8")
-        else:
-            # Normal mode: output matching lines
-            output = "".join(matching_lines)
-            if is_last:
-                if output:
-                    sys.stdout.write(output)
-                    if not output.endswith("\n"):
-                        sys.stdout.write("\n")
-                sys.stdout.flush()
-                return None
-            else:
-                return output.encode("utf-8")
+    # Old pipeline methods removed - now using PipelineCommand abstraction
+    # See TeeCommand, EchoCommand, CatCommand, GrepCommand classes at end of file
 
     def cmd_grep(self, args: List[str]) -> bool:
         """Search for pattern in files using regular expressions
@@ -1791,3 +1807,256 @@ class CommandHandler:
         """Exit REPL"""
         console.print("Goodbye!", highlight=False)
         return False
+
+
+# ============================================================================
+# Pipeline Command Implementations
+# ============================================================================
+
+
+class TeeCommand(PipelineCommand):
+    """Tee command - write input to file(s) and pass through to output."""
+
+    def execute(
+        self, args: List[str], pipe_input: Optional[bytes] = None, is_last: bool = False
+    ) -> Optional[bytes]:
+        """Execute tee command.
+
+        Args:
+            args: [-a] file1 [file2 ...]
+            pipe_input: Input from previous command
+            is_last: Whether this is last in pipeline
+
+        Returns:
+            bytes: Pass-through of input (or redirect response if redirected)
+        """
+        if pipe_input is None:
+            console.print("[red]tee: no input provided[/red]", highlight=False)
+            return None
+
+        # Parse arguments for -a flag and file paths
+        append_mode = False
+        file_paths = []
+
+        for arg in args:
+            if arg == "-a" or arg == "--append":
+                append_mode = True
+            elif not arg.startswith("-"):
+                file_paths.append(arg)
+            else:
+                console.print(
+                    f"[yellow]tee: unknown option: {arg}[/yellow]", highlight=False
+                )
+
+        if not file_paths:
+            console.print("[red]tee: missing file argument[/red]", highlight=False)
+            return None
+
+        # Write to all specified files
+        for file_arg in file_paths:
+            try:
+                file_path = self.handler._resolve_path(file_arg)
+
+                if append_mode:
+                    # Append mode: read existing content and append
+                    try:
+                        existing_content = self.handler.client.cat(file_path)
+                        new_content = existing_content + pipe_input
+                    except:
+                        # File doesn't exist, just use pipe_input
+                        new_content = pipe_input
+                    self.handler.client.write(file_path, new_content)
+                else:
+                    # Write mode: overwrite file
+                    self.handler.client.write(file_path, pipe_input)
+
+            except Exception as e:
+                console.print(f"[red]tee: {file_arg}: {e}[/red]", highlight=False)
+                # Continue to other files even if one fails
+
+        # Output to stdout if this is the last command, otherwise pass through
+        if is_last:
+            sys.stdout.buffer.write(pipe_input)
+            if pipe_input and not pipe_input.endswith(b"\n"):
+                sys.stdout.buffer.write(b"\n")
+            sys.stdout.buffer.flush()
+            return None
+        else:
+            return pipe_input
+
+
+class EchoCommand(PipelineCommand):
+    """Echo command - output text."""
+
+    def execute(
+        self, args: List[str], pipe_input: Optional[bytes] = None, is_last: bool = False
+    ) -> Optional[bytes]:
+        """Execute echo command.
+
+        Args:
+            args: Text to echo
+            pipe_input: Ignored (echo doesn't use piped input)
+            is_last: Whether this is last in pipeline
+
+        Returns:
+            bytes: The echoed text as bytes
+        """
+        text = " ".join(args)
+        output = (text + "\n").encode()
+
+        if is_last:
+            print(text)
+            return None
+        else:
+            return output
+
+    def supports_pipe_input(self) -> bool:
+        """Echo doesn't use piped input."""
+        return False
+
+
+class CatCommand(PipelineCommand):
+    """Cat command - display file contents or pass through piped input."""
+
+    def execute(
+        self, args: List[str], pipe_input: Optional[bytes] = None, is_last: bool = False
+    ) -> Optional[bytes]:
+        """Execute cat command.
+
+        Args:
+            args: [file] - file path (optional if piped input provided)
+            pipe_input: Input from previous command
+            is_last: Whether this is last in pipeline
+
+        Returns:
+            bytes: File contents or piped input
+        """
+        # If no args and we have piped input, just pass it through
+        if not args and pipe_input is not None:
+            if is_last:
+                sys.stdout.buffer.write(pipe_input)
+                if pipe_input and not pipe_input.endswith(b"\n"):
+                    sys.stdout.buffer.write(b"\n")
+                sys.stdout.buffer.flush()
+                return None
+            else:
+                return pipe_input
+
+        # Read from file
+        if not args:
+            console.print("[red]cat: missing file argument[/red]", highlight=False)
+            return None
+
+        try:
+            path = self.handler._resolve_path(args[0])
+            content = self.handler.client.cat(path)
+
+            if is_last:
+                sys.stdout.buffer.write(content)
+                if content and not content.endswith(b"\n"):
+                    sys.stdout.buffer.write(b"\n")
+                sys.stdout.buffer.flush()
+                return None
+            else:
+                return content
+        except Exception as e:
+            console.print(f"[red]cat: {args[0]}: {e}[/red]", highlight=False)
+            return None
+
+
+class GrepCommand(PipelineCommand):
+    """Grep command - filter input by pattern."""
+
+    def execute(
+        self, args: List[str], pipe_input: Optional[bytes] = None, is_last: bool = False
+    ) -> Optional[bytes]:
+        """Execute grep command.
+
+        Args:
+            args: [-i] [-c] [-v] pattern
+            pipe_input: Input from previous command
+            is_last: Whether this is last in pipeline
+
+        Returns:
+            bytes: Filtered output
+        """
+        if pipe_input is None:
+            console.print("[red]grep: no input provided[/red]", highlight=False)
+            return None
+
+        # Parse flags
+        case_insensitive = False
+        count_only = False
+        invert_match = False
+        remaining_args = []
+
+        for arg in args:
+            if arg in ["-i", "--ignore-case"]:
+                case_insensitive = True
+            elif arg in ["-c", "--count"]:
+                count_only = True
+            elif arg in ["-v", "--invert-match"]:
+                invert_match = True
+            elif not arg.startswith("-"):
+                remaining_args.append(arg)
+            else:
+                console.print(
+                    f"[yellow]grep: unknown option: {arg}[/yellow]", highlight=False
+                )
+
+        if not remaining_args:
+            console.print("[red]grep: missing pattern[/red]", highlight=False)
+            return None
+
+        pattern = remaining_args[0]
+
+        # Compile regex pattern
+        try:
+            flags = re.IGNORECASE if case_insensitive else 0
+            regex = re.compile(pattern, flags)
+        except re.error as e:
+            console.print(f"[red]grep: invalid pattern: {e}[/red]", highlight=False)
+            return None
+
+        # Decode input
+        try:
+            text = pipe_input.decode("utf-8")
+        except UnicodeDecodeError:
+            try:
+                text = pipe_input.decode("latin-1")
+            except Exception as e:
+                console.print(
+                    f"[red]grep: failed to decode input: {e}[/red]", highlight=False
+                )
+                return None
+
+        lines = text.splitlines(keepends=True)
+
+        # Filter lines
+        matching_lines = []
+        for line in lines:
+            matches = bool(regex.search(line))
+            if invert_match:
+                matches = not matches
+            if matches:
+                matching_lines.append(line)
+
+        # Handle output
+        if count_only:
+            count_str = f"{len(matching_lines)}\n"
+            if is_last:
+                print(len(matching_lines))
+                return None
+            else:
+                return count_str.encode("utf-8")
+        else:
+            output = "".join(matching_lines)
+            if is_last:
+                if output:
+                    sys.stdout.write(output)
+                    if not output.endswith("\n"):
+                        sys.stdout.write("\n")
+                sys.stdout.flush()
+                return None
+            else:
+                return output.encode("utf-8")
