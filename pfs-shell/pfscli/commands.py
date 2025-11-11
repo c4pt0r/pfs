@@ -590,6 +590,44 @@ class CommandHandler:
             )
             return []
 
+    def _expand_patterns(
+        self,
+        patterns: List[str],
+        include_dirs: bool = True,
+        on_no_match: str = "error",
+        cmd_name: str = "command"
+    ) -> Optional[List[str]]:
+        """Expand multiple wildcard patterns with consistent error handling.
+
+        Args:
+            patterns: List of patterns that may contain wildcards
+            include_dirs: Whether to include directories in results
+            on_no_match: How to handle no matches: "error" (return None), "skip" (continue), "warn" (warning + continue)
+            cmd_name: Command name for error messages
+
+        Returns:
+            List of all matching paths, or None if on_no_match="error" and no matches found
+        """
+        all_matches = []
+
+        for pattern in patterns:
+            expanded = self._expand_wildcards(pattern, include_dirs=include_dirs)
+
+            if not expanded:
+                # Handle no match based on policy
+                if on_no_match == "error":
+                    console.print(f"[yellow]{cmd_name}: no match: {pattern}[/yellow]", highlight=False)
+                    return None
+                elif on_no_match == "skip":
+                    continue
+                elif on_no_match == "warn":
+                    console.print(f"[yellow]{cmd_name}: no match: {pattern}[/yellow]", highlight=False)
+                    continue
+            else:
+                all_matches.extend(expanded)
+
+        return all_matches
+
     def _handle_redirection(
         self, args: List[str], content_getter, cmd_name: str
     ) -> bool:
@@ -844,15 +882,77 @@ class CommandHandler:
         return True
 
     def cmd_ls(self, args: List[str]) -> bool:
-        """List directory contents"""
+        """List directory contents (supports wildcards)"""
         # Filter out flags from args
         paths = [arg for arg in args if not arg.startswith("-")]
-        path = self._resolve_path(paths[0] if paths else self.current_path)
 
-        try:
-            cli_commands.cmd_ls(self.client, path)
-        except Exception as e:
-            console.print(self._format_error("ls", path, e), highlight=False)
+        if not paths:
+            # No arguments, list current directory
+            path = self.current_path
+            try:
+                cli_commands.cmd_ls(self.client, path)
+            except Exception as e:
+                console.print(self._format_error("ls", path, e), highlight=False)
+            return True
+
+        # Check if path contains wildcards
+        pattern = paths[0]
+        if '*' in pattern or '?' in pattern:
+            # Expand wildcards and list matching files
+            expanded = self._expand_wildcards(pattern, include_dirs=True)
+            if not expanded:
+                console.print(f"[yellow]ls: no match: {pattern}[/yellow]", highlight=False)
+                return True
+
+            # Show just the list of matching files (like Unix ls)
+            # Group by directory vs file for better display
+            files = []
+            dirs = []
+            for path in expanded:
+                try:
+                    stat = self.client.stat(path)
+                    if stat.get('isDir'):
+                        dirs.append((path, stat))
+                    else:
+                        files.append((path, stat))
+                except Exception as e:
+                    console.print(self._format_error("ls", path, e), highlight=False)
+
+            # Display files first (just like regular ls does)
+            for path, stat in files + dirs:
+                # Format like regular ls output
+                mode = stat.get('mode', 0)
+                size = stat.get('size', 0)
+                mtime = stat.get('modTime', '')
+                is_dir = stat.get('isDir', False)
+
+                # Format permissions using cli_commands helper
+                perms = cli_commands.format_permissions(mode, is_dir)
+
+                # Format timestamp
+                if mtime:
+                    from datetime import datetime
+                    try:
+                        dt = datetime.fromisoformat(mtime.replace('Z', '+00:00'))
+                        time_str = dt.strftime('%Y-%m-%d %H:%M:%S')
+                    except:
+                        time_str = mtime[:19] if len(mtime) >= 19 else mtime
+                else:
+                    time_str = ' ' * 19
+
+                # Get just the filename
+                filename = os.path.basename(path.rstrip('/'))
+
+                # Print in ls format
+                console.print(f"{perms} {size:8} {time_str} {filename}", highlight=False)
+        else:
+            # No wildcards, normal ls
+            path = self._resolve_path(pattern)
+            try:
+                cli_commands.cmd_ls(self.client, path)
+            except Exception as e:
+                console.print(self._format_error("ls", path, e), highlight=False)
+
         return True
 
     def cmd_tree(self, args: List[str]) -> bool:
@@ -950,13 +1050,9 @@ class CommandHandler:
             return True
 
         # Expand wildcards in all file arguments
-        all_files = []
-        for pattern in args:
-            expanded = self._expand_wildcards(pattern, include_dirs=False)
-            if not expanded:
-                console.print(f"[yellow]cat: no match: {pattern}[/yellow]", highlight=False)
-                return True
-            all_files.extend(expanded)
+        all_files = self._expand_patterns(args, include_dirs=False, on_no_match="error", cmd_name="cat")
+        if all_files is None:
+            return True
 
         # Cat each file
         for i, path in enumerate(all_files):
@@ -1106,14 +1202,7 @@ class CommandHandler:
             return True
 
         # Expand wildcards in all path arguments
-        all_paths = []
-        for pattern in path_args:
-            expanded = self._expand_wildcards(pattern, include_dirs=True)
-            if not expanded:
-                console.print(f"[yellow]rm: no match: {pattern}[/yellow]", highlight=False)
-                continue
-            all_paths.extend(expanded)
-
+        all_paths = self._expand_patterns(path_args, include_dirs=True, on_no_match="skip", cmd_name="rm")
         if not all_paths:
             return True
 
@@ -1141,16 +1230,26 @@ class CommandHandler:
         return True
 
     def cmd_stat(self, args: List[str]) -> bool:
-        """Show file/directory information"""
+        """Show file/directory information (supports wildcards)"""
         if not args:
             console.print("Usage: stat <path>", highlight=False)
+            console.print("Supports wildcards: *.txt, file?.log, etc.", highlight=False)
             return True
 
-        path = self._resolve_path(args[0])
-        try:
-            cli_commands.cmd_stat(self.client, path)
-        except Exception as e:
-            console.print(self._format_error("stat", path, e), highlight=False)
+        # Expand wildcards
+        all_paths = self._expand_patterns(args, include_dirs=True, on_no_match="error", cmd_name="stat")
+        if all_paths is None:
+            return True
+
+        # Show stat for each path
+        for i, path in enumerate(all_paths):
+            if len(all_paths) > 1 and i > 0:
+                console.print("", highlight=False)
+            try:
+                cli_commands.cmd_stat(self.client, path)
+            except Exception as e:
+                console.print(self._format_error("stat", path, e), highlight=False)
+
         return True
 
     def cmd_cp(self, args: List[str]) -> bool:
@@ -1176,13 +1275,9 @@ class CommandHandler:
         source_patterns = path_args[:-1]
 
         # Expand wildcards in all source patterns
-        all_sources = []
-        for pattern in source_patterns:
-            expanded = self._expand_wildcards(pattern, include_dirs=True)
-            if not expanded:
-                console.print(f"[yellow]cp: no match: {pattern}[/yellow]", highlight=False)
-                return True
-            all_sources.extend(expanded)
+        all_sources = self._expand_patterns(source_patterns, include_dirs=True, on_no_match="error", cmd_name="cp")
+        if all_sources is None:
+            return True
 
         # If multiple sources, destination must be a directory
         if len(all_sources) > 1:
@@ -1352,13 +1447,9 @@ class CommandHandler:
         source_patterns = args[:-1]
 
         # Expand wildcards in all source patterns
-        all_sources = []
-        for pattern in source_patterns:
-            expanded = self._expand_wildcards(pattern, include_dirs=True)
-            if not expanded:
-                console.print(f"[yellow]mv: no match: {pattern}[/yellow]", highlight=False)
-                return True
-            all_sources.extend(expanded)
+        all_sources = self._expand_patterns(source_patterns, include_dirs=True, on_no_match="error", cmd_name="mv")
+        if all_sources is None:
+            return True
 
         # If multiple sources, destination must be a directory
         if len(all_sources) > 1:
@@ -1394,22 +1485,30 @@ class CommandHandler:
         return True
 
     def cmd_chmod(self, args: List[str]) -> bool:
-        """Change file permissions"""
+        """Change file permissions (supports wildcards)"""
         if len(args) < 2:
-            console.print("Usage: chmod <mode> <path>", highlight=False)
+            console.print("Usage: chmod <mode> <path> [path2...]", highlight=False)
+            console.print("Supports wildcards: *.txt, file?.log, etc.", highlight=False)
             return True
 
         try:
             mode = int(args[0], 8)
-            path = self._resolve_path(args[1])
-            cli_commands.cmd_chmod(self.client, mode, path)
         except ValueError:
             console.print(f"chmod: invalid mode: '{args[0]}'", highlight=False)
-        except Exception as e:
-            if len(args) > 1:
-                console.print(self._format_error("chmod", args[1], e), highlight=False)
-            else:
-                console.print(f"chmod: {e}", highlight=False)
+            return True
+
+        # Expand wildcards for all path arguments
+        all_paths = self._expand_patterns(args[1:], include_dirs=True, on_no_match="skip", cmd_name="chmod")
+        if not all_paths:
+            return True
+
+        # Apply chmod to each path
+        for path in all_paths:
+            try:
+                cli_commands.cmd_chmod(self.client, mode, path)
+                console.print(f"  changed mode of '{path}' to {oct(mode)[2:]}", highlight=False)
+            except Exception as e:
+                console.print(self._format_error("chmod", path, e), highlight=False)
         return True
 
     def cmd_mounts(self, args: List[str]) -> bool:
@@ -1916,7 +2015,7 @@ class EchoCommand(PipelineCommand):
 
 
 class CatCommand(PipelineCommand):
-    """Cat command - display file contents or pass through piped input."""
+    """Cat command - display file contents or pass through piped input (supports wildcards)."""
 
     def execute(
         self, args: List[str], pipe_input: Optional[bytes] = None, is_last: bool = False
@@ -1924,7 +2023,7 @@ class CatCommand(PipelineCommand):
         """Execute cat command.
 
         Args:
-            args: [file] - file path (optional if piped input provided)
+            args: [file] - file path (optional if piped input provided, supports wildcards)
             pipe_input: Input from previous command
             is_last: Whether this is last in pipeline
 
@@ -1942,26 +2041,34 @@ class CatCommand(PipelineCommand):
             else:
                 return pipe_input
 
-        # Read from file
+        # Read from file(s)
         if not args:
             console.print("[red]cat: missing file argument[/red]", highlight=False)
             return None
 
-        try:
-            path = self.handler._resolve_path(args[0])
-            content = self.handler.client.cat(path)
-
-            if is_last:
-                sys.stdout.buffer.write(content)
-                if content and not content.endswith(b"\n"):
-                    sys.stdout.buffer.write(b"\n")
-                sys.stdout.buffer.flush()
-                return None
-            else:
-                return content
-        except Exception as e:
-            console.print(f"[red]cat: {args[0]}: {e}[/red]", highlight=False)
+        # Expand wildcards in all file arguments
+        all_files = self.handler._expand_patterns(args, include_dirs=False, on_no_match="error", cmd_name="cat")
+        if all_files is None:
             return None
+
+        # Read and concatenate all files
+        all_content = b""
+        for path in all_files:
+            try:
+                content = self.handler.client.cat(path)
+                all_content += content
+            except Exception as e:
+                console.print(f"[red]cat: {path}: {e}[/red]", highlight=False)
+                return None
+
+        if is_last:
+            sys.stdout.buffer.write(all_content)
+            if all_content and not all_content.endswith(b"\n"):
+                sys.stdout.buffer.write(b"\n")
+            sys.stdout.buffer.flush()
+            return None
+        else:
+            return all_content
 
 
 class GrepCommand(PipelineCommand):
