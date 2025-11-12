@@ -131,6 +131,22 @@ func (c *S3Client) GetObject(ctx context.Context, path string) ([]byte, error) {
 	return data, nil
 }
 
+// GetObjectStream retrieves an object from S3 and returns a stream reader
+// The caller is responsible for closing the returned ReadCloser
+func (c *S3Client) GetObjectStream(ctx context.Context, path string) (io.ReadCloser, error) {
+	key := c.buildKey(path)
+
+	result, err := c.client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(c.bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get object %s: %w", key, err)
+	}
+
+	return result.Body, nil
+}
+
 // PutObject uploads an object to S3
 func (c *S3Client) PutObject(ctx context.Context, path string, data []byte) error {
 	key := c.buildKey(path)

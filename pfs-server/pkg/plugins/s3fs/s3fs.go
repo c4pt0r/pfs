@@ -510,6 +510,7 @@ FEATURES:
   - Store files and directories in AWS S3
   - Support for S3-compatible services (MinIO, LocalStack, etc.)
   - Full POSIX-like file system operations
+  - Streaming support for efficient large file handling
   - Automatic directory handling
   - Optional key prefix for namespace isolation
 
@@ -572,6 +573,9 @@ USAGE:
   Read a file:
     pfs cat /s3fs/data/file.txt
 
+  Stream a large file (memory efficient):
+    pfs cat --stream /s3fs/data/large-video.mp4 > output.mp4
+
   List directory:
     pfs ls /s3fs/data
 
@@ -599,11 +603,16 @@ EXAMPLES:
   # Move/rename
   pfs:/> mv /s3fs/documents/report.txt /s3fs/documents/report-2024.txt
 
+  # Stream large files efficiently
+  pfs:/> cat --stream /s3fs/videos/movie.mp4 > local-movie.mp4
+  # Streams in 256KB chunks, minimal memory usage
+
 NOTES:
   - S3 doesn't have real directories; they are simulated with "/" in object keys
-  - Large files may take time to upload/download
+  - Use --stream flag for large files to minimize memory usage (256KB chunks)
   - Permissions (chmod) are not supported by S3
   - Atomic operations are limited by S3's eventual consistency model
+  - Streaming is automatically used when accessing via Python SDK with stream=True
 
 USE CASES:
   - Cloud-native file storage
@@ -617,6 +626,7 @@ ADVANTAGES:
   - High durability (99.999999999%)
   - Geographic redundancy
   - Pay-per-use pricing
+  - Efficient streaming for large files with minimal memory footprint
   - Versioning and lifecycle policies (via S3 bucket settings)
 `
 }
@@ -636,6 +646,104 @@ func getBoolConfig(config map[string]interface{}, key string, defaultValue bool)
 	return defaultValue
 }
 
+// s3StreamReader implements filesystem.StreamReader for S3 objects
+type s3StreamReader struct {
+	body      io.ReadCloser
+	chunkSize int64
+	closed    bool
+	mu        sync.Mutex
+}
+
+// ReadChunk reads the next chunk from the S3 object stream
+func (r *s3StreamReader) ReadChunk(timeout time.Duration) ([]byte, bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.closed {
+		return nil, true, io.EOF
+	}
+
+	// Create context with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	// Prepare buffer for reading
+	buf := make([]byte, r.chunkSize)
+
+	// Channel to receive read result
+	type readResult struct {
+		n   int
+		err error
+	}
+	resultCh := make(chan readResult, 1)
+
+	// Read in goroutine to support timeout
+	go func() {
+		n, err := r.body.Read(buf)
+		resultCh <- readResult{n: n, err: err}
+	}()
+
+	// Wait for read or timeout
+	select {
+	case result := <-resultCh:
+		if result.err == io.EOF {
+			// End of file reached
+			if result.n > 0 {
+				return buf[:result.n], true, nil
+			}
+			return nil, true, io.EOF
+		}
+		if result.err != nil {
+			return nil, false, result.err
+		}
+		return buf[:result.n], false, nil
+
+	case <-ctx.Done():
+		// Timeout occurred
+		return nil, false, fmt.Errorf("read timeout: %w", ctx.Err())
+	}
+}
+
+// Close closes the S3 object stream
+func (r *s3StreamReader) Close() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.closed {
+		return nil
+	}
+
+	r.closed = true
+	return r.body.Close()
+}
+
+// OpenStream opens a stream for reading an S3 object
+// This implements the filesystem.Streamer interface
+func (fs *S3FS) OpenStream(path string) (filesystem.StreamReader, error) {
+	path = normalizePath(path)
+	ctx := context.Background()
+
+	fs.mu.RLock()
+	defer fs.mu.RUnlock()
+
+	// Get streaming reader from S3
+	body, err := fs.client.GetObjectStream(ctx, path)
+	if err != nil {
+		if strings.Contains(err.Error(), "NoSuchKey") || strings.Contains(err.Error(), "NotFound") {
+			return nil, fmt.Errorf("no such file: %s", path)
+		}
+		return nil, err
+	}
+
+	// Create stream reader with 256KB chunk size (balanced for S3)
+	return &s3StreamReader{
+		body:      body,
+		chunkSize: 256 * 1024, // 256KB chunks
+		closed:    false,
+	}, nil
+}
+
 // Ensure S3FSPlugin implements ServicePlugin
 var _ plugin.ServicePlugin = (*S3FSPlugin)(nil)
 var _ filesystem.FileSystem = (*S3FS)(nil)
+var _ filesystem.Streamer = (*S3FS)(nil)

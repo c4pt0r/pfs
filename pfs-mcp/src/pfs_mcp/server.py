@@ -6,7 +6,7 @@ import logging
 from typing import Any, Optional
 from mcp.server import Server
 from mcp.types import Tool, TextContent, Prompt, PromptMessage
-from pypfs import PFSClient, PFSClientError
+from pypfs import PFSClient, PFSClientError, cp, upload, download
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -367,6 +367,90 @@ The key insight is that whether you're reading from a SQL database at /db/users/
                         "properties": {}
                     }
                 ),
+                Tool(
+                    name="pfs_cp",
+                    description="Copy a file or directory within PFS",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "src": {
+                                "type": "string",
+                                "description": "Source path in PFS"
+                            },
+                            "dst": {
+                                "type": "string",
+                                "description": "Destination path in PFS"
+                            },
+                            "recursive": {
+                                "type": "boolean",
+                                "description": "Copy directories recursively (default: false)",
+                                "default": False
+                            },
+                            "stream": {
+                                "type": "boolean",
+                                "description": "Use streaming for large files (default: false)",
+                                "default": False
+                            }
+                        },
+                        "required": ["src", "dst"]
+                    }
+                ),
+                Tool(
+                    name="pfs_upload",
+                    description="Upload a file or directory from local filesystem to PFS",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "local_path": {
+                                "type": "string",
+                                "description": "Path to local file or directory"
+                            },
+                            "remote_path": {
+                                "type": "string",
+                                "description": "Destination path in PFS"
+                            },
+                            "recursive": {
+                                "type": "boolean",
+                                "description": "Upload directories recursively (default: false)",
+                                "default": False
+                            },
+                            "stream": {
+                                "type": "boolean",
+                                "description": "Use streaming for large files (default: false)",
+                                "default": False
+                            }
+                        },
+                        "required": ["local_path", "remote_path"]
+                    }
+                ),
+                Tool(
+                    name="pfs_download",
+                    description="Download a file or directory from PFS to local filesystem",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "remote_path": {
+                                "type": "string",
+                                "description": "Path in PFS"
+                            },
+                            "local_path": {
+                                "type": "string",
+                                "description": "Destination path on local filesystem"
+                            },
+                            "recursive": {
+                                "type": "boolean",
+                                "description": "Download directories recursively (default: false)",
+                                "default": False
+                            },
+                            "stream": {
+                                "type": "boolean",
+                                "description": "Use streaming for large files (default: false)",
+                                "default": False
+                            }
+                        },
+                        "required": ["remote_path", "local_path"]
+                    }
+                ),
             ]
 
         @self.server.call_tool()
@@ -483,6 +567,39 @@ The key insight is that whether you're reading from a SQL database at /db/users/
                     return [TextContent(
                         type="text",
                         text=json.dumps(result, indent=2)
+                    )]
+
+                elif name == "pfs_cp":
+                    src = arguments["src"]
+                    dst = arguments["dst"]
+                    recursive = arguments.get("recursive", False)
+                    stream = arguments.get("stream", False)
+                    cp(client, src, dst, recursive=recursive, stream=stream)
+                    return [TextContent(
+                        type="text",
+                        text=f"Successfully copied {src} to {dst}"
+                    )]
+
+                elif name == "pfs_upload":
+                    local_path = arguments["local_path"]
+                    remote_path = arguments["remote_path"]
+                    recursive = arguments.get("recursive", False)
+                    stream = arguments.get("stream", False)
+                    upload(client, local_path, remote_path, recursive=recursive, stream=stream)
+                    return [TextContent(
+                        type="text",
+                        text=f"Successfully uploaded {local_path} to {remote_path}"
+                    )]
+
+                elif name == "pfs_download":
+                    remote_path = arguments["remote_path"]
+                    local_path = arguments["local_path"]
+                    recursive = arguments.get("recursive", False)
+                    stream = arguments.get("stream", False)
+                    download(client, remote_path, local_path, recursive=recursive, stream=stream)
+                    return [TextContent(
+                        type="text",
+                        text=f"Successfully downloaded {remote_path} to {local_path}"
                     )]
 
                 else:

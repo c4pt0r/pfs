@@ -1,6 +1,6 @@
 """PFS Python SDK - Client library for PFS Server API"""
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 from .client import PFSClient
 from .exceptions import PFSClientError, PFSConnectionError, PFSTimeoutError, PFSHTTPError
