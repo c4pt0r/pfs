@@ -2,6 +2,8 @@
 
 Python SDK for interacting with PFS (Plugin-based File System) Server API.
 
+See more details at [c4pt0r/pfs](https://github.com/c4pt0r/pfs)
+
 ## Installation
 
 ```bash
