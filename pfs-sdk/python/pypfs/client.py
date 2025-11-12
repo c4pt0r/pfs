@@ -402,3 +402,33 @@ class PFSClient:
                 except json.JSONDecodeError as e:
                     # Skip malformed lines
                     continue
+
+    def digest(self, path: str, algorithm: str = "xxh3") -> Dict[str, Any]:
+        """Calculate the digest of a file using specified algorithm
+
+        Args:
+            path: Path to the file
+            algorithm: Hash algorithm to use - "xxh3" or "md5" (default: "xxh3")
+
+        Returns:
+            Dict with 'algorithm', 'path', and 'digest' keys
+
+        Example:
+            >>> result = client.digest("/local/file.txt", "xxh3")
+            >>> print(result['digest'])
+            abc123def456...
+
+            >>> result = client.digest("/local/file.txt", "md5")
+            >>> print(result['digest'])
+            5d41402abc4b2a76b9719d911017c592
+        """
+        try:
+            response = self.session.post(
+                f"{self.api_base}/digest",
+                json={"algorithm": algorithm, "path": path},
+                timeout=self.timeout
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            self._handle_request_error(e)

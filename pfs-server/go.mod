@@ -11,6 +11,8 @@ require (
 	github.com/go-sql-driver/mysql v1.9.3
 	github.com/mattn/go-sqlite3 v1.14.32
 	github.com/sirupsen/logrus v1.9.3
+	github.com/tetratelabs/wazero v1.9.0
+	github.com/zeebo/xxh3 v1.0.2
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -30,6 +32,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.38.6 // indirect
 	github.com/aws/smithy-go v1.23.0 // indirect
-	github.com/tetratelabs/wazero v1.9.0 // indirect
+	github.com/klauspost/cpuid/v2 v2.0.9 // indirect
 	golang.org/x/sys v0.0.0-20220715151400-c0bba94af5f8 // indirect
 )

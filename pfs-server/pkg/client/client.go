@@ -431,6 +431,19 @@ type GrepResponse struct {
 	Count   int         `json:"count"`
 }
 
+// DigestRequest represents a digest request
+type DigestRequest struct {
+	Algorithm string `json:"algorithm"` // "xxh3" or "md5"
+	Path      string `json:"path"`      // Path to the file
+}
+
+// DigestResponse represents the digest result
+type DigestResponse struct {
+	Algorithm string `json:"algorithm"` // Algorithm used
+	Path      string `json:"path"`      // File path
+	Digest    string `json:"digest"`    // Hex-encoded digest
+}
+
 // Grep searches for a pattern in files using regular expressions
 func (c *Client) Grep(path, pattern string, recursive, caseInsensitive bool) (*GrepResponse, error) {
 	reqBody := GrepRequest{
@@ -472,4 +485,45 @@ func (c *Client) Grep(path, pattern string, recursive, caseInsensitive bool) (*G
 	}
 
 	return &grepResp, nil
+}
+
+// Digest calculates the digest of a file using specified algorithm
+func (c *Client) Digest(path, algorithm string) (*DigestResponse, error) {
+	reqBody := DigestRequest{
+		Algorithm: algorithm,
+		Path:      path,
+	}
+
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	reqURL := fmt.Sprintf("%s/digest", c.baseURL)
+	req, err := http.NewRequest(http.MethodPost, reqURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		var errResp ErrorResponse
+		if err := json.NewDecoder(resp.Body).Decode(&errResp); err != nil {
+			return nil, fmt.Errorf("HTTP %d: failed to decode error response", resp.StatusCode)
+		}
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, errResp.Error)
+	}
+
+	var digestResp DigestResponse
+	if err := json.NewDecoder(resp.Body).Decode(&digestResp); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &digestResp, nil
 }

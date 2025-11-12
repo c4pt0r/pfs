@@ -97,6 +97,7 @@ class CommandHandler:
             "watch": self.cmd_watch,
             "tee": self.cmd_tee,
             "grep": self.cmd_grep,
+            "digest": self.cmd_digest,
             # Utility commands
             "clear": self.cmd_clear,
             "exit": self.cmd_exit,
@@ -889,6 +890,10 @@ class CommandHandler:
             (
                 "  grep [-r] [-i] [-c] [--stream] <pattern> <path>",
                 "Search for pattern in files (regex supported)",
+            ),
+            (
+                "  digest [-a algorithm] <file>",
+                "Calculate file digest (xxh3 or md5)",
             ),
             ("", ""),
             ("Plugin Management", ""),
@@ -1955,6 +1960,103 @@ class CommandHandler:
             )
         except Exception as e:
             console.print(self._format_error("grep", path, e), highlight=False)
+
+        return True
+
+    def cmd_digest(self, args: List[str]) -> bool:
+        """Calculate the digest of a file
+
+        Usage:
+            digest [-a ALGORITHM] PATH
+
+        Options:
+            -a, --algorithm    Hash algorithm to use: xxh3 (default) or md5
+
+        Examples:
+            digest /local/file.txt              # Using xxh3 (default)
+            digest -a md5 /local/file.txt       # Using md5
+            digest --algorithm xxh3 /data.bin   # Explicit algorithm
+            digest xxh3 /data.txt > /output     # Redirect output to file
+        """
+        if not args:
+            console.print("Usage: digest [-a ALGORITHM] PATH", highlight=False)
+            console.print("       digest [--algorithm ALGORITHM] PATH", highlight=False)
+            console.print("\nAlgorithms: xxh3 (default), md5", highlight=False)
+            return True
+
+        # Define content getter for redirection support
+        def digest_content_getter(pre_redirect_args):
+            # Parse arguments before redirection
+            algorithm = "xxh3"  # Default
+            path_arg = None
+
+            i = 0
+            while i < len(pre_redirect_args):
+                if pre_redirect_args[i] in ["-a", "--algorithm"] and i + 1 < len(pre_redirect_args):
+                    algorithm = pre_redirect_args[i + 1]
+                    if algorithm not in ["xxh3", "md5"]:
+                        console.print(
+                            f"digest: unsupported algorithm: '{algorithm}' (supported: xxh3, md5)",
+                            highlight=False
+                        )
+                        return None
+                    i += 2
+                elif not pre_redirect_args[i].startswith("-"):
+                    path_arg = pre_redirect_args[i]
+                    i += 1
+                else:
+                    console.print(f"digest: unknown option: '{pre_redirect_args[i]}'", highlight=False)
+                    return None
+
+            if not path_arg:
+                console.print("Usage: digest [-a ALGORITHM] PATH", highlight=False)
+                return None
+
+            source_path = self._resolve_path(path_arg)
+
+            # Calculate digest
+            result = self.client.digest(source_path, algorithm)
+
+            # Format output as text for redirection
+            output = f"Algorithm: {result['algorithm']}\nPath: {result['path']}\nDigest: {result['digest']}\n"
+            return (output.encode(), source_path)
+
+        # Handle redirection if present
+        if self._handle_redirection(args, digest_content_getter, "digest"):
+            return True
+
+        # Parse arguments (no redirection case)
+        algorithm = "xxh3"  # Default
+        path_arg = None
+
+        i = 0
+        while i < len(args):
+            if args[i] in ["-a", "--algorithm"] and i + 1 < len(args):
+                algorithm = args[i + 1]
+                if algorithm not in ["xxh3", "md5"]:
+                    console.print(
+                        f"digest: unsupported algorithm: '{algorithm}' (supported: xxh3, md5)",
+                        highlight=False
+                    )
+                    return True
+                i += 2
+            elif not args[i].startswith("-"):
+                path_arg = args[i]
+                i += 1
+            else:
+                console.print(f"digest: unknown option: '{args[i]}'", highlight=False)
+                return True
+
+        if not path_arg:
+            console.print("Usage: digest [-a ALGORITHM] PATH", highlight=False)
+            return True
+
+        path = self._resolve_path(path_arg)
+
+        try:
+            cli_commands.cmd_digest(self.client, path, algorithm)
+        except Exception as e:
+            console.print(self._format_error("digest", path, e), highlight=False)
 
         return True
 

@@ -1145,3 +1145,23 @@ def cmd_grep(client, path: str, pattern: str, recursive: bool = False, case_inse
 
     except Exception as e:
         console.print(f"[red]grep: {e}[/red]", highlight=False)
+
+
+def cmd_digest(client, path: str, algorithm: str = "xxh3"):
+    """Calculate the digest of a file using specified algorithm
+
+    Args:
+        client: PFS client instance
+        path: Path to the file
+        algorithm: Hash algorithm to use - "xxh3" or "md5" (default: "xxh3")
+    """
+    try:
+        result = client.digest(path, algorithm)
+
+        # Display result
+        console.print(f"[green]Algorithm:[/green] {result['algorithm']}", highlight=False)
+        console.print(f"[green]Path:[/green] {result['path']}", highlight=False)
+        console.print(f"[green]Digest:[/green] {result['digest']}", highlight=False)
+
+    except Exception as e:
+        console.print(f"[red]digest: {e}[/red]", highlight=False)

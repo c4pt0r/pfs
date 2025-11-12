@@ -3,8 +3,11 @@ package handlers
 import (
 	"bufio"
 	"bytes"
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"path/filepath"
@@ -14,6 +17,7 @@ import (
 
 	"github.com/c4pt0r/pfs/pfs-server/pkg/filesystem"
 	log "github.com/sirupsen/logrus"
+	"github.com/zeebo/xxh3"
 )
 
 // Handler wraps the FileSystem and provides HTTP handlers
@@ -79,6 +83,19 @@ type RenameRequest struct {
 // ChmodRequest represents a chmod request
 type ChmodRequest struct {
 	Mode uint32 `json:"mode"`
+}
+
+// DigestRequest represents a digest request
+type DigestRequest struct {
+	Algorithm string `json:"algorithm"` // "xxh3" or "md5"
+	Path      string `json:"path"`      // Path to the file
+}
+
+// DigestResponse represents the digest result
+type DigestResponse struct {
+	Algorithm string `json:"algorithm"` // Algorithm used
+	Path      string `json:"path"`      // File path
+	Digest    string `json:"digest"`    // Hex-encoded digest
 }
 
 func writeJSON(w http.ResponseWriter, status int, data interface{}) {
@@ -370,6 +387,114 @@ func (h *Handler) Chmod(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, SuccessResponse{Message: "permissions changed"})
 }
 
+// Digest handles POST /digest
+func (h *Handler) Digest(w http.ResponseWriter, r *http.Request) {
+	var req DigestRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		return
+	}
+
+	// Validate algorithm
+	if req.Algorithm != "xxh3" && req.Algorithm != "md5" {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("unsupported algorithm: %s (supported: xxh3, md5)", req.Algorithm))
+		return
+	}
+
+	// Validate path
+	if req.Path == "" {
+		writeError(w, http.StatusBadRequest, "path is required")
+		return
+	}
+
+	// Calculate digest using streaming approach to handle large files
+	var digest string
+	var err error
+
+	switch req.Algorithm {
+	case "xxh3":
+		digest, err = h.calculateXXH3Digest(req.Path)
+	case "md5":
+		digest, err = h.calculateMD5Digest(req.Path)
+	default:
+		writeError(w, http.StatusBadRequest, "unsupported algorithm: "+req.Algorithm)
+		return
+	}
+
+	if err != nil {
+		status := mapErrorToStatus(err)
+		writeError(w, status, "failed to calculate digest: "+err.Error())
+		return
+	}
+
+	response := DigestResponse{
+		Algorithm: req.Algorithm,
+		Path:      req.Path,
+		Digest:    digest,
+	}
+
+	writeJSON(w, http.StatusOK, response)
+}
+
+// calculateXXH3Digest calculates XXH3 hash using streaming approach
+func (h *Handler) calculateXXH3Digest(path string) (string, error) {
+	// Try to open file for streaming
+	reader, err := h.fs.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer reader.Close()
+
+	// Stream and hash the file in chunks
+	hasher := xxh3.New()
+	buffer := make([]byte, 64*1024) // 64KB buffer
+
+	for {
+		n, err := reader.Read(buffer)
+		if n > 0 {
+			hasher.Write(buffer[:n])
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return "", fmt.Errorf("error reading file: %w", err)
+		}
+	}
+
+	hash := hasher.Sum128().Lo // Use lower 64 bits for consistency
+	return fmt.Sprintf("%016x", hash), nil
+}
+
+// calculateMD5Digest calculates MD5 hash using streaming approach
+func (h *Handler) calculateMD5Digest(path string) (string, error) {
+	// Try to open file for streaming
+	reader, err := h.fs.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer reader.Close()
+
+	// Stream and hash the file in chunks
+	hasher := md5.New()
+	buffer := make([]byte, 64*1024) // 64KB buffer
+
+	for {
+		n, err := reader.Read(buffer)
+		if n > 0 {
+			hasher.Write(buffer[:n])
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return "", fmt.Errorf("error reading file: %w", err)
+		}
+	}
+
+	return hex.EncodeToString(hasher.Sum(nil)), nil
+}
+
 // HealthResponse represents the health check response
 type HealthResponse struct {
 	Status    string `json:"status"`
@@ -445,6 +570,13 @@ func (h *Handler) SetupRoutes(mux *http.ServeMux) {
 			return
 		}
 		h.Grep(w, r)
+	})
+	mux.HandleFunc("/api/v1/digest", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		h.Digest(w, r)
 	})
 }
 
