@@ -451,6 +451,33 @@ The key insight is that whether you're reading from a SQL database at /db/users/
                         "required": ["remote_path", "local_path"]
                     }
                 ),
+                Tool(
+                    name="pfs_notify",
+                    description="Send a notification message via QueueFS. Creates sender/receiver queues if they don't exist. Message is sent as JSON with from_name, message, and timestamp fields.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "queuefs_root": {
+                                "type": "string",
+                                "description": "Root path of QueueFS mount (default: /queuefs)",
+                                "default": "/queuefs"
+                            },
+                            "to": {
+                                "type": "string",
+                                "description": "Target queue name (receiver)"
+                            },
+                            "from": {
+                                "type": "string",
+                                "description": "Source queue name (sender)"
+                            },
+                            "data": {
+                                "type": "string",
+                                "description": "Message content to send (will be wrapped in JSON with from_name for callback)"
+                            }
+                        },
+                        "required": ["to", "from", "data"]
+                    }
+                ),
             ]
 
         @self.server.call_tool()
@@ -600,6 +627,53 @@ The key insight is that whether you're reading from a SQL database at /db/users/
                     return [TextContent(
                         type="text",
                         text=f"Successfully downloaded {remote_path} to {local_path}"
+                    )]
+
+                elif name == "pfs_notify":
+                    from datetime import datetime, timezone
+
+                    queuefs_root = arguments.get("queuefs_root", "/queuefs")
+                    to = arguments["to"]
+                    from_name = arguments["from"]
+                    data = arguments["data"]
+
+                    # Ensure queuefs_root doesn't end with /
+                    queuefs_root = queuefs_root.rstrip('/')
+
+                    # Create sender queue if it doesn't exist
+                    from_queue_path = f"{queuefs_root}/{from_name}"
+                    try:
+                        client.stat(from_queue_path)
+                    except PFSClientError:
+                        # Queue doesn't exist, create it
+                        client.mkdir(from_queue_path)
+                        logger.info(f"Created sender queue: {from_queue_path}")
+
+                    # Create receiver queue if it doesn't exist
+                    to_queue_path = f"{queuefs_root}/{to}"
+                    try:
+                        client.stat(to_queue_path)
+                    except PFSClientError:
+                        # Queue doesn't exist, create it
+                        client.mkdir(to_queue_path)
+                        logger.info(f"Created receiver queue: {to_queue_path}")
+
+                    # Wrap the message in JSON format with from_name for callback
+                    message_json = {
+                        "from": from_name,
+                        "to": to,
+                        "message": data,
+                        "timestamp": datetime.now(timezone.utc).isoformat()
+                    }
+                    message_data = json.dumps(message_json, ensure_ascii=False)
+
+                    # Send the notification by writing to receiver's enqueue file
+                    enqueue_path = f"{to_queue_path}/enqueue"
+                    client.write(enqueue_path, message_data.encode('utf-8'))
+
+                    return [TextContent(
+                        type="text",
+                        text=f"Successfully sent notification from '{from_name}' to '{to}' queue"
                     )]
 
                 else:
