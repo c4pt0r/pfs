@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/c4pt0r/pfs/pfs-server/pkg/filesystem"
 	"github.com/c4pt0r/pfs/pfs-server/pkg/plugin"
@@ -424,6 +425,114 @@ func (fs *LocalFS) OpenWrite(path string) (io.WriteCloser, error) {
 	}
 
 	return f, nil
+}
+
+// localFSStreamReader implements filesystem.StreamReader for local files
+type localFSStreamReader struct {
+	file      *os.File
+	chunkSize int64
+	eof       bool
+	mu        sync.Mutex
+}
+
+// ReadChunk reads the next chunk of data with a timeout
+func (r *localFSStreamReader) ReadChunk(timeout time.Duration) ([]byte, bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	// If already reached EOF, return immediately
+	if r.eof {
+		return nil, true, io.EOF
+	}
+
+	// Create a channel for the read operation
+	type readResult struct {
+		data []byte
+		n    int
+		err  error
+	}
+	resultChan := make(chan readResult, 1)
+
+	// Perform the read in a goroutine
+	go func() {
+		buf := make([]byte, r.chunkSize)
+		n, err := r.file.Read(buf)
+		resultChan <- readResult{data: buf, n: n, err: err}
+	}()
+
+	// Wait for either the read to complete or timeout
+	select {
+	case result := <-resultChan:
+		if result.err != nil {
+			if result.err == io.EOF {
+				r.eof = true
+				// If we read some data before EOF, return it
+				if result.n > 0 {
+					return result.data[:result.n], false, nil
+				}
+				return nil, true, io.EOF
+			}
+			return nil, false, result.err
+		}
+
+		// Check if this is the last chunk (partial read might indicate EOF)
+		if result.n < int(r.chunkSize) {
+			r.eof = true
+		}
+
+		return result.data[:result.n], r.eof, nil
+
+	case <-time.After(timeout):
+		// Note: the goroutine will continue reading and will be cleaned up when the file is closed
+		return nil, false, fmt.Errorf("read timeout")
+	}
+}
+
+// Close closes the file reader
+func (r *localFSStreamReader) Close() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.file != nil {
+		return r.file.Close()
+	}
+	return nil
+}
+
+// OpenStream implements the Streamer interface for streaming file reads
+func (fs *LocalFS) OpenStream(path string) (filesystem.StreamReader, error) {
+	localPath := fs.resolvePath(path)
+
+	fs.mu.RLock()
+	defer fs.mu.RUnlock()
+
+	// Check if file exists and is not a directory
+	info, err := os.Stat(localPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("no such file: %s", path)
+		}
+		return nil, fmt.Errorf("failed to stat: %w", err)
+	}
+
+	if info.IsDir() {
+		return nil, fmt.Errorf("is a directory: %s", path)
+	}
+
+	// Open file for reading
+	f, err := os.Open(localPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open file: %w", err)
+	}
+
+	log.Infof("[localfs] Opened stream for file: %s (size: %d bytes)", path, info.Size())
+
+	// Create and return stream reader with 64KB chunk size (matching streamfs default)
+	return &localFSStreamReader{
+		file:      f,
+		chunkSize: 64 * 1024, // 64KB chunks
+		eof:       false,
+	}, nil
 }
 
 // LocalFSPlugin wraps LocalFS as a plugin
