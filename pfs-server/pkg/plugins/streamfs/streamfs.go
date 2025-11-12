@@ -408,16 +408,7 @@ func (sfs *StreamFS) Read(path string, offset int64, size int64) ([]byte, error)
 	// README file can be read normally
 	if path == "/README" {
 		content := []byte(getReadme())
-		if offset >= int64(len(content)) {
-			return []byte{}, io.EOF
-		}
-
-		end := int64(len(content))
-		if size > 0 && offset+size < end {
-			end = offset + size
-		}
-
-		return content[offset:end], nil
+		return plugin.ApplyRangeRead(content, offset, size)
 	}
 
 	// Stream files must use --stream mode

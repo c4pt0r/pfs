@@ -190,28 +190,8 @@ func (fs *S3FS) Read(path string, offset int64, size int64) ([]byte, error) {
 		return nil, err
 	}
 
-	// Apply offset and size
-	dataLen := int64(len(data))
-	if offset < 0 {
-		offset = 0
-	}
-	if offset >= dataLen {
-		return []byte{}, io.EOF
-	}
-
-	end := dataLen
-	if size >= 0 {
-		end = offset + size
-		if end > dataLen {
-			end = dataLen
-		}
-	}
-
-	result := data[offset:end]
-	if end >= dataLen {
-		return result, io.EOF
-	}
-	return result, nil
+	// Apply range read using common helper
+	return plugin.ApplyRangeRead(data, offset, size)
 }
 
 func (fs *S3FS) Write(path string, data []byte) ([]byte, error) {
