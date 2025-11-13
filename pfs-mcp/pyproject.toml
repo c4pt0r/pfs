@@ -12,6 +12,8 @@ authors = [
     { name = "pfs authors" }
 ]
 dependencies = [
+    "beautifulsoup4",
+    "requests",
     "pypfs>=0.1.1",
     "mcp>=0.9.0",
 ]

@@ -10,6 +10,7 @@ import sys
 import time
 from datetime import datetime
 from typing import Any, Dict, Optional
+from pypfs import PFSClient
 
 
 class TaskQueue:
@@ -18,7 +19,7 @@ class TaskQueue:
     def __init__(
         self,
         queue_path: str = "/queuefs/agent",
-        pfs_api_baseurl: Optional[str] = "http://localhost:8080/api/v1",
+        pfs_api_baseurl: Optional[str] = "http://localhost:8080",
     ):
         """
         Initialize task queue client
@@ -32,49 +33,30 @@ class TaskQueue:
         self.dequeue_path = f"{queue_path}/dequeue"
         self.size_path = f"{queue_path}/size"
         self.peek_path = f"{queue_path}/peek"
+        self.client = PFSClient(pfs_api_baseurl)
 
-    def _run_pfs_command(self, args: list[str]) -> Optional[str]:
+    def ensure_queue_exists(self) -> bool:
         """
-        Execute PFS command
-
-        Args:
-            args: PFS command arguments list
+        Ensure queue directory exists, create if not
 
         Returns:
-            Command output, None if failed
+            True if queue exists or was created successfully, False otherwise
         """
-        cmd = ["uv", "run", "pfs"]
-
-        # Add custom API URL if specified
-        if self.pfs_api_baseurl:
-            cmd.extend(["--pfs-api-baseurl", self.pfs_api_baseurl])
-
-        cmd.extend(args)
-
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-
-            if result.returncode == 0:
-                return result.stdout.strip()
-            else:
-                print(f"Error: PFS command failed: {result.stderr}", file=sys.stderr)
-                return None
-
-        except subprocess.TimeoutExpired:
-            print("Error: PFS command timed out", file=sys.stderr)
-            return None
-        except FileNotFoundError:
-            print(
-                "Error: 'uv' command not found, please ensure uv is installed",
-                file=sys.stderr,
-            )
-            return None
-        except Exception as e:
-            print(
-                f"Error: Exception occurred while executing PFS command: {e}",
-                file=sys.stderr,
-            )
-            return None
+            # Check if queue exists using stat
+            self.client.stat(self.queue_path)
+            # Queue already exists
+            return True
+        except Exception:
+            # Queue doesn't exist, try to create it
+            print(f"Queue {self.queue_path} does not exist, creating...", file=sys.stderr)
+            try:
+                self.client.mkdir(self.queue_path)
+                print(f"Successfully created queue: {self.queue_path}", file=sys.stderr)
+                return True
+            except Exception as e:
+                print(f"Failed to create queue: {self.queue_path}: {e}", file=sys.stderr)
+                return False
 
     def get_queue_size(self) -> Optional[int]:
         """
@@ -83,13 +65,15 @@ class TaskQueue:
         Returns:
             Number of messages in queue, None if failed
         """
-        output = self._run_pfs_command(["cat", self.size_path])
-        if output:
-            try:
-                return int(output)
-            except ValueError:
-                print(f"Warning: Cannot parse queue size: {output}", file=sys.stderr)
-        return None
+        try:
+            content = self.client.cat(self.size_path)
+            output = content.decode('utf-8').strip()
+            return int(output)
+        except ValueError:
+            print(f"Warning: Cannot parse queue size: {output}", file=sys.stderr)
+            return None
+        except Exception:
+            return None
 
     def peek_task(self) -> Optional[Dict[str, Any]]:
         """
@@ -98,13 +82,15 @@ class TaskQueue:
         Returns:
             Task data dictionary, None if failed
         """
-        output = self._run_pfs_command(["cat", self.peek_path])
-        if output:
-            try:
-                return json.loads(output)
-            except json.JSONDecodeError:
-                print(f"Warning: Cannot parse JSON: {output}", file=sys.stderr)
-        return None
+        try:
+            content = self.client.cat(self.peek_path)
+            output = content.decode('utf-8')
+            return json.loads(output)
+        except json.JSONDecodeError:
+            print(f"Warning: Cannot parse JSON: {output}", file=sys.stderr)
+            return None
+        except Exception:
+            return None
 
     def dequeue_task(self) -> Optional[Dict[str, Any]]:
         """
@@ -114,13 +100,15 @@ class TaskQueue:
             Task data dictionary with format: {"id": "...", "data": "...", "timestamp": "..."}
             Returns None if queue is empty or operation failed
         """
-        output = self._run_pfs_command(["cat", self.dequeue_path])
-        if output:
-            try:
-                return json.loads(output)
-            except json.JSONDecodeError:
-                print(f"Warning: Cannot parse JSON: {output}", file=sys.stderr)
-        return None
+        try:
+            content = self.client.cat(self.dequeue_path)
+            output = content.decode('utf-8')
+            return json.loads(output)
+        except json.JSONDecodeError:
+            print(f"Warning: Cannot parse JSON: {output}", file=sys.stderr)
+            return None
+        except Exception:
+            return None
 
 
 class ClaudeCodeExecutor:
@@ -262,7 +250,7 @@ def main():
         help="QueueFS mount path (default: /queuefs/agent)",
     )
     parser.add_argument(
-        "--api-url", type=str, default=None, help="PFS API server URL (optional)"
+        "--api-url", type=str, default="http://localhost:8080", help="PFS API server URL (default: http://localhost:8080)"
     )
     parser.add_argument(
         "--poll-interval",
@@ -300,6 +288,11 @@ def main():
 
     # Create task queue client
     queue = TaskQueue(queue_path=args.queue_path, pfs_api_baseurl=args.api_url)
+
+    # Ensure queue exists before starting
+    if not queue.ensure_queue_exists():
+        print(f"Error: Failed to ensure queue exists at {queue.queue_path}", file=sys.stderr)
+        sys.exit(1)
 
     # Create Claude Code executor
     executor = ClaudeCodeExecutor(
