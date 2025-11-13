@@ -40,21 +40,8 @@ func NewS3FS(cfg S3Config) (*S3FS, error) {
 	}, nil
 }
 
-// normalizePath normalizes a path
-func normalizePath(path string) string {
-	if path == "" {
-		return ""
-	}
-	path = strings.TrimPrefix(path, "/")
-	path = filepath.Clean(path)
-	if path == "." {
-		return ""
-	}
-	return path
-}
-
 func (fs *S3FS) Create(path string) error {
-	path = normalizePath(path)
+	path = filesystem.NormalizeS3Key(path)
 	ctx := context.Background()
 
 	fs.mu.Lock()
@@ -91,7 +78,7 @@ func (fs *S3FS) Create(path string) error {
 }
 
 func (fs *S3FS) Mkdir(path string, perm uint32) error {
-	path = normalizePath(path)
+	path = filesystem.NormalizeS3Key(path)
 	ctx := context.Background()
 
 	fs.mu.Lock()
@@ -123,7 +110,7 @@ func (fs *S3FS) Mkdir(path string, perm uint32) error {
 }
 
 func (fs *S3FS) Remove(path string) error {
-	path = normalizePath(path)
+	path = filesystem.NormalizeS3Key(path)
 	ctx := context.Background()
 
 	fs.mu.Lock()
@@ -165,7 +152,7 @@ func (fs *S3FS) Remove(path string) error {
 }
 
 func (fs *S3FS) RemoveAll(path string) error {
-	path = normalizePath(path)
+	path = filesystem.NormalizeS3Key(path)
 	ctx := context.Background()
 
 	fs.mu.Lock()
@@ -175,7 +162,7 @@ func (fs *S3FS) RemoveAll(path string) error {
 }
 
 func (fs *S3FS) Read(path string, offset int64, size int64) ([]byte, error) {
-	path = normalizePath(path)
+	path = filesystem.NormalizeS3Key(path)
 	ctx := context.Background()
 
 	fs.mu.RLock()
@@ -195,7 +182,7 @@ func (fs *S3FS) Read(path string, offset int64, size int64) ([]byte, error) {
 }
 
 func (fs *S3FS) Write(path string, data []byte) ([]byte, error) {
-	path = normalizePath(path)
+	path = filesystem.NormalizeS3Key(path)
 	ctx := context.Background()
 
 	fs.mu.Lock()
@@ -229,7 +216,7 @@ func (fs *S3FS) Write(path string, data []byte) ([]byte, error) {
 }
 
 func (fs *S3FS) ReadDir(path string) ([]filesystem.FileInfo, error) {
-	path = normalizePath(path)
+	path = filesystem.NormalizeS3Key(path)
 	ctx := context.Background()
 
 	fs.mu.RLock()
@@ -271,7 +258,7 @@ func (fs *S3FS) ReadDir(path string) ([]filesystem.FileInfo, error) {
 }
 
 func (fs *S3FS) Stat(path string) (*filesystem.FileInfo, error) {
-	path = normalizePath(path)
+	path = filesystem.NormalizeS3Key(path)
 	ctx := context.Background()
 
 	fs.mu.RLock()
@@ -347,8 +334,8 @@ func (fs *S3FS) Stat(path string) (*filesystem.FileInfo, error) {
 }
 
 func (fs *S3FS) Rename(oldPath, newPath string) error {
-	oldPath = normalizePath(oldPath)
-	newPath = normalizePath(newPath)
+	oldPath = filesystem.NormalizeS3Key(oldPath)
+	newPath = filesystem.NormalizeS3Key(newPath)
 	ctx := context.Background()
 
 	fs.mu.Lock()
@@ -720,7 +707,7 @@ func (r *s3StreamReader) Close() error {
 // OpenStream opens a stream for reading an S3 object
 // This implements the filesystem.Streamer interface
 func (fs *S3FS) OpenStream(path string) (filesystem.StreamReader, error) {
-	path = normalizePath(path)
+	path = filesystem.NormalizeS3Key(path)
 	ctx := context.Background()
 
 	fs.mu.RLock()

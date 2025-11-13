@@ -533,23 +533,7 @@ func (fs *sqlfs2FS) Open(path string) (io.ReadCloser, error) {
 }
 
 func (fs *sqlfs2FS) OpenWrite(path string) (io.WriteCloser, error) {
-	return &sqlfs2Writer{fs: fs, path: path}, nil
-}
-
-type sqlfs2Writer struct {
-	fs   *sqlfs2FS
-	path string
-	buf  []byte
-}
-
-func (w *sqlfs2Writer) Write(p []byte) (n int, err error) {
-	w.buf = append(w.buf, p...)
-	return len(p), nil
-}
-
-func (w *sqlfs2Writer) Close() error {
-	_, err := w.fs.Write(w.path, w.buf)
-	return err
+	return filesystem.NewBufferedWriter(path, fs.Write), nil
 }
 
 func getReadme() string {

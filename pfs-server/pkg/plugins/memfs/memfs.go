@@ -5,6 +5,7 @@ import (
 
 	"github.com/c4pt0r/pfs/pfs-server/pkg/filesystem"
 	"github.com/c4pt0r/pfs/pfs-server/pkg/plugin"
+	"github.com/c4pt0r/pfs/pfs-server/pkg/plugin/config"
 )
 
 const (
@@ -30,17 +31,8 @@ func (p *MemFSPlugin) Name() string {
 func (p *MemFSPlugin) Validate(cfg map[string]interface{}) error {
 	// Check for unknown parameters
 	allowedKeys := []string{"init_dirs", "mount_path"}
-	for key := range cfg {
-		found := false
-		for _, allowed := range allowedKeys {
-			if key == allowed {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return fmt.Errorf("unknown configuration parameter: %s (allowed: %v)", key, allowedKeys)
-		}
+	if err := config.ValidateOnlyKnownKeys(cfg, allowedKeys); err != nil {
+		return err
 	}
 
 	// Validate init_dirs if provided

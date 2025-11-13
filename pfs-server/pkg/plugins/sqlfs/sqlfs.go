@@ -234,21 +234,6 @@ func (fs *SQLFS) Close() error {
 	return nil
 }
 
-// normalizePath normalizes a path
-func normalizePath(path string) string {
-	if path == "" {
-		return "/"
-	}
-	if !strings.HasPrefix(path, "/") {
-		path = "/" + path
-	}
-	path = filepath.Clean(path)
-	if path == "." {
-		return "/"
-	}
-	return path
-}
-
 // getParentPath returns the parent directory path
 func getParentPath(path string) string {
 	if path == "/" {
@@ -262,7 +247,7 @@ func getParentPath(path string) string {
 }
 
 func (fs *SQLFS) Create(path string) error {
-	path = normalizePath(path)
+	path = filesystem.NormalizePath(path)
 
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
@@ -307,7 +292,7 @@ func (fs *SQLFS) Create(path string) error {
 }
 
 func (fs *SQLFS) Mkdir(path string, perm uint32) error {
-	path = normalizePath(path)
+	path = filesystem.NormalizePath(path)
 
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
@@ -355,7 +340,7 @@ func (fs *SQLFS) Mkdir(path string, perm uint32) error {
 }
 
 func (fs *SQLFS) Remove(path string) error {
-	path = normalizePath(path)
+	path = filesystem.NormalizePath(path)
 
 	if path == "/" {
 		return fmt.Errorf("cannot remove root directory")
@@ -398,7 +383,7 @@ func (fs *SQLFS) Remove(path string) error {
 }
 
 func (fs *SQLFS) RemoveAll(path string) error {
-	path = normalizePath(path)
+	path = filesystem.NormalizePath(path)
 
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
@@ -459,7 +444,7 @@ func (fs *SQLFS) RemoveAll(path string) error {
 }
 
 func (fs *SQLFS) Read(path string, offset int64, size int64) ([]byte, error) {
-	path = normalizePath(path)
+	path = filesystem.NormalizePath(path)
 
 	fs.mu.RLock()
 	defer fs.mu.RUnlock()
@@ -502,7 +487,7 @@ func (fs *SQLFS) Read(path string, offset int64, size int64) ([]byte, error) {
 }
 
 func (fs *SQLFS) Write(path string, data []byte) ([]byte, error) {
-	path = normalizePath(path)
+	path = filesystem.NormalizePath(path)
 
 	// Check file size limit
 	if len(data) > MaxFileSize {
@@ -566,7 +551,7 @@ func (fs *SQLFS) Write(path string, data []byte) ([]byte, error) {
 }
 
 func (fs *SQLFS) ReadDir(path string) ([]filesystem.FileInfo, error) {
-	path = normalizePath(path)
+	path = filesystem.NormalizePath(path)
 
 	// Try to get from cache first
 	if files, found := fs.listCache.Get(path); found {
@@ -640,7 +625,7 @@ func (fs *SQLFS) ReadDir(path string) ([]filesystem.FileInfo, error) {
 }
 
 func (fs *SQLFS) Stat(path string) (*filesystem.FileInfo, error) {
-	path = normalizePath(path)
+	path = filesystem.NormalizePath(path)
 
 	fs.mu.RLock()
 	defer fs.mu.RUnlock()
@@ -680,8 +665,8 @@ func (fs *SQLFS) Stat(path string) (*filesystem.FileInfo, error) {
 }
 
 func (fs *SQLFS) Rename(oldPath, newPath string) error {
-	oldPath = normalizePath(oldPath)
-	newPath = normalizePath(newPath)
+	oldPath = filesystem.NormalizePath(oldPath)
+	newPath = filesystem.NormalizePath(newPath)
 
 	if oldPath == "/" || newPath == "/" {
 		return fmt.Errorf("cannot rename root directory")
@@ -733,7 +718,7 @@ func (fs *SQLFS) Rename(oldPath, newPath string) error {
 }
 
 func (fs *SQLFS) Chmod(path string, mode uint32) error {
-	path = normalizePath(path)
+	path = filesystem.NormalizePath(path)
 
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
@@ -763,23 +748,7 @@ func (fs *SQLFS) Open(path string) (io.ReadCloser, error) {
 }
 
 func (fs *SQLFS) OpenWrite(path string) (io.WriteCloser, error) {
-	return &sqlfsWriter{fs: fs, path: path}, nil
-}
-
-type sqlfsWriter struct {
-	fs   *SQLFS
-	path string
-	buf  []byte
-}
-
-func (w *sqlfsWriter) Write(p []byte) (n int, err error) {
-	w.buf = append(w.buf, p...)
-	return len(p), nil
-}
-
-func (w *sqlfsWriter) Close() error {
-	_, err := w.fs.Write(w.path, w.buf)
-	return err
+	return filesystem.NewBufferedWriter(path, fs.Write), nil
 }
 
 func getReadme() string {

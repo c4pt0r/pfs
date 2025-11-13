@@ -34,22 +34,22 @@ var (
 )
 
 // PluginFactory is a function that creates a new plugin instance
-type PluginFactory func(configFile string) plugin.ServicePlugin
+type PluginFactory func() plugin.ServicePlugin
 
 // availablePlugins maps plugin names to their factory functions
 var availablePlugins = map[string]PluginFactory{
-	"serverinfofs": func(configFile string) plugin.ServicePlugin { return serverinfofs.NewServerInfoFSPlugin() },
-	"memfs":        func(configFile string) plugin.ServicePlugin { return memfs.NewMemFSPlugin() },
-	"queuefs":      func(configFile string) plugin.ServicePlugin { return queuefs.NewQueueFSPlugin() },
-	"kvfs":         func(configFile string) plugin.ServicePlugin { return kvfs.NewKVFSPlugin() },
-	"hellofs":      func(configFile string) plugin.ServicePlugin { return hellofs.NewHelloFSPlugin() },
-	"httpfs":       func(configFile string) plugin.ServicePlugin { return httpfs.NewHTTPFSPlugin() },
-	"proxyfs":      func(configFile string) plugin.ServicePlugin { return proxyfs.NewProxyFSPlugin("") },
-	"s3fs":         func(configFile string) plugin.ServicePlugin { return s3fs.NewS3FSPlugin() },
-	"streamfs":     func(configFile string) plugin.ServicePlugin { return streamfs.NewStreamFSPlugin() },
-	"sqlfs":        func(configFile string) plugin.ServicePlugin { return sqlfs.NewSQLFSPlugin() },
-	"sqlfs2":       func(configFile string) plugin.ServicePlugin { return sqlfs2.NewSQLFS2Plugin() },
-	"localfs":      func(configFile string) plugin.ServicePlugin { return localfs.NewLocalFSPlugin() },
+	"serverinfofs": func() plugin.ServicePlugin { return serverinfofs.NewServerInfoFSPlugin() },
+	"memfs":        func() plugin.ServicePlugin { return memfs.NewMemFSPlugin() },
+	"queuefs":      func() plugin.ServicePlugin { return queuefs.NewQueueFSPlugin() },
+	"kvfs":         func() plugin.ServicePlugin { return kvfs.NewKVFSPlugin() },
+	"hellofs":      func() plugin.ServicePlugin { return hellofs.NewHelloFSPlugin() },
+	"httpfs":       func() plugin.ServicePlugin { return httpfs.NewHTTPFSPlugin() },
+	"proxyfs":      func() plugin.ServicePlugin { return proxyfs.NewProxyFSPlugin("") },
+	"s3fs":         func() plugin.ServicePlugin { return s3fs.NewS3FSPlugin() },
+	"streamfs":     func() plugin.ServicePlugin { return streamfs.NewStreamFSPlugin() },
+	"sqlfs":        func() plugin.ServicePlugin { return sqlfs.NewSQLFSPlugin() },
+	"sqlfs2":       func() plugin.ServicePlugin { return sqlfs2.NewSQLFS2Plugin() },
+	"localfs":      func() plugin.ServicePlugin { return localfs.NewLocalFSPlugin() },
 }
 
 const sampleConfig = `# PFS Server Configuration File
@@ -209,7 +209,7 @@ func main() {
 		// Capture factory in local variable to avoid closure issues
 		f := factory
 		mfs.RegisterPluginFactory(pluginName, func() plugin.ServicePlugin {
-			return f("")
+			return f()
 		})
 	}
 
@@ -228,7 +228,7 @@ func main() {
 			}
 		} else {
 			// Create plugin instance from built-in factory
-			p = factory(*configFile)
+			p = factory()
 		}
 
 		// Special handling for httpfs: inject rootFS reference

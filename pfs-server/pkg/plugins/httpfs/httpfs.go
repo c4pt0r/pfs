@@ -148,8 +148,8 @@ func NewHTTPFS(pfsPath string, host string, port string, statusPath string, root
 	}
 
 	// Normalize paths
-	pfsPath = normalizePath(pfsPath)
-	statusPath = normalizePath(statusPath)
+	pfsPath = filesystem.NormalizePath(pfsPath)
+	statusPath = filesystem.NormalizePath(statusPath)
 
 	if host == "" {
 		host = "0.0.0.0" // Default to all interfaces
@@ -177,24 +177,9 @@ func NewHTTPFS(pfsPath string, host string, port string, statusPath string, root
 	return fs, nil
 }
 
-// normalizePath normalizes a path
-func normalizePath(p string) string {
-	if p == "" || p == "/" {
-		return "/"
-	}
-	if !strings.HasPrefix(p, "/") {
-		p = "/" + p
-	}
-	// Remove trailing slash
-	if len(p) > 1 && strings.HasSuffix(p, "/") {
-		p = p[:len(p)-1]
-	}
-	return p
-}
-
 // resolvePFSPath converts a URL path to a PFS path
 func (fs *HTTPFS) resolvePFSPath(urlPath string) string {
-	urlPath = normalizePath(urlPath)
+	urlPath = filesystem.NormalizePath(urlPath)
 	if urlPath == "/" {
 		return fs.pfsPath
 	}

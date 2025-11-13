@@ -2,12 +2,12 @@ package hellofs
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"time"
 
 	"github.com/c4pt0r/pfs/pfs-server/pkg/filesystem"
 	"github.com/c4pt0r/pfs/pfs-server/pkg/plugin"
+	"github.com/c4pt0r/pfs/pfs-server/pkg/plugin/config"
 )
 
 const (
@@ -28,12 +28,8 @@ func (p *HelloFSPlugin) Name() string {
 
 func (p *HelloFSPlugin) Validate(cfg map[string]interface{}) error {
 	// Only mount_path is allowed (injected by framework)
-	for key := range cfg {
-		if key != "mount_path" {
-			return fmt.Errorf("unknown configuration parameter: %s (hellofs accepts no configuration)", key)
-		}
-	}
-	return nil
+	allowedKeys := []string{"mount_path"}
+	return config.ValidateOnlyKnownKeys(cfg, allowedKeys)
 }
 
 func (p *HelloFSPlugin) Initialize(config map[string]interface{}) error {

@@ -55,20 +55,9 @@ func NewMemoryFSWithPlugin(pluginName string) *MemoryFS {
 	}
 }
 
-// normalizePath normalizes the path
-func normalizePath(path string) string {
-	if path == "" {
-		return "/"
-	}
-	if !strings.HasPrefix(path, "/") {
-		path = "/" + path
-	}
-	return filepath.Clean(path)
-}
-
 // getNode retrieves a node from the tree
 func (mfs *MemoryFS) getNode(path string) (*Node, error) {
-	path = normalizePath(path)
+	path = filesystem.NormalizePath(path)
 
 	if path == "/" {
 		return mfs.root, nil
@@ -93,7 +82,7 @@ func (mfs *MemoryFS) getNode(path string) (*Node, error) {
 
 // getParentNode retrieves the parent node and the basename
 func (mfs *MemoryFS) getParentNode(path string) (*Node, string, error) {
-	path = normalizePath(path)
+	path = filesystem.NormalizePath(path)
 
 	if path == "/" {
 		return nil, "", fmt.Errorf("cannot get parent of root")
@@ -170,7 +159,7 @@ func (mfs *MemoryFS) Remove(path string) error {
 	mfs.mu.Lock()
 	defer mfs.mu.Unlock()
 
-	if normalizePath(path) == "/" {
+	if filesystem.NormalizePath(path) == "/" {
 		return fmt.Errorf("cannot remove root directory")
 	}
 
@@ -198,7 +187,7 @@ func (mfs *MemoryFS) RemoveAll(path string) error {
 	defer mfs.mu.Unlock()
 
 	// If path is root, remove all children but not the root itself
-	if normalizePath(path) == "/" {
+	if filesystem.NormalizePath(path) == "/" {
 		mfs.root.Children = make(map[string]*Node)
 		return nil
 	}

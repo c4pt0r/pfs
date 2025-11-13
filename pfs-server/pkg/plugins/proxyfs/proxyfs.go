@@ -160,11 +160,7 @@ func (pfs *ProxyFS) Open(path string) (io.ReadCloser, error) {
 }
 
 func (pfs *ProxyFS) OpenWrite(path string) (io.WriteCloser, error) {
-	return &proxyWriter{
-		pfs:  pfs,
-		path: path,
-		buf:  make([]byte, 0),
-	}, nil
+	return filesystem.NewBufferedWriter(path, pfs.Write), nil
 }
 
 // OpenStream implements filesystem.Streamer interface
@@ -254,23 +250,6 @@ func (ps *ProxyStream) Read(p []byte) (n int, err error) {
 // Close implements io.Closer
 func (ps *ProxyStream) Close() error {
 	return ps.reader.Close()
-}
-
-// proxyWriter implements io.WriteCloser for ProxyFS
-type proxyWriter struct {
-	pfs  *ProxyFS
-	path string
-	buf  []byte
-}
-
-func (w *proxyWriter) Write(p []byte) (n int, error error) {
-	w.buf = append(w.buf, p...)
-	return len(p), nil
-}
-
-func (w *proxyWriter) Close() error {
-	_, err := w.pfs.Write(w.path, w.buf)
-	return err
 }
 
 // bytesReader wraps a byte slice to implement io.Reader

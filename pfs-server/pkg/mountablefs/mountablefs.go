@@ -3,6 +3,7 @@ package mountablefs
 import (
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -123,7 +124,7 @@ func (mfs *MountableFS) Mount(path string, plugin plugin.ServicePlugin) error {
 	defer mfs.mu.Unlock()
 
 	// Normalize path
-	path = normalizePath(path)
+	path = filesystem.NormalizePath(path)
 
 	// Check if path is already mounted
 	if _, exists := mfs.mounts[path]; exists {
@@ -150,7 +151,7 @@ func (mfs *MountableFS) MountPlugin(fstype string, path string, config map[strin
 	defer mfs.mu.Unlock()
 
 	// Normalize path
-	path = normalizePath(path)
+	path = filesystem.NormalizePath(path)
 
 	// Check if path is already mounted
 	if _, exists := mfs.mounts[path]; exists {
@@ -213,7 +214,7 @@ func (mfs *MountableFS) Unmount(path string) error {
 	mfs.mu.Lock()
 	defer mfs.mu.Unlock()
 
-	path = normalizePath(path)
+	path = filesystem.NormalizePath(path)
 
 	mount, exists := mfs.mounts[path]
 	if !exists {
@@ -349,7 +350,7 @@ func (mfs *MountableFS) GetMounts() []*MountPoint {
 // findMount finds the mount point for a given path
 // Returns the mount and the relative path within the mount
 func (mfs *MountableFS) findMount(path string) (*MountPoint, string, bool) {
-	path = normalizePath(path)
+	path = filesystem.NormalizePath(path)
 
 	// Check each mount path (longest first)
 	for _, mountPath := range mfs.mountPaths {
@@ -369,30 +370,9 @@ func (mfs *MountableFS) findMount(path string) (*MountPoint, string, bool) {
 
 // sortMountPaths sorts mount paths by length (longest first) for correct prefix matching
 func (mfs *MountableFS) sortMountPaths() {
-	// Simple bubble sort since we don't expect many mounts
-	n := len(mfs.mountPaths)
-	for i := 0; i < n-1; i++ {
-		for j := 0; j < n-i-1; j++ {
-			if len(mfs.mountPaths[j]) < len(mfs.mountPaths[j+1]) {
-				mfs.mountPaths[j], mfs.mountPaths[j+1] = mfs.mountPaths[j+1], mfs.mountPaths[j]
-			}
-		}
-	}
-}
-
-// normalizePath normalizes a path
-func normalizePath(path string) string {
-	if path == "" || path == "/" {
-		return "/"
-	}
-	if !strings.HasPrefix(path, "/") {
-		path = "/" + path
-	}
-	// Remove trailing slash
-	if len(path) > 1 && strings.HasSuffix(path, "/") {
-		path = path[:len(path)-1]
-	}
-	return path
+	sort.Slice(mfs.mountPaths, func(i, j int) bool {
+		return len(mfs.mountPaths[i]) > len(mfs.mountPaths[j])
+	})
 }
 
 // Delegate all FileSystem methods to either base FS or mounted plugin
@@ -468,7 +448,7 @@ func (mfs *MountableFS) ReadDir(path string) ([]filesystem.FileInfo, error) {
 	defer mfs.mu.RUnlock()
 
 	// Normalize path
-	path = normalizePath(path)
+	path = filesystem.NormalizePath(path)
 
 	// If listing root, show all top-level mount point directories
 	if path == "/" {
@@ -616,7 +596,7 @@ func (mfs *MountableFS) Stat(path string) (*filesystem.FileInfo, error) {
 	mfs.mu.RLock()
 	defer mfs.mu.RUnlock()
 
-	path = normalizePath(path)
+	path = filesystem.NormalizePath(path)
 
 	// Check if path is root
 	if path == "/" {
