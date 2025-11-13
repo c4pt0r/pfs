@@ -14,6 +14,7 @@ from pypfs import PFSClient, PFSClientError
 from .commands import CommandHandler
 from . import cli_commands
 from .version import get_version_string, __version__
+from .decorators import pfs_command
 
 console = Console()
 
@@ -276,12 +277,10 @@ def tail(ctx, path, lines):
 @main.command()
 @click.argument("path")
 @click.pass_context
+@pfs_command()
 def mkdir(ctx, path):
     """Create directory"""
-    try:
-        cli_commands.cmd_mkdir(ctx.obj["client"], path)
-    except Exception as e:
-        console.print(f"mkdir: {path}: {e}", highlight=False)
+    cli_commands.cmd_mkdir(ctx.obj["client"], path)
 
 
 @main.command()
@@ -299,12 +298,10 @@ def rm(ctx, path, recursive):
 @main.command()
 @click.argument("path")
 @click.pass_context
+@pfs_command()
 def touch(ctx, path):
     """Create empty file"""
-    try:
-        cli_commands.cmd_touch(ctx.obj["client"], path)
-    except Exception as e:
-        console.print(f"touch: {path}: {e}", highlight=False)
+    cli_commands.cmd_touch(ctx.obj["client"], path)
 
 
 @main.command()
@@ -334,36 +331,30 @@ def write(ctx, path, content, stream):
 @main.command()
 @click.argument("path")
 @click.pass_context
+@pfs_command()
 def stat(ctx, path):
     """Show file/directory information"""
-    try:
-        cli_commands.cmd_stat(ctx.obj["client"], path)
-    except Exception as e:
-        console.print(f"stat: {path}: {e}", highlight=False)
+    cli_commands.cmd_stat(ctx.obj["client"], path)
 
 
 @main.command()
 @click.argument("source")
 @click.argument("destination")
 @click.pass_context
+@pfs_command("cp")
 def cp(ctx, source, destination):
     """Copy file"""
-    try:
-        cli_commands.cmd_cp(ctx.obj["client"], source, destination)
-    except Exception as e:
-        console.print(f"cp: {source}: {e}", highlight=False)
+    cli_commands.cmd_cp(ctx.obj["client"], source, destination)
 
 
 @main.command()
 @click.argument("source")
 @click.argument("destination")
 @click.pass_context
+@pfs_command("mv")
 def mv(ctx, source, destination):
     """Move/rename file"""
-    try:
-        cli_commands.cmd_mv(ctx.obj["client"], source, destination)
-    except Exception as e:
-        console.print(f"mv: {source}: {e}", highlight=False)
+    cli_commands.cmd_mv(ctx.obj["client"], source, destination)
 
 
 @main.command()
@@ -409,12 +400,10 @@ def download(ctx, pfs_path, local_path, recursive):
 
 @main.command()
 @click.pass_context
+@pfs_command()
 def mounts(ctx):
     """List mounted plugins"""
-    try:
-        cli_commands.cmd_mounts(ctx.obj["client"])
-    except Exception as e:
-        console.print(f"mounts: {e}", highlight=False)
+    cli_commands.cmd_mounts(ctx.obj["client"])
 
 
 @main.command()
@@ -440,12 +429,10 @@ def mount(ctx, fstype, path, config_args):
 @main.command()
 @click.argument("path")
 @click.pass_context
+@pfs_command()
 def unmount(ctx, path):
     """Unmount a plugin"""
-    try:
-        cli_commands.cmd_unmount(ctx.obj["client"], path)
-    except Exception as e:
-        console.print(f"unmount: {e}", highlight=False)
+    cli_commands.cmd_unmount(ctx.obj["client"], path)
 
 
 @main.command()
