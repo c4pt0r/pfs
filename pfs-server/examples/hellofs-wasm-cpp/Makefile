@@ -28,7 +28,7 @@ build-em:
 	     -I$(SDK_DIR) \
 	     -s WASM=1 \
 	     -s STANDALONE_WASM=1 \
-	     -s ALLOW_MEMORY_GROWTH=0 \
+	     -s ALLOW_MEMORY_GROWTH=1 \
 	     -s INITIAL_MEMORY=2MB \
 	     -s MAXIMUM_MEMORY=16MB \
 	     -s EXPORTED_FUNCTIONS='["_malloc","_free"]' \
