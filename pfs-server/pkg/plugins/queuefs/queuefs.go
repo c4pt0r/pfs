@@ -14,6 +14,7 @@ import (
 	"github.com/c4pt0r/pfs/pfs-server/pkg/filesystem"
 	"github.com/c4pt0r/pfs/pfs-server/pkg/plugin"
 	"github.com/c4pt0r/pfs/pfs-server/pkg/plugin/config"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -26,7 +27,7 @@ const (
 	MetaValueQueueStatus  = "status"  // Queue status files (size)
 )
 
-// QueueFSPlugin provides a message queue service through a file system interface
+// QueueFSPlugin provides a message queue service through a file system interface.
 // Each queue is a directory containing control files:
 //
 //	/queue_name/enqueue - write to this file to enqueue a message
@@ -36,13 +37,18 @@ const (
 //	                      This can be used for implementing poll offset logic
 //	/queue_name/size    - read to get queue size
 //	/queue_name/clear   - write to this file to clear the queue
+//
+// Supports multiple backends:
+//   - memory (default): In-memory storage
+//   - tidb: TiDB database storage with TLS support
+//   - sqlite: SQLite database storage
 type QueueFSPlugin struct {
-	queues   map[string]*Queue // Map of queue name to Queue instance
-	mu       sync.RWMutex      // Protects the queues map
+	backend  QueueBackend
+	mu       sync.RWMutex // Protects backend operations
 	metadata plugin.PluginMetadata
 }
 
-// Queue represents a single message queue
+// Queue represents a single message queue (for memory backend)
 type Queue struct {
 	messages        []QueueMessage
 	mu              sync.Mutex
@@ -58,12 +64,11 @@ type QueueMessage struct {
 // NewQueueFSPlugin creates a new queue plugin
 func NewQueueFSPlugin() *QueueFSPlugin {
 	return &QueueFSPlugin{
-		queues: make(map[string]*Queue),
 		metadata: plugin.PluginMetadata{
 			Name:        PluginName,
 			Version:     "1.0.0",
-			Description: "Message queue service plugin with multiple queue support",
-			Author:      "VFS Server",
+			Description: "Message queue service plugin with multiple queue support and pluggable backends",
+			Author:      "PFS Server",
 		},
 	}
 }
@@ -73,12 +78,78 @@ func (q *QueueFSPlugin) Name() string {
 }
 
 func (q *QueueFSPlugin) Validate(cfg map[string]interface{}) error {
-	// Only mount_path is allowed (injected by framework)
-	allowedKeys := []string{"mount_path"}
-	return config.ValidateOnlyKnownKeys(cfg, allowedKeys)
+	// Allowed configuration keys
+	allowedKeys := []string{
+		"backend", "mount_path",
+		// Database-related keys
+		"db_path", "dsn", "user", "password", "host", "port", "database",
+		"enable_tls", "tls_server_name", "tls_skip_verify",
+	}
+	if err := config.ValidateOnlyKnownKeys(cfg, allowedKeys); err != nil {
+		return err
+	}
+
+	// Validate backend type
+	backendType := config.GetStringConfig(cfg, "backend", "memory")
+	validBackends := map[string]bool{
+		"memory":  true,
+		"tidb":    true,
+		"mysql":   true,
+		"sqlite":  true,
+		"sqlite3": true,
+	}
+	if !validBackends[backendType] {
+		return fmt.Errorf("unsupported backend: %s (valid options: memory, tidb, mysql, sqlite)", backendType)
+	}
+
+	// Validate database-related parameters if backend is not memory
+	if backendType != "memory" {
+		for _, key := range []string{"db_path", "dsn", "user", "password", "host", "database", "tls_server_name"} {
+			if err := config.ValidateStringType(cfg, key); err != nil {
+				return err
+			}
+		}
+
+		for _, key := range []string{"port"} {
+			if err := config.ValidateIntType(cfg, key); err != nil {
+				return err
+			}
+		}
+
+		for _, key := range []string{"enable_tls", "tls_skip_verify"} {
+			if err := config.ValidateBoolType(cfg, key); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
-func (q *QueueFSPlugin) Initialize(config map[string]interface{}) error {
+func (q *QueueFSPlugin) Initialize(cfg map[string]interface{}) error {
+	backendType := config.GetStringConfig(cfg, "backend", "memory")
+
+	// Create appropriate backend
+	var backend QueueBackend
+	var err error
+
+	switch backendType {
+	case "memory":
+		backend = NewMemoryBackend()
+	case "tidb", "mysql", "sqlite", "sqlite3":
+		backend = NewTiDBBackend()
+	default:
+		return fmt.Errorf("unsupported backend: %s", backendType)
+	}
+
+	// Initialize backend
+	if err = backend.Initialize(cfg); err != nil {
+		return fmt.Errorf("failed to initialize %s backend: %w", backendType, err)
+	}
+
+	q.backend = backend
+
+	log.Infof("[queuefs] Initialized with backend: %s", backendType)
 	return nil
 }
 
@@ -130,8 +201,53 @@ NESTED QUEUES:
     echo "error: timeout" > /queuefs/logs/errors/enqueue
     cat /queuefs/logs/errors/dequeue
 
+BACKENDS:
+
+  Memory Backend (default):
+  [plugins.queuefs]
+  enabled = true
+  path = "/queuefs"
+  # No additional config needed for memory backend
+
+  SQLite Backend:
+  [plugins.queuefs]
+  enabled = true
+  path = "/queuefs"
+
+    [plugins.queuefs.config]
+    backend = "sqlite"
+    db_path = "queue.db"
+
+  TiDB Backend (local):
+  [plugins.queuefs]
+  enabled = true
+  path = "/queuefs"
+
+    [plugins.queuefs.config]
+    backend = "tidb"
+    host = "127.0.0.1"
+    port = "4000"
+    user = "root"
+    password = ""
+    database = "queuedb"
+
+  TiDB Cloud Backend (with TLS):
+  [plugins.queuefs]
+  enabled = true
+  path = "/queuefs"
+
+    [plugins.queuefs.config]
+    backend = "tidb"
+    user = "3YdGXuXNdAEmP1f.root"
+    password = "your_password"
+    host = "gateway01.us-west-2.prod.aws.tidbcloud.com"
+    port = "4000"
+    database = "queuedb"
+    enable_tls = true
+    tls_server_name = "gateway01.us-west-2.prod.aws.tidbcloud.com"
+
 EXAMPLES:
-  # Create multiple queues for different purposes
+  # Create multiple queues
   pfs:/> mkdir /queuefs/orders
   pfs:/> mkdir /queuefs/notifications
   pfs:/> mkdir /queuefs/logs/errors
@@ -155,13 +271,21 @@ EXAMPLES:
 
   # Delete a queue when done
   pfs:/> rm -rf /queuefs/orders
+
+BACKEND COMPARISON:
+  - memory: Fastest, no persistence, lost on restart
+  - sqlite: Good for single server, persistent, file-based
+  - tidb: Best for production, distributed, scalable, persistent
 `
 }
 
 func (q *QueueFSPlugin) Shutdown() error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	q.queues = nil
+
+	if q.backend != nil {
+		return q.backend.Close()
+	}
 	return nil
 }
 
@@ -181,11 +305,6 @@ var queueOperations = map[string]bool{
 
 // parseQueuePath parses a path like "/queue_name/operation" or "/dir/queue_name/operation"
 // Returns (queueName, operation, isDir, error)
-// Examples:
-//   - "/myqueue" -> ("myqueue", "", true, nil) - queue directory
-//   - "/myqueue/enqueue" -> ("myqueue", "enqueue", false, nil) - queue operation
-//   - "/dir/myqueue" -> ("dir/myqueue", "", true, nil) - nested queue directory
-//   - "/dir/myqueue/dequeue" -> ("dir/myqueue", "dequeue", false, nil) - nested queue operation
 func parseQueuePath(path string) (queueName string, operation string, isDir bool, err error) {
 	// Clean the path
 	path = filepath.Clean(path)
@@ -258,20 +377,7 @@ func (qfs *queueFS) Mkdir(path string, perm uint32) error {
 		return fmt.Errorf("invalid queue name")
 	}
 
-	qfs.plugin.mu.Lock()
-	defer qfs.plugin.mu.Unlock()
-
-	// Check if queue already exists
-	if _, exists := qfs.plugin.queues[queueName]; exists {
-		return fmt.Errorf("queue already exists: %s", queueName)
-	}
-
-	// Create new queue
-	qfs.plugin.queues[queueName] = &Queue{
-		messages:        []QueueMessage{},
-		lastEnqueueTime: time.Time{},
-	}
-
+	// Queue creation is virtual for all backends
 	return nil
 }
 
@@ -305,21 +411,7 @@ func (qfs *queueFS) RemoveAll(path string) error {
 	qfs.plugin.mu.Lock()
 	defer qfs.plugin.mu.Unlock()
 
-	// If path is root, remove all queues
-	if queueName == "" {
-		qfs.plugin.queues = make(map[string]*Queue)
-		return nil
-	}
-
-	// Check if queue exists
-	if _, exists := qfs.plugin.queues[queueName]; !exists {
-		return fmt.Errorf("queue does not exist: %s", queueName)
-	}
-
-	// Remove the queue
-	delete(qfs.plugin.queues, queueName)
-
-	return nil
+	return qfs.plugin.backend.RemoveQueue(queueName)
 }
 
 func (qfs *queueFS) Read(path string, offset int64, size int64) ([]byte, error) {
@@ -342,26 +434,17 @@ func (qfs *queueFS) Read(path string, offset int64, size int64) ([]byte, error) 
 		return nil, fmt.Errorf("no such file: %s", path)
 	}
 
-	// Get the queue
-	qfs.plugin.mu.RLock()
-	queue, exists := qfs.plugin.queues[queueName]
-	qfs.plugin.mu.RUnlock()
-
-	if !exists {
-		return nil, fmt.Errorf("queue does not exist: %s", queueName)
-	}
-
 	var data []byte
 
 	switch operation {
 	case "dequeue":
-		data, err = qfs.dequeue(queue)
+		data, err = qfs.dequeue(queueName)
 	case "peek":
-		data, err = qfs.peek(queue)
+		data, err = qfs.peek(queueName)
 	case "size":
-		data, err = qfs.size(queue)
+		data, err = qfs.size(queueName)
 	case "enqueue", "clear":
-		// Write-only files - return descriptive message
+		// Write-only files
 		return []byte(""), fmt.Errorf("permission denied: %s is write-only", path)
 	default:
 		return nil, fmt.Errorf("no such file: %s", path)
@@ -388,24 +471,15 @@ func (qfs *queueFS) Write(path string, data []byte) ([]byte, error) {
 		return nil, fmt.Errorf("cannot write to: %s", path)
 	}
 
-	// Get the queue
-	qfs.plugin.mu.RLock()
-	queue, exists := qfs.plugin.queues[queueName]
-	qfs.plugin.mu.RUnlock()
-
-	if !exists {
-		return nil, fmt.Errorf("queue does not exist: %s", queueName)
-	}
-
 	switch operation {
 	case "enqueue":
-		msgID, err := qfs.enqueue(queue, data)
+		msgID, err := qfs.enqueue(queueName, data)
 		if err != nil {
 			return nil, err
 		}
 		return msgID, nil
 	case "clear":
-		if err := qfs.clear(queue); err != nil {
+		if err := qfs.clear(queueName); err != nil {
 			return nil, err
 		}
 		return []byte("OK"), nil
@@ -443,111 +517,66 @@ func (qfs *queueFS) ReadDir(path string) ([]filesystem.FileInfo, error) {
 			},
 		}
 
-		// Add all queue directories
-		for qName := range qfs.plugin.queues {
-			// For nested queues, only show top-level directories at root
+		// Get all queues from backend
+		queues, err := qfs.plugin.backend.ListQueues("")
+		if err != nil {
+			return nil, err
+		}
+
+		// Extract top-level directories
+		topLevelDirs := make(map[string]bool)
+		for _, qName := range queues {
 			parts := strings.Split(qName, "/")
-			topLevel := parts[0]
-
-			// Check if we already added this top-level directory
-			found := false
-			for _, f := range files {
-				if f.Name == topLevel && f.IsDir {
-					found = true
-					break
-				}
+			if len(parts) > 0 {
+				topLevelDirs[parts[0]] = true
 			}
+		}
 
-			if !found {
-				files = append(files, filesystem.FileInfo{
-					Name:    topLevel,
-					Size:    0,
-					Mode:    0755,
-					ModTime: now,
-					IsDir:   true,
-					Meta:    filesystem.MetaData{Name: PluginName, Type: "queue"},
-				})
-			}
+		for dirName := range topLevelDirs {
+			files = append(files, filesystem.FileInfo{
+				Name:    dirName,
+				Size:    0,
+				Mode:    0755,
+				ModTime: now,
+				IsDir:   true,
+				Meta:    filesystem.MetaData{Name: PluginName, Type: "queue"},
+			})
 		}
 
 		return files, nil
 	}
 
-	// Queue directory or intermediate directory: list control files or subdirectories
-	qfs.plugin.mu.RLock()
-	queue, exists := qfs.plugin.queues[queueName]
-	qfs.plugin.mu.RUnlock()
-
-	if exists {
-		// This is an actual queue directory - list control files
-		queue.mu.Lock()
-		queueSize := len(queue.messages)
-		lastEnqueueTime := queue.lastEnqueueTime
-		queue.mu.Unlock()
-
-		// Use lastEnqueueTime for peek's ModTime, or current time if no messages yet
-		peekModTime := lastEnqueueTime
-		if peekModTime.IsZero() {
-			peekModTime = now
-		}
-
-		files := []filesystem.FileInfo{
-			{
-				Name:    "enqueue",
-				Size:    0,
-				Mode:    0222, // write-only
-				ModTime: now,
-				IsDir:   false,
-				Meta:    filesystem.MetaData{Name: PluginName, Type: MetaValueQueueControl},
-			},
-			{
-				Name:    "dequeue",
-				Size:    0,
-				Mode:    0444, // read-only
-				ModTime: now,
-				IsDir:   false,
-				Meta:    filesystem.MetaData{Name: PluginName, Type: MetaValueQueueControl},
-			},
-			{
-				Name:    "peek",
-				Size:    0,
-				Mode:    0444,        // read-only
-				ModTime: peekModTime, // Use last enqueue time for poll offset tracking
-				IsDir:   false,
-				Meta:    filesystem.MetaData{Name: PluginName, Type: MetaValueQueueControl},
-			},
-			{
-				Name:    "size",
-				Size:    int64(len(strconv.Itoa(queueSize))),
-				Mode:    0444, // read-only
-				ModTime: now,
-				IsDir:   false,
-				Meta:    filesystem.MetaData{Name: PluginName, Type: MetaValueQueueStatus},
-			},
-			{
-				Name:    "clear",
-				Size:    0,
-				Mode:    0222, // write-only
-				ModTime: now,
-				IsDir:   false,
-				Meta:    filesystem.MetaData{Name: PluginName, Type: MetaValueQueueControl},
-			},
-		}
-
-		return files, nil
-	}
-
-	// This might be an intermediate directory (e.g., /dir when we have /dir/queue)
+	// Check if this is an actual queue or intermediate directory
 	qfs.plugin.mu.RLock()
 	defer qfs.plugin.mu.RUnlock()
 
-	prefix := queueName + "/"
-	subdirs := make(map[string]bool)
+	// Check if queue has messages
+	size, err := qfs.plugin.backend.Size(queueName)
+	if err != nil {
+		return nil, err
+	}
 
-	for qName := range qfs.plugin.queues {
-		if strings.HasPrefix(qName, prefix) {
-			// Extract the next level subdirectory
-			remainder := strings.TrimPrefix(qName, prefix)
+	if size > 0 {
+		// This is an actual queue with messages - return control files
+		return qfs.getQueueControlFiles(queueName, now)
+	}
+
+	// Check for nested queues
+	queues, err := qfs.plugin.backend.ListQueues(queueName)
+	if err != nil {
+		return nil, err
+	}
+
+	subdirs := make(map[string]bool)
+	hasNested := false
+
+	for _, qName := range queues {
+		if qName == queueName {
+			continue
+		}
+		if strings.HasPrefix(qName, queueName+"/") {
+			hasNested = true
+			remainder := strings.TrimPrefix(qName, queueName+"/")
 			parts := strings.Split(remainder, "/")
 			if len(parts) > 0 {
 				subdirs[parts[0]] = true
@@ -555,11 +584,13 @@ func (qfs *queueFS) ReadDir(path string) ([]filesystem.FileInfo, error) {
 		}
 	}
 
-	if len(subdirs) == 0 {
-		return nil, fmt.Errorf("no such directory: %s", path)
+	if !hasNested {
+		// No messages and no nested queues - treat as empty queue directory
+		return qfs.getQueueControlFiles(queueName, now)
 	}
 
-	files := []filesystem.FileInfo{}
+	// Return subdirectories
+	var files []filesystem.FileInfo
 	for subdir := range subdirs {
 		files = append(files, filesystem.FileInfo{
 			Name:    subdir,
@@ -569,6 +600,65 @@ func (qfs *queueFS) ReadDir(path string) ([]filesystem.FileInfo, error) {
 			IsDir:   true,
 			Meta:    filesystem.MetaData{Name: PluginName, Type: "queue"},
 		})
+	}
+
+	return files, nil
+}
+
+func (qfs *queueFS) getQueueControlFiles(queueName string, now time.Time) ([]filesystem.FileInfo, error) {
+	// Get queue size
+	queueSize, err := qfs.plugin.backend.Size(queueName)
+	if err != nil {
+		queueSize = 0
+	}
+
+	// Get last enqueue time for peek ModTime
+	lastEnqueueTime, err := qfs.plugin.backend.GetLastEnqueueTime(queueName)
+	if err != nil || lastEnqueueTime.IsZero() {
+		lastEnqueueTime = now
+	}
+
+	files := []filesystem.FileInfo{
+		{
+			Name:    "enqueue",
+			Size:    0,
+			Mode:    0222, // write-only
+			ModTime: now,
+			IsDir:   false,
+			Meta:    filesystem.MetaData{Name: PluginName, Type: MetaValueQueueControl},
+		},
+		{
+			Name:    "dequeue",
+			Size:    0,
+			Mode:    0444, // read-only
+			ModTime: now,
+			IsDir:   false,
+			Meta:    filesystem.MetaData{Name: PluginName, Type: MetaValueQueueControl},
+		},
+		{
+			Name:    "peek",
+			Size:    0,
+			Mode:    0444,             // read-only
+			ModTime: lastEnqueueTime, // Use last enqueue time for poll offset tracking
+			IsDir:   false,
+			Meta:    filesystem.MetaData{Name: PluginName, Type: MetaValueQueueControl},
+		},
+		{
+			Name:    "size",
+			Size:    int64(len(strconv.Itoa(queueSize))),
+			Mode:    0444, // read-only
+			ModTime: now,
+			IsDir:   false,
+			Meta:    filesystem.MetaData{Name: PluginName, Type: MetaValueQueueStatus},
+		},
+		{
+			Name:    "clear",
+			Size:    0,
+			Mode:    0222, // write-only
+			ModTime: now,
+			IsDir:   false,
+			Meta:    filesystem.MetaData{Name: PluginName, Type: MetaValueQueueControl},
+		},
 	}
 
 	return files, nil
@@ -604,30 +694,10 @@ func (qfs *queueFS) Stat(path string) (*filesystem.FileInfo, error) {
 		return nil, err
 	}
 
+	now := time.Now()
+
 	// Directory stat
 	if isDir {
-		qfs.plugin.mu.RLock()
-		_, exists := qfs.plugin.queues[queueName]
-		qfs.plugin.mu.RUnlock()
-
-		if !exists && queueName != "" {
-			// Check if it's an intermediate directory
-			qfs.plugin.mu.RLock()
-			prefix := queueName + "/"
-			hasChildren := false
-			for qName := range qfs.plugin.queues {
-				if strings.HasPrefix(qName, prefix) {
-					hasChildren = true
-					break
-				}
-			}
-			qfs.plugin.mu.RUnlock()
-
-			if !hasChildren {
-				return nil, fmt.Errorf("no such directory: %s", path)
-			}
-		}
-
 		name := filepath.Base(path)
 		if name == "." || name == "/" {
 			name = "/"
@@ -637,7 +707,7 @@ func (qfs *queueFS) Stat(path string) (*filesystem.FileInfo, error) {
 			Name:    name,
 			Size:    0,
 			Mode:    0755,
-			ModTime: time.Now(),
+			ModTime: now,
 			IsDir:   true,
 			Meta:    filesystem.MetaData{Name: PluginName, Type: "queue"},
 		}, nil
@@ -646,15 +716,6 @@ func (qfs *queueFS) Stat(path string) (*filesystem.FileInfo, error) {
 	// Control file stat
 	if operation == "" {
 		return nil, fmt.Errorf("no such file: %s", path)
-	}
-
-	// Check if queue exists
-	qfs.plugin.mu.RLock()
-	queue, exists := qfs.plugin.queues[queueName]
-	qfs.plugin.mu.RUnlock()
-
-	if !exists {
-		return nil, fmt.Errorf("queue does not exist: %s", queueName)
 	}
 
 	mode := uint32(0644)
@@ -666,21 +727,18 @@ func (qfs *queueFS) Stat(path string) (*filesystem.FileInfo, error) {
 
 	fileType := MetaValueQueueControl
 	size := int64(0)
-	modTime := time.Now()
+	modTime := now
 
 	if operation == "size" {
 		fileType = MetaValueQueueStatus
-		queue.mu.Lock()
-		queueSize := len(queue.messages)
-		queue.mu.Unlock()
+		queueSize, _ := qfs.plugin.backend.Size(queueName)
 		size = int64(len(strconv.Itoa(queueSize)))
 	} else if operation == "peek" {
-		// Use lastEnqueueTime for peek's ModTime to support poll offset logic
-		queue.mu.Lock()
-		if !queue.lastEnqueueTime.IsZero() {
-			modTime = queue.lastEnqueueTime
+		// Use last enqueue time for peek's ModTime
+		lastEnqueueTime, err := qfs.plugin.backend.GetLastEnqueueTime(queueName)
+		if err == nil && !lastEnqueueTime.IsZero() {
+			modTime = lastEnqueueTime
 		}
-		queue.mu.Unlock()
 	}
 
 	return &filesystem.FileInfo{
@@ -730,9 +788,9 @@ func (qw *queueWriter) Close() error {
 
 // Queue operations
 
-func (qfs *queueFS) enqueue(queue *Queue, data []byte) ([]byte, error) {
-	queue.mu.Lock()
-	defer queue.mu.Unlock()
+func (qfs *queueFS) enqueue(queueName string, data []byte) ([]byte, error) {
+	qfs.plugin.mu.Lock()
+	defer qfs.plugin.mu.Unlock()
 
 	now := time.Now()
 	msg := QueueMessage{
@@ -741,62 +799,67 @@ func (qfs *queueFS) enqueue(queue *Queue, data []byte) ([]byte, error) {
 		Timestamp: now,
 	}
 
-	queue.messages = append(queue.messages, msg)
-
-	// Update lastEnqueueTime to ensure monotonic increase for poll offset logic
-	// Even if messages arrive at the same nanosecond, we ensure the time is always increasing
-	if now.After(queue.lastEnqueueTime) {
-		queue.lastEnqueueTime = now
-	} else {
-		// If time hasn't advanced, add 1 nanosecond to ensure monotonic increase
-		queue.lastEnqueueTime = queue.lastEnqueueTime.Add(1 * time.Nanosecond)
+	err := qfs.plugin.backend.Enqueue(queueName, msg)
+	if err != nil {
+		return nil, err
 	}
 
 	return []byte(msg.ID), nil
 }
 
-func (qfs *queueFS) dequeue(queue *Queue) ([]byte, error) {
-	queue.mu.Lock()
-	defer queue.mu.Unlock()
+func (qfs *queueFS) dequeue(queueName string) ([]byte, error) {
+	qfs.plugin.mu.Lock()
+	defer qfs.plugin.mu.Unlock()
 
-	if len(queue.messages) == 0 {
+	msg, found, err := qfs.plugin.backend.Dequeue(queueName)
+	if err != nil {
+		return nil, err
+	}
+
+	if !found {
 		// Return empty JSON object instead of error for empty queue
 		return []byte("{}"), nil
 	}
 
-	msg := queue.messages[0]
-	queue.messages = queue.messages[1:]
-
 	return json.Marshal(msg)
 }
 
-func (qfs *queueFS) peek(queue *Queue) ([]byte, error) {
-	queue.mu.Lock()
-	defer queue.mu.Unlock()
+func (qfs *queueFS) peek(queueName string) ([]byte, error) {
+	qfs.plugin.mu.RLock()
+	defer qfs.plugin.mu.RUnlock()
 
-	if len(queue.messages) == 0 {
+	msg, found, err := qfs.plugin.backend.Peek(queueName)
+	if err != nil {
+		return nil, err
+	}
+
+	if !found {
 		// Return empty JSON object instead of error for empty queue
 		return []byte("{}"), nil
 	}
 
-	msg := queue.messages[0]
 	return json.Marshal(msg)
 }
 
-func (qfs *queueFS) size(queue *Queue) ([]byte, error) {
-	queue.mu.Lock()
-	defer queue.mu.Unlock()
+func (qfs *queueFS) size(queueName string) ([]byte, error) {
+	qfs.plugin.mu.RLock()
+	defer qfs.plugin.mu.RUnlock()
 
-	return []byte(strconv.Itoa(len(queue.messages))), nil
+	count, err := qfs.plugin.backend.Size(queueName)
+	if err != nil {
+		return nil, err
+	}
+
+	return []byte(strconv.Itoa(count)), nil
 }
 
-func (qfs *queueFS) clear(queue *Queue) error {
-	queue.mu.Lock()
-	defer queue.mu.Unlock()
+func (qfs *queueFS) clear(queueName string) error {
+	qfs.plugin.mu.Lock()
+	defer qfs.plugin.mu.Unlock()
 
-	queue.messages = []QueueMessage{}
-	// Reset lastEnqueueTime when queue is cleared
-	queue.lastEnqueueTime = time.Time{}
-	return nil
+	return qfs.plugin.backend.Clear(queueName)
 }
 
+// Ensure QueueFSPlugin implements ServicePlugin
+var _ plugin.ServicePlugin = (*QueueFSPlugin)(nil)
+var _ filesystem.FileSystem = (*queueFS)(nil)
