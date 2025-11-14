@@ -120,28 +120,78 @@ impl FileSystem for HelloFS {
         }
     }
 
-    fn write(&mut self, _path: &str, _data: &[u8]) -> Result<Vec<u8>> {
-        Err(Error::PermissionDenied)
+    fn write(&mut self, path: &str, data: &[u8]) -> Result<Vec<u8>> {
+        if path.starts_with("/host/") && !self.host_prefix.is_empty() {
+            // Proxy to host filesystem
+            let host_path = path.strip_prefix("/host").unwrap();
+            let full_path = format!("{}{}", self.host_prefix, host_path);
+            HostFS::write(&full_path, data)
+                .map_err(|e| Error::Other(format!("host fs: {}", e)))
+        } else {
+            Err(Error::PermissionDenied)
+        }
     }
 
-    fn create(&mut self, _path: &str) -> Result<()> {
-        Err(Error::PermissionDenied)
+    fn create(&mut self, path: &str) -> Result<()> {
+        if path.starts_with("/host/") && !self.host_prefix.is_empty() {
+            // Proxy to host filesystem
+            let host_path = path.strip_prefix("/host").unwrap();
+            let full_path = format!("{}{}", self.host_prefix, host_path);
+            HostFS::create(&full_path)
+                .map_err(|e| Error::Other(format!("host fs: {}", e)))
+        } else {
+            Err(Error::PermissionDenied)
+        }
     }
 
-    fn mkdir(&mut self, _path: &str, _perm: u32) -> Result<()> {
-        Err(Error::PermissionDenied)
+    fn mkdir(&mut self, path: &str, perm: u32) -> Result<()> {
+        if path.starts_with("/host/") && !self.host_prefix.is_empty() {
+            // Proxy to host filesystem
+            let host_path = path.strip_prefix("/host").unwrap();
+            let full_path = format!("{}{}", self.host_prefix, host_path);
+            HostFS::mkdir(&full_path, perm)
+                .map_err(|e| Error::Other(format!("host fs: {}", e)))
+        } else {
+            Err(Error::PermissionDenied)
+        }
     }
 
-    fn remove(&mut self, _path: &str) -> Result<()> {
-        Err(Error::PermissionDenied)
+    fn remove(&mut self, path: &str) -> Result<()> {
+        if path.starts_with("/host/") && !self.host_prefix.is_empty() {
+            // Proxy to host filesystem
+            let host_path = path.strip_prefix("/host").unwrap();
+            let full_path = format!("{}{}", self.host_prefix, host_path);
+            HostFS::remove(&full_path)
+                .map_err(|e| Error::Other(format!("host fs: {}", e)))
+        } else {
+            Err(Error::PermissionDenied)
+        }
     }
 
-    fn remove_all(&mut self, _path: &str) -> Result<()> {
-        Err(Error::PermissionDenied)
+    fn remove_all(&mut self, path: &str) -> Result<()> {
+        if path.starts_with("/host/") && !self.host_prefix.is_empty() {
+            // Proxy to host filesystem
+            let host_path = path.strip_prefix("/host").unwrap();
+            let full_path = format!("{}{}", self.host_prefix, host_path);
+            HostFS::remove_all(&full_path)
+                .map_err(|e| Error::Other(format!("host fs: {}", e)))
+        } else {
+            Err(Error::PermissionDenied)
+        }
     }
 
-    fn rename(&mut self, _old_path: &str, _new_path: &str) -> Result<()> {
-        Err(Error::PermissionDenied)
+    fn rename(&mut self, old_path: &str, new_path: &str) -> Result<()> {
+        if old_path.starts_with("/host/") && new_path.starts_with("/host/") && !self.host_prefix.is_empty() {
+            // Proxy to host filesystem (both paths must be in host)
+            let host_old_path = old_path.strip_prefix("/host").unwrap();
+            let host_new_path = new_path.strip_prefix("/host").unwrap();
+            let full_old_path = format!("{}{}", self.host_prefix, host_old_path);
+            let full_new_path = format!("{}{}", self.host_prefix, host_new_path);
+            HostFS::rename(&full_old_path, &full_new_path)
+                .map_err(|e| Error::Other(format!("host fs: {}", e)))
+        } else {
+            Err(Error::PermissionDenied)
+        }
     }
 
     fn chmod(&mut self, _path: &str, _mode: u32) -> Result<()> {

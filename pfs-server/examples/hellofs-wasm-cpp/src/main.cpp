@@ -99,32 +99,68 @@ public:
 
     pfs::Result<std::vector<uint8_t>> write(const std::string& path,
                                             const std::vector<uint8_t>& data) override {
-        (void)path; (void)data;
+        if (path.rfind("/host/", 0) == 0 && !host_prefix.empty()) {
+            // Proxy to host filesystem
+            std::string host_path = path.substr(5); // Remove "/host"
+            std::string full_path = host_prefix + host_path;
+            auto result = pfs::HostFS::write(full_path, data);
+            if (result.is_err()) {
+                return pfs::Error::other("host fs: " + result.unwrap_err().to_string());
+            }
+            return result.unwrap();
+        }
         return pfs::Error::permission_denied();
     }
 
     pfs::Result<void> create(const std::string& path) override {
-        (void)path;
+        if (path.rfind("/host/", 0) == 0 && !host_prefix.empty()) {
+            // Proxy to host filesystem
+            std::string host_path = path.substr(5); // Remove "/host"
+            std::string full_path = host_prefix + host_path;
+            return pfs::HostFS::create(full_path);
+        }
         return pfs::Error::permission_denied();
     }
 
     pfs::Result<void> mkdir(const std::string& path, uint32_t perm) override {
-        (void)path; (void)perm;
+        if (path.rfind("/host/", 0) == 0 && !host_prefix.empty()) {
+            // Proxy to host filesystem
+            std::string host_path = path.substr(5); // Remove "/host"
+            std::string full_path = host_prefix + host_path;
+            return pfs::HostFS::mkdir(full_path, perm);
+        }
         return pfs::Error::permission_denied();
     }
 
     pfs::Result<void> remove(const std::string& path) override {
-        (void)path;
+        if (path.rfind("/host/", 0) == 0 && !host_prefix.empty()) {
+            // Proxy to host filesystem
+            std::string host_path = path.substr(5); // Remove "/host"
+            std::string full_path = host_prefix + host_path;
+            return pfs::HostFS::remove(full_path);
+        }
         return pfs::Error::permission_denied();
     }
 
     pfs::Result<void> remove_all(const std::string& path) override {
-        (void)path;
+        if (path.rfind("/host/", 0) == 0 && !host_prefix.empty()) {
+            // Proxy to host filesystem
+            std::string host_path = path.substr(5); // Remove "/host"
+            std::string full_path = host_prefix + host_path;
+            return pfs::HostFS::remove_all(full_path);
+        }
         return pfs::Error::permission_denied();
     }
 
     pfs::Result<void> rename(const std::string& old_path, const std::string& new_path) override {
-        (void)old_path; (void)new_path;
+        if (old_path.rfind("/host/", 0) == 0 && new_path.rfind("/host/", 0) == 0 && !host_prefix.empty()) {
+            // Proxy to host filesystem (both paths must be in host)
+            std::string host_old_path = old_path.substr(5); // Remove "/host"
+            std::string host_new_path = new_path.substr(5); // Remove "/host"
+            std::string full_old_path = host_prefix + host_old_path;
+            std::string full_new_path = host_prefix + host_new_path;
+            return pfs::HostFS::rename(full_old_path, full_new_path);
+        }
         return pfs::Error::permission_denied();
     }
 
