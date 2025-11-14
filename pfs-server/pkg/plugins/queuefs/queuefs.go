@@ -672,7 +672,12 @@ func (qfs *queueFS) Stat(path string) (*filesystem.FileInfo, error) {
 			Mode:    0755,
 			ModTime: time.Now(),
 			IsDir:   true,
-			Meta:    filesystem.MetaData{Name: PluginName},
+			Meta: filesystem.MetaData{
+				Name: PluginName,
+				Content: map[string]string{
+					"backend": qfs.plugin.backend.GetType(),
+				},
+			},
 		}, nil
 	}
 

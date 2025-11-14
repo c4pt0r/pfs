@@ -1,11 +1,14 @@
-//! HelloFS WASM - Simplest possible filesystem plugin
+//! HelloFS WASM - Filesystem plugin with host fs access demo
 //!
 //! Returns a single file with "Hello World" content
+//! Also demonstrates accessing the host filesystem
 
 use pfs_wasm_ffi::prelude::*;
 
 #[derive(Default)]
-pub struct HelloFS;
+pub struct HelloFS {
+    host_prefix: String,
+}
 
 impl FileSystem for HelloFS {
     fn name(&self) -> &str {
@@ -13,16 +16,29 @@ impl FileSystem for HelloFS {
     }
 
     fn readme(&self) -> &str {
-        "HelloFS WASM - Returns 'Hello World'"
+        "HelloFS WASM - Demonstrates host filesystem access\n\
+         - /hello.txt - Returns 'Hello World'\n\
+         - /host/* - Proxies to host filesystem (if configured)"
     }
 
-    fn initialize(&mut self, _config: &Config) -> Result<()> {
+    fn initialize(&mut self, config: &Config) -> Result<()> {
+        // Get optional host_prefix from config
+        if let Some(prefix) = config.get_str("host_prefix") {
+            self.host_prefix = prefix.to_string();
+        }
         Ok(())
     }
 
-    fn read(&self, path: &str, _offset: i64, _size: i64) -> Result<Vec<u8>> {
+    fn read(&self, path: &str, offset: i64, size: i64) -> Result<Vec<u8>> {
         match path {
             "/hello.txt" => Ok(b"Hello World\n".to_vec()),
+            p if p.starts_with("/host/") && !self.host_prefix.is_empty() => {
+                // Proxy to host filesystem
+                let host_path = p.strip_prefix("/host").unwrap();
+                let full_path = format!("{}{}", self.host_prefix, host_path);
+                HostFS::read(&full_path, offset, size)
+                    .map_err(|e| Error::Other(format!("host fs: {}", e)))
+            }
             _ => Err(Error::NotFound),
         }
     }
@@ -31,13 +47,75 @@ impl FileSystem for HelloFS {
         match path {
             "/" => Ok(FileInfo::dir("", 0o755)),
             "/hello.txt" => Ok(FileInfo::file("hello.txt", 12, 0o644)),
+            "/host" if !self.host_prefix.is_empty() => {
+                Ok(FileInfo::dir("host", 0o755))
+            }
+            p if p.starts_with("/host/") && !self.host_prefix.is_empty() => {
+                // Proxy to host filesystem
+                let host_path = p.strip_prefix("/host").unwrap();
+                let full_path = format!("{}{}", self.host_prefix, host_path);
+                let host_info = HostFS::stat(&full_path)
+                    .map_err(|e| Error::Other(format!("host fs: {}", e)))?;
+
+                // Convert and return
+                Ok(FileInfo {
+                    name: host_info.name,
+                    size: host_info.size,
+                    mode: host_info.mode,
+                    mod_time: host_info.mod_time,
+                    is_dir: host_info.is_dir,
+                    meta: host_info.meta,
+                })
+            }
             _ => Err(Error::NotFound),
         }
     }
 
     fn readdir(&self, path: &str) -> Result<Vec<FileInfo>> {
         match path {
-            "/" => Ok(vec![FileInfo::file("hello.txt", 12, 0o644)]),
+            "/" => {
+                let mut entries = vec![FileInfo::file("hello.txt", 12, 0o644)];
+                if !self.host_prefix.is_empty() {
+                    entries.push(FileInfo::dir("host", 0o755));
+                }
+                Ok(entries)
+            }
+            "/host" if !self.host_prefix.is_empty() => {
+                // Read from host filesystem root
+                let host_infos = HostFS::readdir(&self.host_prefix)
+                    .map_err(|e| Error::Other(format!("host fs: {}", e)))?;
+
+                Ok(host_infos
+                    .into_iter()
+                    .map(|info| FileInfo {
+                        name: info.name,
+                        size: info.size,
+                        mode: info.mode,
+                        mod_time: info.mod_time,
+                        is_dir: info.is_dir,
+                        meta: info.meta,
+                    })
+                    .collect())
+            }
+            p if p.starts_with("/host/") && !self.host_prefix.is_empty() => {
+                // Proxy to host filesystem
+                let host_path = p.strip_prefix("/host").unwrap();
+                let full_path = format!("{}{}", self.host_prefix, host_path);
+                let host_infos = HostFS::readdir(&full_path)
+                    .map_err(|e| Error::Other(format!("host fs: {}", e)))?;
+
+                Ok(host_infos
+                    .into_iter()
+                    .map(|info| FileInfo {
+                        name: info.name,
+                        size: info.size,
+                        mode: info.mode,
+                        mod_time: info.mod_time,
+                        is_dir: info.is_dir,
+                        meta: info.meta,
+                    })
+                    .collect())
+            }
             _ => Err(Error::NotFound),
         }
     }

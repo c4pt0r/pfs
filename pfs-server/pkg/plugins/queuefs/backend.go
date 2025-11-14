@@ -15,6 +15,9 @@ type QueueBackend interface {
 	// Close closes the backend connection
 	Close() error
 
+	// GetType returns the backend type name
+	GetType() string
+
 	// Enqueue adds a message to a queue
 	Enqueue(queueName string, msg QueueMessage) error
 
@@ -59,6 +62,10 @@ func (b *MemoryBackend) Initialize(config map[string]interface{}) error {
 func (b *MemoryBackend) Close() error {
 	b.queues = nil
 	return nil
+}
+
+func (b *MemoryBackend) GetType() string {
+	return "memory"
 }
 
 func (b *MemoryBackend) getOrCreateQueue(queueName string) *Queue {
@@ -194,8 +201,9 @@ func (b *MemoryBackend) RemoveQueue(queueName string) error {
 
 // TiDBBackend implements QueueBackend using TiDB database
 type TiDBBackend struct {
-	db      *sql.DB
-	backend DBBackend
+	db          *sql.DB
+	backend     DBBackend
+	backendType string
 }
 
 func NewTiDBBackend() *TiDBBackend {
@@ -203,6 +211,15 @@ func NewTiDBBackend() *TiDBBackend {
 }
 
 func (b *TiDBBackend) Initialize(config map[string]interface{}) error {
+	// Store backend type from config
+	backendType := "memory" // default
+	if val, ok := config["backend"]; ok {
+		if strVal, ok := val.(string); ok {
+			backendType = strVal
+		}
+	}
+	b.backendType = backendType
+
 	// Create database backend
 	backend, err := CreateBackend(config)
 	if err != nil {
@@ -233,6 +250,10 @@ func (b *TiDBBackend) Close() error {
 		return b.db.Close()
 	}
 	return nil
+}
+
+func (b *TiDBBackend) GetType() string {
+	return b.backendType
 }
 
 func (b *TiDBBackend) Enqueue(queueName string, msg QueueMessage) error {

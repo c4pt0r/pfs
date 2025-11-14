@@ -130,13 +130,14 @@ func detectPluginTypeByExtension(libraryPath string) PluginType {
 }
 
 // LoadPluginWithType loads a plugin with an explicitly specified type
-func (pl *PluginLoader) LoadPluginWithType(libraryPath string, pluginType PluginType) (plugin.ServicePlugin, error) {
+// For WASM plugins, optional hostFS can be provided to allow access to host filesystem
+func (pl *PluginLoader) LoadPluginWithType(libraryPath string, pluginType PluginType, hostFS ...interface{}) (plugin.ServicePlugin, error) {
 	log.Debugf("Loading plugin with type %s: %s", pluginType, libraryPath)
 
 	// Load based on specified type
 	switch pluginType {
 	case PluginTypeWASM:
-		return pl.wasmLoader.LoadWASMPlugin(libraryPath)
+		return pl.wasmLoader.LoadWASMPlugin(libraryPath, hostFS...)
 	case PluginTypeNative:
 		return pl.loadNativePlugin(libraryPath)
 	default:

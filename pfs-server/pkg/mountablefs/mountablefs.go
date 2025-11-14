@@ -242,7 +242,15 @@ func (mfs *MountableFS) Unmount(path string) error {
 
 // LoadExternalPluginWithType loads a plugin with an explicitly specified type
 func (mfs *MountableFS) LoadExternalPluginWithType(libraryPath string, pluginType loader.PluginType) (plugin.ServicePlugin, error) {
-	p, err := mfs.pluginLoader.LoadPluginWithType(libraryPath, pluginType)
+	// For WASM plugins, pass MountableFS as host filesystem to allow access to all pfs paths
+	var p plugin.ServicePlugin
+	var err error
+	if pluginType == loader.PluginTypeWASM {
+		log.Infof("Loading WASM plugin with host filesystem access to all pfs paths")
+		p, err = mfs.pluginLoader.LoadPluginWithType(libraryPath, pluginType, mfs)
+	} else {
+		p, err = mfs.pluginLoader.LoadPluginWithType(libraryPath, pluginType)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -263,6 +271,18 @@ func (mfs *MountableFS) LoadExternalPluginWithType(libraryPath string, pluginTyp
 // The plugin type is automatically detected based on file content
 // If a plugin with the same name already exists, automatically appends a numeric suffix
 func (mfs *MountableFS) LoadExternalPlugin(libraryPath string) (plugin.ServicePlugin, error) {
+	// Detect plugin type first
+	pluginType, err := loader.DetectPluginType(libraryPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to detect plugin type: %w", err)
+	}
+
+	// For WASM plugins, use LoadExternalPluginWithType to pass host filesystem
+	if pluginType == loader.PluginTypeWASM {
+		return mfs.LoadExternalPluginWithType(libraryPath, pluginType)
+	}
+
+	// For other plugin types, use regular loading
 	p, err := mfs.pluginLoader.LoadPlugin(libraryPath)
 	if err != nil {
 		return nil, err

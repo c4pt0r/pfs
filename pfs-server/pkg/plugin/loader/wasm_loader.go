@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/c4pt0r/pfs/pfs-server/pkg/filesystem"
 	"github.com/c4pt0r/pfs/pfs-server/pkg/plugin"
 	"github.com/c4pt0r/pfs/pfs-server/pkg/plugin/api"
 	log "github.com/sirupsen/logrus"
@@ -39,7 +40,8 @@ func NewWASMPluginLoader() *WASMPluginLoader {
 }
 
 // LoadWASMPlugin loads a plugin from a WASM file
-func (wl *WASMPluginLoader) LoadWASMPlugin(wasmPath string) (plugin.ServicePlugin, error) {
+// If hostFS is provided, it will be exposed to the WASM plugin as host functions
+func (wl *WASMPluginLoader) LoadWASMPlugin(wasmPath string, hostFS ...interface{}) (plugin.ServicePlugin, error) {
 	wl.mu.Lock()
 	defer wl.mu.Unlock()
 
@@ -82,6 +84,80 @@ func (wl *WASMPluginLoader) LoadWASMPlugin(wasmPath string) (plugin.ServicePlugi
 	if _, err := wasi_snapshot_preview1.Instantiate(ctx, r); err != nil {
 		r.Close(ctx)
 		return nil, fmt.Errorf("failed to instantiate WASI: %w", err)
+	}
+
+	// Always instantiate host filesystem module (required by WASM modules that import these functions)
+	// If no hostFS is provided, use stub functions that return errors
+	var fs filesystem.FileSystem
+	if len(hostFS) > 0 && hostFS[0] != nil {
+		// Type assert to filesystem.FileSystem
+		var ok bool
+		fs, ok = hostFS[0].(filesystem.FileSystem)
+		if !ok {
+			r.Close(ctx)
+			return nil, fmt.Errorf("hostFS is not a filesystem.FileSystem")
+		}
+		log.Infof("Registering host filesystem for WASM plugin")
+	} else {
+		log.Infof("No host filesystem provided, using stub functions")
+		fs = nil // Will be handled by api functions
+	}
+
+	_, err = r.NewHostModuleBuilder("env").
+			NewFunctionBuilder().
+			WithFunc(func(ctx context.Context, mod wazeroapi.Module, pathPtr uint32, offset, size int64) uint64 {
+				return api.HostFSRead(ctx, mod, []uint64{uint64(pathPtr), uint64(offset), uint64(size)}, fs)[0]
+			}).
+			Export("host_fs_read").
+			NewFunctionBuilder().
+			WithFunc(func(ctx context.Context, mod wazeroapi.Module, pathPtr, dataPtr, dataLen uint32) uint64 {
+				return api.HostFSWrite(ctx, mod, []uint64{uint64(pathPtr), uint64(dataPtr), uint64(dataLen)}, fs)[0]
+			}).
+			Export("host_fs_write").
+			NewFunctionBuilder().
+			WithFunc(func(ctx context.Context, mod wazeroapi.Module, pathPtr uint32) uint64 {
+				return api.HostFSStat(ctx, mod, []uint64{uint64(pathPtr)}, fs)[0]
+			}).
+			Export("host_fs_stat").
+			NewFunctionBuilder().
+			WithFunc(func(ctx context.Context, mod wazeroapi.Module, pathPtr uint32) uint64 {
+				return api.HostFSReadDir(ctx, mod, []uint64{uint64(pathPtr)}, fs)[0]
+			}).
+			Export("host_fs_readdir").
+			NewFunctionBuilder().
+			WithFunc(func(ctx context.Context, mod wazeroapi.Module, pathPtr uint32) uint32 {
+				return uint32(api.HostFSCreate(ctx, mod, []uint64{uint64(pathPtr)}, fs)[0])
+			}).
+			Export("host_fs_create").
+			NewFunctionBuilder().
+			WithFunc(func(ctx context.Context, mod wazeroapi.Module, pathPtr, perm uint32) uint32 {
+				return uint32(api.HostFSMkdir(ctx, mod, []uint64{uint64(pathPtr), uint64(perm)}, fs)[0])
+			}).
+			Export("host_fs_mkdir").
+			NewFunctionBuilder().
+			WithFunc(func(ctx context.Context, mod wazeroapi.Module, pathPtr uint32) uint32 {
+				return uint32(api.HostFSRemove(ctx, mod, []uint64{uint64(pathPtr)}, fs)[0])
+			}).
+			Export("host_fs_remove").
+			NewFunctionBuilder().
+			WithFunc(func(ctx context.Context, mod wazeroapi.Module, pathPtr uint32) uint32 {
+				return uint32(api.HostFSRemoveAll(ctx, mod, []uint64{uint64(pathPtr)}, fs)[0])
+			}).
+			Export("host_fs_remove_all").
+			NewFunctionBuilder().
+			WithFunc(func(ctx context.Context, mod wazeroapi.Module, oldPathPtr, newPathPtr uint32) uint32 {
+				return uint32(api.HostFSRename(ctx, mod, []uint64{uint64(oldPathPtr), uint64(newPathPtr)}, fs)[0])
+			}).
+			Export("host_fs_rename").
+			NewFunctionBuilder().
+			WithFunc(func(ctx context.Context, mod wazeroapi.Module, pathPtr, mode uint32) uint32 {
+				return uint32(api.HostFSChmod(ctx, mod, []uint64{uint64(pathPtr), uint64(mode)}, fs)[0])
+			}).
+			Export("host_fs_chmod").
+			Instantiate(ctx)
+	if err != nil {
+		r.Close(ctx)
+		return nil, fmt.Errorf("failed to instantiate host filesystem module: %w", err)
 	}
 
 	// Compile and instantiate the WASM module
