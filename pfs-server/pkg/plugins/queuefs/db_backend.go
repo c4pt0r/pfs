@@ -56,6 +56,13 @@ func (b *SQLiteDBBackend) Open(cfg map[string]interface{}) (*sql.DB, error) {
 
 func (b *SQLiteDBBackend) GetInitSQL() []string {
 	return []string{
+		// Queue metadata table to track all queues (including empty ones)
+		`CREATE TABLE IF NOT EXISTS queue_metadata (
+			queue_name TEXT PRIMARY KEY,
+			created_at INTEGER DEFAULT (strftime('%s', 'now')),
+			last_updated INTEGER DEFAULT (strftime('%s', 'now'))
+		)`,
+		// Queue messages table
 		`CREATE TABLE IF NOT EXISTS queue_messages (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			queue_name TEXT NOT NULL,
@@ -194,6 +201,13 @@ func (b *TiDBDBBackend) Open(cfg map[string]interface{}) (*sql.DB, error) {
 
 func (b *TiDBDBBackend) GetInitSQL() []string {
 	return []string{
+		// Queue metadata table to track all queues (including empty ones)
+		`CREATE TABLE IF NOT EXISTS queue_metadata (
+			queue_name VARCHAR(255) PRIMARY KEY,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+		// Queue messages table
 		`CREATE TABLE IF NOT EXISTS queue_messages (
 			id BIGINT AUTO_INCREMENT PRIMARY KEY,
 			queue_name VARCHAR(255) NOT NULL,

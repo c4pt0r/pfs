@@ -377,8 +377,11 @@ func (qfs *queueFS) Mkdir(path string, perm uint32) error {
 		return fmt.Errorf("invalid queue name")
 	}
 
-	// Queue creation is virtual for all backends
-	return nil
+	// Create queue in backend
+	qfs.plugin.mu.Lock()
+	defer qfs.plugin.mu.Unlock()
+
+	return qfs.plugin.backend.CreateQueue(queueName)
 }
 
 func (qfs *queueFS) Remove(path string) error {

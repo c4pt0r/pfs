@@ -41,6 +41,12 @@ type QueueBackend interface {
 
 	// RemoveQueue removes all messages for a queue and its nested queues
 	RemoveQueue(queueName string) error
+
+	// CreateQueue creates an empty queue (for mkdir support)
+	CreateQueue(queueName string) error
+
+	// QueueExists checks if a queue exists (even if empty)
+	QueueExists(queueName string) (bool, error)
 }
 
 // MemoryBackend implements QueueBackend using in-memory storage
@@ -199,6 +205,16 @@ func (b *MemoryBackend) RemoveQueue(queueName string) error {
 	return nil
 }
 
+func (b *MemoryBackend) CreateQueue(queueName string) error {
+	b.getOrCreateQueue(queueName)
+	return nil
+}
+
+func (b *MemoryBackend) QueueExists(queueName string) (bool, error) {
+	_, exists := b.queues[queueName]
+	return exists, nil
+}
+
 // TiDBBackend implements QueueBackend using TiDB database
 type TiDBBackend struct {
 	db          *sql.DB
@@ -262,7 +278,16 @@ func (b *TiDBBackend) Enqueue(queueName string, msg QueueMessage) error {
 		return fmt.Errorf("failed to marshal message: %w", err)
 	}
 
-	// Don't specify created_at - let database use DEFAULT CURRENT_TIMESTAMP
+	// Ensure queue exists in metadata table
+	_, err = b.db.Exec(
+		"INSERT IGNORE INTO queue_metadata (queue_name) VALUES (?)",
+		queueName,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create queue metadata: %w", err)
+	}
+
+	// Insert message
 	_, err = b.db.Exec(
 		"INSERT INTO queue_messages (queue_name, message_id, data, timestamp) VALUES (?, ?, ?, ?)",
 		queueName, msg.ID, string(msgData), msg.Timestamp.Unix(),
@@ -271,7 +296,13 @@ func (b *TiDBBackend) Enqueue(queueName string, msg QueueMessage) error {
 		return fmt.Errorf("failed to enqueue message: %w", err)
 	}
 
-	return nil
+	// Update last_updated in metadata
+	_, err = b.db.Exec(
+		"UPDATE queue_metadata SET last_updated = CURRENT_TIMESTAMP WHERE queue_name = ?",
+		queueName,
+	)
+
+	return err
 }
 
 func (b *TiDBBackend) Dequeue(queueName string) (QueueMessage, bool, error) {
@@ -364,13 +395,14 @@ func (b *TiDBBackend) Clear(queueName string) error {
 }
 
 func (b *TiDBBackend) ListQueues(prefix string) ([]string, error) {
+	// Query from metadata table to include empty queues
 	var query string
 	var args []interface{}
 
 	if prefix == "" {
-		query = "SELECT DISTINCT queue_name FROM queue_messages"
+		query = "SELECT queue_name FROM queue_metadata"
 	} else {
-		query = "SELECT DISTINCT queue_name FROM queue_messages WHERE queue_name = ? OR queue_name LIKE ?"
+		query = "SELECT queue_name FROM queue_metadata WHERE queue_name = ? OR queue_name LIKE ?"
 		args = []interface{}{prefix, prefix + "/%"}
 	}
 
@@ -410,13 +442,49 @@ func (b *TiDBBackend) GetLastEnqueueTime(queueName string) (time.Time, error) {
 
 func (b *TiDBBackend) RemoveQueue(queueName string) error {
 	if queueName == "" {
-		_, err := b.db.Exec("DELETE FROM queue_messages")
+		// Remove all queues
+		if _, err := b.db.Exec("DELETE FROM queue_messages"); err != nil {
+			return err
+		}
+		_, err := b.db.Exec("DELETE FROM queue_metadata")
 		return err
 	}
 
+	// Remove queue and nested queues
 	_, err := b.db.Exec(
 		"DELETE FROM queue_messages WHERE queue_name = ? OR queue_name LIKE ?",
 		queueName, queueName+"/%",
 	)
+	if err != nil {
+		return err
+	}
+
+	_, err = b.db.Exec(
+		"DELETE FROM queue_metadata WHERE queue_name = ? OR queue_name LIKE ?",
+		queueName, queueName+"/%",
+	)
 	return err
+}
+
+func (b *TiDBBackend) CreateQueue(queueName string) error {
+	_, err := b.db.Exec(
+		"INSERT IGNORE INTO queue_metadata (queue_name) VALUES (?)",
+		queueName,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create queue: %w", err)
+	}
+	return nil
+}
+
+func (b *TiDBBackend) QueueExists(queueName string) (bool, error) {
+	var count int
+	err := b.db.QueryRow(
+		"SELECT COUNT(*) FROM queue_metadata WHERE queue_name = ?",
+		queueName,
+	).Scan(&count)
+	if err != nil {
+		return false, fmt.Errorf("failed to check queue existence: %w", err)
+	}
+	return count > 0, nil
 }
