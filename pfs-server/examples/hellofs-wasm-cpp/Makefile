@@ -35,10 +35,6 @@ build-em:
 	     -s ERROR_ON_UNDEFINED_SYMBOLS=0 \
 	     --no-entry \
 	     $(SRC) -o $(WASM_OUTPUT)
-	@if command -v wasm-opt >/dev/null 2>&1; then \
-		echo "Optimizing with wasm-opt..."; \
-		wasm-opt -Oz --enable-bulk-memory $(WASM_OUTPUT) -o $(WASM_OUTPUT).tmp && mv $(WASM_OUTPUT).tmp $(WASM_OUTPUT) || echo "wasm-opt failed, using unoptimized version"; \
-	fi
 	@echo "Build complete: $(WASM_OUTPUT)"
 	@ls -lh $(WASM_OUTPUT)
 
@@ -55,10 +51,6 @@ build-wasi:
 	    -Wl,--export-dynamic \
 	    -Wl,--allow-undefined \
 	    $(SRC) -o $(WASM_OUTPUT)
-	@if command -v wasm-opt >/dev/null 2>&1; then \
-		echo "Optimizing with wasm-opt..."; \
-		wasm-opt -Oz $(WASM_OUTPUT) -o $(WASM_OUTPUT).tmp && mv $(WASM_OUTPUT).tmp $(WASM_OUTPUT); \
-	fi
 	@echo "Build complete: $(WASM_OUTPUT)"
 	@ls -lh $(WASM_OUTPUT)
 
@@ -99,4 +91,3 @@ help:
 	@echo ""
 	@echo "Requirements:"
 	@echo "  - clang++ with wasm32 target support"
-	@echo "  - wasm-opt (optional, for optimization)"
