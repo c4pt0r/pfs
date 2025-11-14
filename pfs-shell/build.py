@@ -102,8 +102,7 @@ def main():
                 "uv", "pip", "install",
                 "--target", str(lib_dir),
                 "--python", sys.executable,
-                "--no-deps",  # Don't install pypfs itself
-                "requests>=2.31.0"  # Install pypfs's dependencies
+                "requests>=2.31.0"  # Install pypfs's dependencies with their transitive deps
             ], cwd=str(script_dir))
         else:
             print(f"Warning: pypfs SDK not found at {pypfs_src_dir}")
