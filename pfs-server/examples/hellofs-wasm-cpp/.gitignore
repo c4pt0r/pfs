@@ -1,0 +1,17 @@
+# Build artifacts
+*.wasm
+*.o
+*.a
+
+# Emscripten cache
+.emscripten_cache/
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
