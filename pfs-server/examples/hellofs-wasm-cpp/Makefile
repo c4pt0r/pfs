@@ -1,20 +1,27 @@
-.PHONY: build build-em build-wasi clean install-wasi install-em help
+.PHONY: build build-em build-wasi clean install-wasi install-wasi-local install-em help
 
 WASM_OUTPUT = hellofs-wasm-cpp.wasm
 SRC = src/main.cpp
 SDK_DIR = pfs-cpp-sdk
 
+# WASI SDK path (can be overridden with WASI_SDK_PATH environment variable)
+WASI_SDK_PATH ?= /opt/wasi-sdk
+LOCAL_WASI_SDK = $(HOME)/.local/wasi-sdk
+
 # Default target tries multiple compilers
 build:
 	@if command -v em++ >/dev/null 2>&1; then \
 		$(MAKE) build-em; \
-	elif [ -f /opt/wasi-sdk/bin/clang++ ]; then \
+	elif [ -f $(LOCAL_WASI_SDK)/bin/clang++ ]; then \
+		WASI_SDK_PATH=$(LOCAL_WASI_SDK) $(MAKE) build-wasi; \
+	elif [ -f $(WASI_SDK_PATH)/bin/clang++ ]; then \
 		$(MAKE) build-wasi; \
 	else \
 		echo "Error: No WASM compiler found!"; \
 		echo "Please install one of:"; \
 		echo "  - Emscripten: make install-em"; \
-		echo "  - WASI SDK: make install-wasi"; \
+		echo "  - WASI SDK (system): make install-wasi (requires sudo)"; \
+		echo "  - WASI SDK (local): make install-wasi-local (no sudo)"; \
 		exit 1; \
 	fi
 
@@ -40,13 +47,13 @@ build-em:
 
 # Build with WASI SDK
 build-wasi:
-	@echo "Building with WASI SDK..."
-	/opt/wasi-sdk/bin/clang++ \
+	@echo "Building with WASI SDK at $(WASI_SDK_PATH)..."
+	$(WASI_SDK_PATH)/bin/clang++ \
 	    -std=c++17 \
 	    -O3 \
 	    -fno-exceptions \
 	    -I$(SDK_DIR) \
-	    --sysroot=/opt/wasi-sdk/share/wasi-sysroot \
+	    --sysroot=$(WASI_SDK_PATH)/share/wasi-sysroot \
 	    -Wl,--no-entry \
 	    -Wl,--export-dynamic \
 	    -Wl,--allow-undefined \
@@ -69,17 +76,76 @@ install-wasi:
 	@echo "Installing WASI SDK..."
 	@echo "Downloading WASI SDK..."
 	@mkdir -p /tmp/wasi-sdk
-	@if [ "$$(uname -m)" = "arm64" ]; then \
+	@OS=$$(uname -s); \
+	ARCH=$$(uname -m); \
+	if [ "$$OS" = "Darwin" ]; then \
+		echo "Detected macOS"; \
 		curl -L "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-21/wasi-sdk-21.0-macos.tar.gz" -o /tmp/wasi-sdk.tar.gz; \
+	elif [ "$$OS" = "Linux" ]; then \
+		if [ "$$ARCH" = "x86_64" ]; then \
+			echo "Detected Linux x86_64"; \
+			curl -L "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-21/wasi-sdk-21.0-linux.tar.gz" -o /tmp/wasi-sdk.tar.gz; \
+		elif [ "$$ARCH" = "aarch64" ]; then \
+			echo "Detected Linux aarch64"; \
+			curl -L "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-24/wasi-sdk-24.0-arm64-linux.tar.gz" -o /tmp/wasi-sdk.tar.gz; \
+		else \
+			echo "Unsupported architecture: $$ARCH"; \
+			exit 1; \
+		fi; \
 	else \
-		curl -L "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-21/wasi-sdk-21.0-macos.tar.gz" -o /tmp/wasi-sdk.tar.gz; \
+		echo "Unsupported OS: $$OS"; \
+		exit 1; \
 	fi
 	@echo "Extracting..."
 	@sudo tar xzf /tmp/wasi-sdk.tar.gz -C /opt
-	@sudo mv /opt/wasi-sdk-21.0 /opt/wasi-sdk
+	@if [ -d /opt/wasi-sdk-21.0 ]; then \
+		sudo rm -rf /opt/wasi-sdk; \
+		sudo mv /opt/wasi-sdk-21.0 /opt/wasi-sdk; \
+	elif [ -d /opt/wasi-sdk-24.0-arm64-linux ]; then \
+		sudo rm -rf /opt/wasi-sdk; \
+		sudo mv /opt/wasi-sdk-24.0-arm64-linux /opt/wasi-sdk; \
+	fi
 	@echo "Cleaning up..."
 	@rm /tmp/wasi-sdk.tar.gz
 	@echo "WASI SDK installed to /opt/wasi-sdk"
+
+# Install WASI SDK to user's home directory (no sudo required)
+install-wasi-local:
+	@echo "Installing WASI SDK to $(LOCAL_WASI_SDK)..."
+	@echo "Downloading WASI SDK..."
+	@mkdir -p /tmp/wasi-sdk
+	@OS=$$(uname -s); \
+	ARCH=$$(uname -m); \
+	if [ "$$OS" = "Darwin" ]; then \
+		echo "Detected macOS"; \
+		curl -L "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-21/wasi-sdk-21.0-macos.tar.gz" -o /tmp/wasi-sdk.tar.gz; \
+		EXTRACTED_DIR="wasi-sdk-21.0"; \
+	elif [ "$$OS" = "Linux" ]; then \
+		if [ "$$ARCH" = "x86_64" ]; then \
+			echo "Detected Linux x86_64"; \
+			curl -L "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-21/wasi-sdk-21.0-linux.tar.gz" -o /tmp/wasi-sdk.tar.gz; \
+			EXTRACTED_DIR="wasi-sdk-21.0"; \
+		elif [ "$$ARCH" = "aarch64" ]; then \
+			echo "Detected Linux aarch64"; \
+			curl -L "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-24/wasi-sdk-24.0-arm64-linux.tar.gz" -o /tmp/wasi-sdk.tar.gz; \
+			EXTRACTED_DIR="wasi-sdk-24.0-arm64-linux"; \
+		else \
+			echo "Unsupported architecture: $$ARCH"; \
+			exit 1; \
+		fi; \
+	else \
+		echo "Unsupported OS: $$OS"; \
+		exit 1; \
+	fi; \
+	echo "Extracting..."; \
+	tar xzf /tmp/wasi-sdk.tar.gz -C /tmp/wasi-sdk; \
+	mkdir -p $(HOME)/.local; \
+	rm -rf $(LOCAL_WASI_SDK); \
+	mv /tmp/wasi-sdk/$$EXTRACTED_DIR $(LOCAL_WASI_SDK); \
+	echo "Cleaning up..."; \
+	rm /tmp/wasi-sdk.tar.gz; \
+	rm -rf /tmp/wasi-sdk; \
+	echo "WASI SDK installed to $(LOCAL_WASI_SDK)"
 
 clean:
 	rm -f $(WASM_OUTPUT)
