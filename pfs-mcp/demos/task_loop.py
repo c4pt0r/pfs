@@ -164,22 +164,61 @@ class ClaudeCodeExecutor:
             cmd.extend(["--allowedTools", ",".join(self.allowed_tools)])
 
         try:
-            print(f"\n[Executing Claude Code...]")
+            print(f"\n[Executing Claude Code with streaming output...]")
+            print("-" * 80)
             start_time = time.time()
 
-            result = subprocess.run(
+            # Use Popen to enable streaming output
+            process = subprocess.Popen(
                 cmd,
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
-                timeout=self.timeout,
                 cwd=working_dir,
             )
 
-            execution_time = (time.time() - start_time) * 1000  # Convert to ms
+            # Stream stderr to console in real-time (Claude Code outputs logs to stderr)
+            stdout_lines = []
+            stderr_lines = []
 
-            if result.returncode == 0:
+            try:
+                # Read stderr line by line and print to console
+                while True:
+                    stderr_line = process.stderr.readline()
+                    if stderr_line:
+                        print(stderr_line.rstrip(), file=sys.stderr)
+                        stderr_lines.append(stderr_line)
+
+                    # Check if process has finished
+                    if process.poll() is not None:
+                        # Read any remaining output
+                        remaining_stderr = process.stderr.read()
+                        if remaining_stderr:
+                            print(remaining_stderr.rstrip(), file=sys.stderr)
+                            stderr_lines.append(remaining_stderr)
+                        break
+
+                # Read all stdout (JSON output)
+                stdout_data = process.stdout.read()
+                stdout_lines.append(stdout_data)
+
+            except KeyboardInterrupt:
+                process.terminate()
                 try:
-                    output = json.loads(result.stdout)
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                raise
+
+            execution_time = (time.time() - start_time) * 1000  # Convert to ms
+            print("-" * 80)
+
+            stdout_output = ''.join(stdout_lines)
+            stderr_output = ''.join(stderr_lines)
+
+            if process.returncode == 0:
+                try:
+                    output = json.loads(stdout_output)
                     return {
                         "success": True,
                         "result": output.get("result", ""),
@@ -191,7 +230,7 @@ class ClaudeCodeExecutor:
                 except json.JSONDecodeError as e:
                     return {
                         "success": False,
-                        "result": result.stdout,
+                        "result": stdout_output,
                         "error": f"Failed to parse JSON output: {e}",
                         "duration_ms": execution_time,
                         "total_cost_usd": 0.0,
@@ -201,21 +240,12 @@ class ClaudeCodeExecutor:
                 return {
                     "success": False,
                     "result": "",
-                    "error": f"Claude Code exited with code {result.returncode}: {result.stderr}",
+                    "error": f"Claude Code exited with code {process.returncode}: {stderr_output}",
                     "duration_ms": execution_time,
                     "total_cost_usd": 0.0,
                     "session_id": "",
                 }
 
-        except subprocess.TimeoutExpired:
-            return {
-                "success": False,
-                "result": "",
-                "error": f"Execution timed out after {self.timeout} seconds",
-                "duration_ms": self.timeout * 1000,
-                "total_cost_usd": 0.0,
-                "session_id": "",
-            }
         except FileNotFoundError:
             return {
                 "success": False,
@@ -337,8 +367,7 @@ def main():
                 # Build complete prompt with task information and result upload instruction
                 full_prompt = f"""Task ID: {task_id}
                 Task: {task_data}
-                Your name is: {args.name}
-                After completing this task, upload the result and all intermediate information to the PFS system file located at **/s3fs/aws/result-{task_id}.txt**."""
+                Your name is: {args.name}"""
 
                 # Execute task with Claude Code
                 result = executor.execute_task(

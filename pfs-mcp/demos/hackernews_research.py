@@ -11,12 +11,13 @@ import time
 import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+
 import requests
 from bs4 import BeautifulSoup
 from pypfs import PFSClient
 
 
-def fetch_hackernews_top_stories(count: int = 10) -> List[Dict[str, Any]]:
+def fetch_hackernews_top_stories(count: int = 3) -> List[Dict[str, Any]]:
     """
     Fetch top stories from HackerNews
 
@@ -26,15 +27,14 @@ def fetch_hackernews_top_stories(count: int = 10) -> List[Dict[str, Any]]:
     Returns:
         List of story dictionaries with title, url, score, etc.
     """
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print(f"🔍 FETCHING TOP {count} HACKERNEWS STORIES")
-    print(f"{'='*80}\n")
+    print(f"{'=' * 80}\n")
 
     try:
         # Fetch top story IDs from HackerNews API
         response = requests.get(
-            "https://hacker-news.firebaseio.com/v0/topstories.json",
-            timeout=10
+            "https://hacker-news.firebaseio.com/v0/topstories.json", timeout=10
         )
         response.raise_for_status()
         story_ids = response.json()[:count]
@@ -45,34 +45,38 @@ def fetch_hackernews_top_stories(count: int = 10) -> List[Dict[str, Any]]:
                 # Fetch story details
                 story_response = requests.get(
                     f"https://hacker-news.firebaseio.com/v0/item/{story_id}.json",
-                    timeout=10
+                    timeout=10,
                 )
                 story_response.raise_for_status()
                 story = story_response.json()
 
-                if story and 'url' in story:
-                    stories.append({
-                        'id': story_id,
-                        'title': story.get('title', 'No title'),
-                        'url': story.get('url', ''),
-                        'score': story.get('score', 0),
-                        'by': story.get('by', 'unknown'),
-                        'time': story.get('time', 0),
-                        'descendants': story.get('descendants', 0)
-                    })
+                if story and "url" in story:
+                    stories.append(
+                        {
+                            "id": story_id,
+                            "title": story.get("title", "No title"),
+                            "url": story.get("url", ""),
+                            "score": story.get("score", 0),
+                            "by": story.get("by", "unknown"),
+                            "time": story.get("time", 0),
+                            "descendants": story.get("descendants", 0),
+                        }
+                    )
 
                     print(f"✅ [{i}/{count}] {story.get('title', 'No title')}")
                     print(f"    URL: {story.get('url', 'N/A')}")
-                    print(f"    Score: {story.get('score', 0)} | "
-                          f"Comments: {story.get('descendants', 0)}\n")
+                    print(
+                        f"    Score: {story.get('score', 0)} | "
+                        f"Comments: {story.get('descendants', 0)}\n"
+                    )
 
             except Exception as e:
                 print(f"⚠️  [{i}/{count}] Failed to fetch story {story_id}: {e}\n")
                 continue
 
-        print(f"{'='*80}")
+        print(f"{'=' * 80}")
         print(f"✅ Successfully fetched {len(stories)} stories")
-        print(f"{'='*80}\n")
+        print(f"{'=' * 80}\n")
 
         return stories
 
@@ -87,7 +91,7 @@ def distribute_stories_to_agents(
     task_id: str,
     results_path: str,
     queue_prefix: str = "/queuefs",
-    pfs_api_url: Optional[str] = None
+    pfs_api_url: Optional[str] = None,
 ) -> Dict[str, int]:
     """
     Distribute stories among agents for parallel processing
@@ -103,9 +107,9 @@ def distribute_stories_to_agents(
     Returns:
         Dictionary mapping agent names to number of stories assigned
     """
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print(f"📡 DISTRIBUTING {len(stories)} STORIES TO {len(agent_names)} AGENTS")
-    print(f"{'='*80}\n")
+    print(f"{'=' * 80}\n")
 
     # Distribute stories evenly among agents
     stories_per_agent = {}
@@ -131,9 +135,9 @@ STORIES TO ANALYZE:
 """
         for idx, story in enumerate(agent_stories, 1):
             task_prompt += f"""
-{idx}. {story['title']}
-   URL: {story['url']}
-   Score: {story['score']} | Author: {story['by']} | Comments: {story['descendants']}
+{idx}. {story["title"]}
+   URL: {story["url"]}
+   Score: {story["score"]} | Author: {story["by"]} | Comments: {story["descendants"]}
 """
 
         task_prompt += f"""
@@ -163,7 +167,7 @@ INSTRUCTIONS:
     ]
 }}
 
-4. Save your complete JSON results to: {results_path}/{task_id}/agent-{agent_name}.json
+4. Save your complete JSON results to pfs(use pfs tool to upload): {results_path}/{task_id}/agent-{agent_name}.json
 
 Use the WebFetch tool to retrieve article content. Focus on extracting meaningful insights.
 """
@@ -179,17 +183,15 @@ Use the WebFetch tool to retrieve article content. Focus on extracting meaningfu
             assignment[agent_name] = 0
             print(f"❌ {agent_name}: Failed to assign stories")
 
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print(f"✅ Distribution complete")
-    print(f"{'='*80}\n")
+    print(f"{'=' * 80}\n")
 
     return assignment
 
 
 def enqueue_task(
-    queue_path: str,
-    task_data: str,
-    pfs_api_url: Optional[str] = None
+    queue_path: str, task_data: str, pfs_api_url: Optional[str] = None
 ) -> bool:
     """Enqueue a task to a specific queue"""
     enqueue_path = f"{queue_path}/enqueue"
@@ -200,7 +202,7 @@ def enqueue_task(
         client = PFSClient(api_url)
 
         # Write task data to enqueue path
-        client.write(enqueue_path, task_data.encode('utf-8'))
+        client.write(enqueue_path, task_data.encode("utf-8"))
         return True
 
     except Exception as e:
@@ -213,15 +215,15 @@ def wait_for_results(
     expected_count: int,
     timeout: int = 600,
     poll_interval: int = 5,
-    pfs_api_url: Optional[str] = None
+    pfs_api_url: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Wait for all agents to complete and collect results"""
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print(f"⏳ WAITING FOR {expected_count} AGENT RESULTS")
-    print(f"{'='*80}")
+    print(f"{'=' * 80}")
     print(f"Results path: {results_path}")
     print(f"Timeout: {timeout}s")
-    print(f"{'='*80}\n")
+    print(f"{'=' * 80}\n")
 
     start_time = time.time()
     collected_results = []
@@ -239,18 +241,22 @@ def wait_for_results(
 
         # Process new files
         for file_name in result_files:
-            if file_name not in seen_files and file_name.endswith('.json'):
+            if file_name not in seen_files and file_name.endswith(".json"):
                 content = read_file(f"{results_path}/{file_name}", pfs_api_url)
                 if content:
                     try:
                         result_data = json.loads(content)
-                        collected_results.append({
-                            "file_name": file_name,
-                            "data": result_data,
-                            "timestamp": datetime.now().isoformat()
-                        })
+                        collected_results.append(
+                            {
+                                "file_name": file_name,
+                                "data": result_data,
+                                "timestamp": datetime.now().isoformat(),
+                            }
+                        )
                         seen_files.add(file_name)
-                        print(f"📥 Result {len(collected_results)}/{expected_count}: {file_name}")
+                        print(
+                            f"📥 Result {len(collected_results)}/{expected_count}: {file_name}"
+                        )
                     except json.JSONDecodeError:
                         print(f"⚠️  Failed to parse JSON from {file_name}")
 
@@ -258,13 +264,15 @@ def wait_for_results(
             break
 
         remaining = expected_count - len(collected_results)
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] "
-              f"Waiting for {remaining} more result(s)... (elapsed: {elapsed:.0f}s)")
+        print(
+            f"[{datetime.now().strftime('%H:%M:%S')}] "
+            f"Waiting for {remaining} more result(s)... (elapsed: {elapsed:.0f}s)"
+        )
         time.sleep(poll_interval)
 
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print(f"✅ COLLECTION COMPLETE: {len(collected_results)}/{expected_count} results")
-    print(f"{'='*80}\n")
+    print(f"{'=' * 80}\n")
 
     return collected_results
 
@@ -278,7 +286,7 @@ def list_files(path: str, pfs_api_url: Optional[str] = None) -> List[str]:
 
         # List directory and extract file names
         files = client.ls(path)
-        return [f['name'] for f in files if not f.get('isDir', False)]
+        return [f["name"] for f in files if not f.get("isDir", False)]
     except Exception:
         pass
     return []
@@ -293,25 +301,23 @@ def read_file(file_path: str, pfs_api_url: Optional[str] = None) -> Optional[str
 
         # Read file content
         content = client.cat(file_path)
-        return content.decode('utf-8')
+        return content.decode("utf-8")
     except Exception:
         pass
     return None
 
 
 def compile_final_report(
-    results: List[Dict[str, Any]],
-    stories: List[Dict[str, Any]],
-    task_id: str
+    results: List[Dict[str, Any]], stories: List[Dict[str, Any]], task_id: str
 ) -> str:
     """Compile all agent results into a final comprehensive report"""
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print(f"📝 COMPILING FINAL REPORT")
-    print(f"{'='*80}\n")
+    print(f"{'=' * 80}\n")
 
     report = f"""# HackerNews Top Stories Research Report
 Task ID: {task_id}
-Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 
 ## Overview
 This report summarizes the top {len(stories)} stories from HackerNews, analyzed by {len(results)} AI agents working in parallel.
@@ -325,21 +331,18 @@ This report summarizes the top {len(stories)} stories from HackerNews, analyzed 
     # Organize summaries by story
     story_summaries = {}
     for result in results:
-        agent_name = result['data'].get('agent', 'unknown')
-        summaries = result['data'].get('summaries', [])
+        agent_name = result["data"].get("agent", "unknown")
+        summaries = result["data"].get("summaries", [])
 
         for summary in summaries:
-            story_id = summary.get('story_id')
+            story_id = summary.get("story_id")
             if story_id not in story_summaries:
                 story_summaries[story_id] = []
-            story_summaries[story_id].append({
-                'agent': agent_name,
-                'summary': summary
-            })
+            story_summaries[story_id].append({"agent": agent_name, "summary": summary})
 
     # Build report for each story
     for i, story in enumerate(stories, 1):
-        story_id = story['id']
+        story_id = story["id"]
         report += f"\n### {i}. {story['title']}\n\n"
         report += f"**URL:** {story['url']}\n\n"
         report += f"**Stats:** {story['score']} points | "
@@ -348,19 +351,19 @@ This report summarizes the top {len(stories)} stories from HackerNews, analyzed 
 
         if story_id in story_summaries:
             for agent_summary in story_summaries[story_id]:
-                agent = agent_summary['agent']
-                summary_data = agent_summary['summary']
+                agent = agent_summary["agent"]
+                summary_data = agent_summary["summary"]
 
                 report += f"#### Analysis by {agent}\n\n"
                 report += f"**Summary:** {summary_data.get('summary', 'N/A')}\n\n"
 
-                if summary_data.get('key_points'):
+                if summary_data.get("key_points"):
                     report += f"**Key Points:**\n"
-                    for point in summary_data['key_points']:
+                    for point in summary_data["key_points"]:
                         report += f"- {point}\n"
                     report += "\n"
 
-                if summary_data.get('analysis'):
+                if summary_data.get("analysis"):
                     report += f"**Analysis:** {summary_data['analysis']}\n\n"
 
                 report += "---\n\n"
@@ -373,7 +376,7 @@ This report summarizes the top {len(stories)} stories from HackerNews, analyzed 
 - Total stories analyzed: {len(stories)}
 - Agents involved: {len(results)}
 - Task ID: {task_id}
-- Completion time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+- Completion time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 
 ---
 
@@ -381,15 +384,13 @@ This report summarizes the top {len(stories)} stories from HackerNews, analyzed 
 """
 
     print(f"✅ Report compiled successfully")
-    print(f"{'='*80}\n")
+    print(f"{'=' * 80}\n")
 
     return report
 
 
 def save_report(
-    report: str,
-    report_path: str,
-    pfs_api_url: Optional[str] = None
+    report: str, report_path: str, pfs_api_url: Optional[str] = None
 ) -> bool:
     """Save the final report to PFS"""
     print(f"💾 Saving report to: {report_path}")
@@ -400,7 +401,7 @@ def save_report(
         client = PFSClient(api_url)
 
         # Write report content
-        client.write(report_path, report.encode('utf-8'))
+        client.write(report_path, report.encode("utf-8"))
         print(f"✅ Report saved successfully\n")
         return True
 
@@ -418,38 +419,35 @@ def main():
     parser.add_argument(
         "--count",
         type=int,
-        default=10,
-        help="Number of top stories to fetch (default: 10)"
+        default=3,
+        help="Number of top stories to fetch (default: 3)",
     )
     parser.add_argument(
         "--agents",
         type=str,
         default="agent1,agent2,agent3",
-        help="Comma-separated list of agent names (default: agent1,agent2,agent3)"
+        help="Comma-separated list of agent names (default: agent1,agent2,agent3)",
     )
     parser.add_argument(
         "--queue-prefix",
         type=str,
         default="/queuefs",
-        help="Queue path prefix (default: /queuefs)"
+        help="Queue path prefix (default: /queuefs)",
     )
     parser.add_argument(
         "--results-path",
         type=str,
         default="/s3fs/aws/hackernews-results",
-        help="S3FS path for storing results (default: /s3fs/aws/hackernews-results)"
+        help="S3FS path for storing results (default: /s3fs/aws/hackernews-results)",
     )
     parser.add_argument(
         "--timeout",
         type=int,
         default=900,
-        help="Timeout for waiting results in seconds (default: 900)"
+        help="Timeout for waiting results in seconds (default: 900)",
     )
     parser.add_argument(
-        "--api-url",
-        type=str,
-        default=None,
-        help="PFS API server URL (optional)"
+        "--api-url", type=str, default=None, help="PFS API server URL (optional)"
     )
 
     args = parser.parse_args()
@@ -457,14 +455,14 @@ def main():
     # Generate task ID
     task_id = str(uuid.uuid4())[:8]
 
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("🔬 HACKERNEWS PARALLEL RESEARCH")
-    print("="*80)
+    print("=" * 80)
     print(f"Task ID:      {task_id}")
     print(f"Stories:      {args.count}")
     print(f"Agents:       {args.agents}")
     print(f"Results path: {args.results_path}/{task_id}")
-    print("="*80)
+    print("=" * 80)
 
     # Step 1: Fetch HackerNews stories
     stories = fetch_hackernews_top_stories(args.count)
@@ -483,7 +481,7 @@ def main():
         task_id=task_id,
         results_path=args.results_path,
         queue_prefix=args.queue_prefix,
-        pfs_api_url=args.api_url
+        pfs_api_url=args.api_url,
     )
 
     successful_agents = sum(1 for count in assignment.values() if count > 0)
@@ -498,7 +496,7 @@ def main():
         expected_count=successful_agents,
         timeout=args.timeout,
         poll_interval=10,
-        pfs_api_url=args.api_url
+        pfs_api_url=args.api_url,
     )
 
     # Step 4: Compile final report
@@ -506,19 +504,19 @@ def main():
         final_report = compile_final_report(results, stories, task_id)
 
         # Print report to console
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("📄 FINAL REPORT")
-        print("="*80 + "\n")
+        print("=" * 80 + "\n")
         print(final_report)
 
         # Save report to PFS
         report_path = f"{task_results_path}/FINAL_REPORT.md"
         save_report(final_report, report_path, args.api_url)
 
-        print("="*80)
+        print("=" * 80)
         print(f"✅ Research complete!")
         print(f"📁 Report saved to: {report_path}")
-        print("="*80 + "\n")
+        print("=" * 80 + "\n")
     else:
         print("\n⚠️  No results collected. Cannot compile report.")
         sys.exit(1)
