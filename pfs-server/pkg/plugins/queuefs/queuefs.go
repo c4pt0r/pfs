@@ -14,6 +14,7 @@ import (
 	"github.com/c4pt0r/pfs/pfs-server/pkg/filesystem"
 	"github.com/c4pt0r/pfs/pfs-server/pkg/plugin"
 	"github.com/c4pt0r/pfs/pfs-server/pkg/plugin/config"
+	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -801,13 +802,20 @@ func (qfs *queueFS) enqueue(queueName string, data []byte) ([]byte, error) {
 	defer qfs.plugin.mu.Unlock()
 
 	now := time.Now()
+	// Use UUIDv7 for globally unique and time-ordered message ID in distributed environments (e.g., TiDB backend)
+	// UUIDv7 is time-sortable and ensures uniqueness across distributed systems
+	msgUUID, err := uuid.NewV7()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate UUIDv7: %w", err)
+	}
+	msgID := msgUUID.String()
 	msg := QueueMessage{
-		ID:        fmt.Sprintf("%d", now.UnixNano()),
+		ID:        msgID,
 		Data:      string(data),
 		Timestamp: now,
 	}
 
-	err := qfs.plugin.backend.Enqueue(queueName, msg)
+	err = qfs.plugin.backend.Enqueue(queueName, msg)
 	if err != nil {
 		return nil, err
 	}

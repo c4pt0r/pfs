@@ -247,7 +247,7 @@ func getCreateTableSQL(tableName string) string {
 	return fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
 		id BIGINT AUTO_INCREMENT PRIMARY KEY,
 		message_id VARCHAR(64) NOT NULL,
-		data LONGTEXT NOT NULL,
+		data LONGBLOB NOT NULL,
 		timestamp BIGINT NOT NULL,
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		deleted TINYINT(1) DEFAULT 0,
