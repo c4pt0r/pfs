@@ -18,7 +18,7 @@ class TaskQueue:
 
     def __init__(
         self,
-        queue_path: str = "/queuefs/agent",
+        queue_path,
         pfs_api_baseurl: Optional[str] = "http://localhost:8080",
     ):
         """
@@ -43,18 +43,19 @@ class TaskQueue:
             True if queue exists or was created successfully, False otherwise
         """
         try:
-            # Check if queue exists using stat
-            self.client.stat(self.queue_path)
-            # Queue already exists
+            # Try to create the queue directory
+            # QueueFS requires explicit mkdir to create queues
+            self.client.mkdir(self.queue_path)
+            print(f"Successfully created queue: {self.queue_path}", file=sys.stderr)
             return True
-        except Exception:
-            # Queue doesn't exist, try to create it
-            print(f"Queue {self.queue_path} does not exist, creating...", file=sys.stderr)
-            try:
-                self.client.mkdir(self.queue_path)
-                print(f"Successfully created queue: {self.queue_path}", file=sys.stderr)
+        except Exception as e:
+            # If mkdir fails, check if it's because queue already exists
+            error_msg = str(e).lower()
+            if "exists" in error_msg or "already" in error_msg:
+                # Queue already exists, this is fine
                 return True
-            except Exception as e:
+            else:
+                # Other error occurred
                 print(f"Failed to create queue: {self.queue_path}: {e}", file=sys.stderr)
                 return False
 

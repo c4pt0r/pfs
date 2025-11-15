@@ -51,7 +51,7 @@ for agent in $AGENTS; do
     echo -e "  Log file: ${LOG_FILE}"
 
     # Start task_loop in background
-    nohup uv run python task_loop.py \
+    nohup uv run python -u task_loop.py \
         --queue-path "$QUEUE_PATH" \
         --api-url "$API_URL" \
         --claude-timeout "$CLAUDE_TIMEOUT" \
