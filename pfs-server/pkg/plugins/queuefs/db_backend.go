@@ -201,22 +201,12 @@ func (b *TiDBDBBackend) Open(cfg map[string]interface{}) (*sql.DB, error) {
 
 func (b *TiDBDBBackend) GetInitSQL() []string {
 	return []string{
-		// Queue metadata table to track all queues (including empty ones)
-		`CREATE TABLE IF NOT EXISTS queue_metadata (
+		// Queue registry table to track all queue tables
+		`CREATE TABLE IF NOT EXISTS queuefs_registry (
 			queue_name VARCHAR(255) PRIMARY KEY,
+			table_name VARCHAR(255) NOT NULL,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
-		// Queue messages table
-		`CREATE TABLE IF NOT EXISTS queue_messages (
-			id BIGINT AUTO_INCREMENT PRIMARY KEY,
-			queue_name VARCHAR(255) NOT NULL,
-			message_id VARCHAR(64) NOT NULL,
-			data LONGTEXT NOT NULL,
-			timestamp BIGINT NOT NULL,
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			INDEX idx_queue_name (queue_name),
-			INDEX idx_queue_order (queue_name, id)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 	}
 }
@@ -236,6 +226,34 @@ func extractDatabaseName(dsn string, configDB string) string {
 func removeDatabaseFromDSN(dsn string) string {
 	re := regexp.MustCompile(`\)/[^?]+(\?|$)`)
 	return re.ReplaceAllString(dsn, ")/$1")
+}
+
+// sanitizeTableName converts a queue name to a safe table name
+// Replaces / with _ and ensures the name is safe for SQL
+func sanitizeTableName(queueName string) string {
+	// Replace forward slashes with underscores
+	tableName := strings.ReplaceAll(queueName, "/", "_")
+
+	// Replace any other potentially problematic characters
+	tableName = strings.ReplaceAll(tableName, "-", "_")
+	tableName = strings.ReplaceAll(tableName, ".", "_")
+
+	// Prefix with queuefs_queue_ to avoid conflicts with system tables
+	return "queuefs_queue_" + tableName
+}
+
+// getCreateTableSQL returns the SQL to create a queue table
+func getCreateTableSQL(tableName string) string {
+	return fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
+		id BIGINT AUTO_INCREMENT PRIMARY KEY,
+		message_id VARCHAR(64) NOT NULL,
+		data LONGTEXT NOT NULL,
+		timestamp BIGINT NOT NULL,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		deleted TINYINT(1) DEFAULT 0,
+		deleted_at TIMESTAMP NULL,
+		INDEX idx_deleted_id (deleted, id)
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`, tableName)
 }
 
 // CreateBackend creates the appropriate database backend
