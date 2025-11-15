@@ -4,7 +4,7 @@
 set -e
 
 # Configuration
-AGENTS=${AGENTS:-"agent1 agent2 agent3"}
+AGENTS=${AGENTS:-"agent1 agent2 agent3 agent4 agent5 agent6 agent7 agent8 agent9 agent10"}
 QUEUE_PREFIX=${QUEUE_PREFIX:-"/queuefs"}
 API_URL=${API_URL:-"http://localhost:8080"}
 WORKING_DIR=${WORKING_DIR:-"."}

@@ -17,7 +17,7 @@ from bs4 import BeautifulSoup
 from pypfs import PFSClient
 
 
-def fetch_hackernews_top_stories(count: int = 3) -> List[Dict[str, Any]]:
+def fetch_hackernews_top_stories(count: int = 10) -> List[Dict[str, Any]]:
     """
     Fetch top stories from HackerNews
 
@@ -419,14 +419,14 @@ def main():
     parser.add_argument(
         "--count",
         type=int,
-        default=3,
-        help="Number of top stories to fetch (default: 3)",
+        default=10,
+        help="Number of top stories to fetch (default: 10)",
     )
     parser.add_argument(
         "--agents",
         type=str,
-        default="agent1,agent2,agent3",
-        help="Comma-separated list of agent names (default: agent1,agent2,agent3)",
+        default="agent1,agent2,agent3,agent4,agent5,agent6,agent7,agent8,agent9,agent10",
+        help="Comma-separated list of agent names (default: agent1,agent2,agent3,agent4,agent5,agent6,agent7,agent8,agent9,agent10)",
     )
     parser.add_argument(
         "--queue-prefix",

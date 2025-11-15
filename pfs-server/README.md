@@ -263,6 +263,10 @@ Exposes multiple message queues through virtual files. Each queue is represented
 - JSON-formatted message output with ID and timestamp
 - Non-blocking operations (dequeue returns empty object when queue is empty)
 - Thread-safe concurrent access
+- **Pluggable backends**: Memory (default), SQLite, TiDB/MySQL
+- **Persistent storage**: SQLite and TiDB backends survive server restarts
+- **Poll offset tracking**: Peek file's modTime reflects latest enqueued message timestamp
+- **TLS support**: Secure connections to TiDB Cloud and MySQL
 
 **File Structure:**
 ```
@@ -274,6 +278,52 @@ Exposes multiple message queues through virtual files. Each queue is represented
     ├── peek            (read-only: view first message without removing)
     ├── size            (read-only: get queue size)
     └── clear           (write-only: remove all messages)
+```
+
+**Configuration:**
+
+```yaml
+# Memory backend (default) - Fast, non-persistent
+queuefs:
+  enabled: true
+  path: /queuefs
+  config:
+    backend: memory  # or omit for default
+
+# SQLite backend - Persistent, file-based
+queuefs:
+  enabled: true
+  path: /queuefs
+  config:
+    backend: sqlite
+    db_path: queue.db
+
+# TiDB/MySQL backend (local) - Persistent, distributed
+queuefs:
+  enabled: true
+  path: /queuefs
+  config:
+    backend: tidb     # or "mysql"
+    host: 127.0.0.1
+    port: 4000
+    user: root
+    password: ""
+    database: queuedb
+
+# TiDB Cloud backend - Persistent, cloud-hosted with TLS
+queuefs:
+  enabled: true
+  path: /queuefs
+  config:
+    backend: tidb
+    user: 3YdGXuXNdAEmP1f.root
+    password: your_password
+    host: gateway01.us-west-2.prod.aws.tidbcloud.com
+    port: 4000
+    database: queuedb
+    enable_tls: true
+    tls_server_name: gateway01.us-west-2.prod.aws.tidbcloud.com
+    # tls_skip_verify: false  # optional, for testing only
 ```
 
 **Basic Usage:**
@@ -367,6 +417,19 @@ pfs:/> cat /queuefs/tasks/size
 0
 ```
 
+**Poll Offset Tracking:**
+
+The `peek` file's modification time (`modTime`) reflects the timestamp of the most recently enqueued message. This enables efficient polling by checking the file's `modTime` to detect new messages without reading the queue.
+
+```bash
+# Check if new messages arrived since last poll
+pfs:/> stat /queuefs/tasks/peek
+# ModTime: 2025-01-15T10:30:45Z  (timestamp of last enqueued message)
+
+# If modTime changed, there's a new message
+# This is useful for implementing efficient poll-based consumers
+```
+
 **cURL Examples:**
 
 ```bash
@@ -388,6 +451,10 @@ curl "http://localhost:8080/api/v1/files?path=/queuefs/myqueue/size"
 curl "http://localhost:8080/api/v1/files?path=/queuefs/myqueue/peek"
 # Output: {"id":"...","data":"First message","timestamp":"..."}
 
+# Check peek file stat for poll offset
+curl "http://localhost:8080/api/v1/stat?path=/queuefs/myqueue/peek"
+# Returns FileInfo with modTime reflecting last enqueued message
+
 # Dequeue message
 curl "http://localhost:8080/api/v1/files?path=/queuefs/myqueue/dequeue"
 # Output: {"id":"...","data":"First message","timestamp":"..."}
@@ -406,6 +473,8 @@ curl -X DELETE "http://localhost:8080/api/v1/files?path=/queuefs/myqueue&recursi
 4. **Workflow Orchestration**: Multi-step processes with queue-based state
 5. **Rate Limiting**: Queue-based request buffering and throttling
 6. **Microservices Communication**: Simple message broker between services
+7. **Distributed Processing**: TiDB backend for multi-server queue sharing
+8. **Persistent Queues**: SQLite/TiDB for durable message storage
 
 **Message Format:**
 
@@ -418,11 +487,20 @@ All dequeued/peeked messages are returned as JSON:
 }
 ```
 
+**Backend Comparison:**
+
+| Backend | Persistence | Performance | Use Case |
+|---------|-------------|-------------|----------|
+| **Memory** | ✗ (lost on restart) | Fastest | Development, temporary queues, caching |
+| **SQLite** | ✓ (file-based) | Fast | Single server, moderate load, local persistence |
+| **TiDB/MySQL** | ✓ (distributed) | Good | Production, distributed systems, high availability |
+
 **Performance Notes:**
-- In-memory storage (messages not persisted to disk)
 - Thread-safe for concurrent producers/consumers
 - O(1) enqueue, O(1) dequeue operations
-- Suitable for lightweight message passing (consider SQLFS or external MQ for durability)
+- Memory backend: Lowest latency, no I/O overhead
+- SQLite backend: Good for single-server deployments
+- TiDB backend: Horizontally scalable, ACID compliant, suitable for distributed systems
 
 ### KVFS - Key-Value Store
 
