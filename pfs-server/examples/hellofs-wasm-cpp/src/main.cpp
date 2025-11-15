@@ -10,6 +10,14 @@ class HelloFS : public pfs::FileSystem {
 private:
     std::string host_prefix;
 
+    // Convert /host/xxx to actual host path, or return empty if not host path
+    std::string get_host_path(const std::string& path) const {
+        if (path.rfind("/host/", 0) == 0 && !host_prefix.empty()) {
+            return host_prefix + path.substr(5);  // Remove "/host", add prefix
+        }
+        return "";
+    }
+
 public:
     const char* name() const override {
         return "hellofs-wasm-cpp";
@@ -18,7 +26,7 @@ public:
     const char* readme() const override {
         return "HelloFS WASM (C++) - Demonstrates host filesystem access\n"
                " - /hello.txt - Returns 'Hello World from C++'\n"
-               " - /host/* - Proxies to host filesystem (if configured)";
+               " - /host/* - Proxies to host filesystem (if configured host_prefix)";
     }
 
     pfs::Result<void> initialize(const pfs::Config& config) override {
@@ -36,15 +44,10 @@ public:
             std::string content = "Hello World from C++\n";
             std::vector<uint8_t> data(content.begin(), content.end());
             return data;
-        } else if (path.rfind("/host/", 0) == 0 && !host_prefix.empty()) {
-            // Proxy to host filesystem
-            std::string host_path = path.substr(5); // Remove "/host"
-            std::string full_path = host_prefix + host_path;
-            auto result = pfs::HostFS::read(full_path, offset, size);
-            if (result.is_err()) {
-                return pfs::Error::other("host fs: " + result.unwrap_err().to_string());
-            }
-            return result.unwrap();
+        }
+        auto host_path = get_host_path(path);
+        if (!host_path.empty()) {
+            return pfs::HostFS::read(host_path, offset, size);
         }
         return pfs::Error::not_found();
     }
@@ -52,19 +55,16 @@ public:
     pfs::Result<pfs::FileInfo> stat(const std::string& path) override {
         if (path == "/") {
             return pfs::FileInfo::dir("", 0755);
-        } else if (path == "/hello.txt") {
+        }
+        if (path == "/hello.txt") {
             return pfs::FileInfo::file("hello.txt", 21, 0644);
-        } else if (path == "/host" && !host_prefix.empty()) {
+        }
+        if (path == "/host" && !host_prefix.empty()) {
             return pfs::FileInfo::dir("host", 0755);
-        } else if (path.rfind("/host/", 0) == 0 && !host_prefix.empty()) {
-            // Proxy to host filesystem
-            std::string host_path = path.substr(5); // Remove "/host"
-            std::string full_path = host_prefix + host_path;
-            auto result = pfs::HostFS::stat(full_path);
-            if (result.is_err()) {
-                return pfs::Error::other("host fs: " + result.unwrap_err().to_string());
-            }
-            return result.unwrap();
+        }
+        auto host_path = get_host_path(path);
+        if (!host_path.empty()) {
+            return pfs::HostFS::stat(host_path);
         }
         return pfs::Error::not_found();
     }
@@ -77,89 +77,63 @@ public:
                 entries.push_back(pfs::FileInfo::dir("host", 0755));
             }
             return entries;
-        } else if (path == "/host" && !host_prefix.empty()) {
-            // Read from host filesystem root
-            auto result = pfs::HostFS::readdir(host_prefix);
-            if (result.is_err()) {
-                return pfs::Error::other("host fs: " + result.unwrap_err().to_string());
-            }
-            return result.unwrap();
-        } else if (path.rfind("/host/", 0) == 0 && !host_prefix.empty()) {
-            // Proxy to host filesystem
-            std::string host_path = path.substr(5); // Remove "/host"
-            std::string full_path = host_prefix + host_path;
-            auto result = pfs::HostFS::readdir(full_path);
-            if (result.is_err()) {
-                return pfs::Error::other("host fs: " + result.unwrap_err().to_string());
-            }
-            return result.unwrap();
+        }
+        if (path == "/host" && !host_prefix.empty()) {
+            return pfs::HostFS::readdir(host_prefix);
+        }
+        auto host_path = get_host_path(path);
+        if (!host_path.empty()) {
+            return pfs::HostFS::readdir(host_path);
         }
         return pfs::Error::not_found();
     }
 
     pfs::Result<std::vector<uint8_t>> write(const std::string& path,
                                             const std::vector<uint8_t>& data) override {
-        if (path.rfind("/host/", 0) == 0 && !host_prefix.empty()) {
-            // Proxy to host filesystem
-            std::string host_path = path.substr(5); // Remove "/host"
-            std::string full_path = host_prefix + host_path;
-            auto result = pfs::HostFS::write(full_path, data);
-            if (result.is_err()) {
-                return pfs::Error::other("host fs: " + result.unwrap_err().to_string());
-            }
-            return result.unwrap();
+        auto host_path = get_host_path(path);
+        if (!host_path.empty()) {
+            return pfs::HostFS::write(host_path, data);
         }
         return pfs::Error::permission_denied();
     }
 
     pfs::Result<void> create(const std::string& path) override {
-        if (path.rfind("/host/", 0) == 0 && !host_prefix.empty()) {
-            // Proxy to host filesystem
-            std::string host_path = path.substr(5); // Remove "/host"
-            std::string full_path = host_prefix + host_path;
-            return pfs::HostFS::create(full_path);
+        auto host_path = get_host_path(path);
+        if (!host_path.empty()) {
+            return pfs::HostFS::create(host_path);
         }
         return pfs::Error::permission_denied();
     }
 
     pfs::Result<void> mkdir(const std::string& path, uint32_t perm) override {
-        if (path.rfind("/host/", 0) == 0 && !host_prefix.empty()) {
-            // Proxy to host filesystem
-            std::string host_path = path.substr(5); // Remove "/host"
-            std::string full_path = host_prefix + host_path;
-            return pfs::HostFS::mkdir(full_path, perm);
+        auto host_path = get_host_path(path);
+        if (!host_path.empty()) {
+            return pfs::HostFS::mkdir(host_path, perm);
         }
         return pfs::Error::permission_denied();
     }
 
     pfs::Result<void> remove(const std::string& path) override {
-        if (path.rfind("/host/", 0) == 0 && !host_prefix.empty()) {
-            // Proxy to host filesystem
-            std::string host_path = path.substr(5); // Remove "/host"
-            std::string full_path = host_prefix + host_path;
-            return pfs::HostFS::remove(full_path);
+        auto host_path = get_host_path(path);
+        if (!host_path.empty()) {
+            return pfs::HostFS::remove(host_path);
         }
         return pfs::Error::permission_denied();
     }
 
     pfs::Result<void> remove_all(const std::string& path) override {
-        if (path.rfind("/host/", 0) == 0 && !host_prefix.empty()) {
-            // Proxy to host filesystem
-            std::string host_path = path.substr(5); // Remove "/host"
-            std::string full_path = host_prefix + host_path;
-            return pfs::HostFS::remove_all(full_path);
+        auto host_path = get_host_path(path);
+        if (!host_path.empty()) {
+            return pfs::HostFS::remove_all(host_path);
         }
         return pfs::Error::permission_denied();
     }
 
     pfs::Result<void> rename(const std::string& old_path, const std::string& new_path) override {
-        if (old_path.rfind("/host/", 0) == 0 && new_path.rfind("/host/", 0) == 0 && !host_prefix.empty()) {
-            // Proxy to host filesystem (both paths must be in host)
-            std::string host_old_path = old_path.substr(5); // Remove "/host"
-            std::string host_new_path = new_path.substr(5); // Remove "/host"
-            std::string full_old_path = host_prefix + host_old_path;
-            std::string full_new_path = host_prefix + host_new_path;
-            return pfs::HostFS::rename(full_old_path, full_new_path);
+        auto host_old = get_host_path(old_path);
+        auto host_new = get_host_path(new_path);
+        if (!host_old.empty() && !host_new.empty()) {
+            return pfs::HostFS::rename(host_old, host_new);
         }
         return pfs::Error::permission_denied();
     }
