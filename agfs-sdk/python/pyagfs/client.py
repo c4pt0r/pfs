@@ -145,11 +145,16 @@ class AGFSClient:
     def write(self, path: str, data: bytes) -> str:
         """Write data to file and return the response message"""
         try:
+            # Calculate timeout based on file size
+            # Use 1 second per MB, with a minimum of 10 seconds and maximum of 300 seconds (5 minutes)
+            data_size_mb = len(data) / (1024 * 1024)
+            write_timeout = max(10, min(300, int(data_size_mb * 1 + 10)))
+
             response = self.session.put(
                 f"{self.api_base}/files",
                 params={"path": path},
                 data=data,
-                timeout=self.timeout
+                timeout=write_timeout
             )
             response.raise_for_status()
             result = response.json()
