@@ -40,7 +40,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.25.1'
-          cache-dependency-path: pfs-server/go.sum
+          cache-dependency-path: agfs-server/go.sum
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -68,20 +68,20 @@ jobs:
           echo "date=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
           echo "short_sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
-      - name: Build pfs-server
-        working-directory: pfs-server
+      - name: Build agfs-server
+        working-directory: agfs-server
         env:
           GOOS: ${{ matrix.os }}
           GOARCH: ${{ matrix.arch }}
           CGO_ENABLED: 0
         run: |
-          go build -ldflags="-s -w -X main.version=${{ steps.version.outputs.date }}-${{ steps.version.outputs.short_sha }}" -o ../build/pfs-server-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.os == 'windows' && '.exe' || '' }} ./cmd/server
+          go build -ldflags="-s -w -X main.version=${{ steps.version.outputs.date }}-${{ steps.version.outputs.short_sha }}" -o ../build/agfs-server-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.os == 'windows' && '.exe' || '' }} ./cmd/server
 
-      - name: Build pfs-shell (portable)
+      - name: Build agfs-shell (portable)
         if: matrix.arch == 'amd64' || matrix.arch == 'arm64'
         shell: bash
         run: |
-          cd pfs-shell
+          cd agfs-shell
 
           # Find uv command
           if command -v uv &> /dev/null; then
@@ -103,42 +103,42 @@ jobs:
           python3 build.py
 
           # Create archive name
-          ARCHIVE_NAME="pfs-shell-${{ matrix.os }}-${{ matrix.arch }}"
+          ARCHIVE_NAME="agfs-shell-${{ matrix.os }}-${{ matrix.arch }}"
 
           # Package the portable distribution
           if [ "${{ matrix.os }}" = "windows" ]; then
             # For Windows, create zip
             cd dist
-            powershell Compress-Archive -Path pfs-portable -DestinationPath "../../build/${ARCHIVE_NAME}.zip"
+            powershell Compress-Archive -Path agfs-portable -DestinationPath "../../build/${ARCHIVE_NAME}.zip"
           else
             # For Unix, create tar.gz
             cd dist
-            tar -czf "../../build/${ARCHIVE_NAME}.tar.gz" pfs-portable/
+            tar -czf "../../build/${ARCHIVE_NAME}.tar.gz" agfs-portable/
           fi
 
       - name: Create archive (Unix)
         if: matrix.os != 'windows'
         working-directory: build
         run: |
-          tar -czf pfs-${{ matrix.os }}-${{ matrix.arch }}-${{ steps.version.outputs.date }}.tar.gz pfs-server-${{ matrix.os }}-${{ matrix.arch }}*
+          tar -czf agfs-${{ matrix.os }}-${{ matrix.arch }}-${{ steps.version.outputs.date }}.tar.gz agfs-server-${{ matrix.os }}-${{ matrix.arch }}*
 
       - name: Create archive (Windows)
         if: matrix.os == 'windows'
         working-directory: build
         shell: pwsh
         run: |
-          $files = Get-ChildItem -Filter "pfs-*-${{ matrix.os }}-${{ matrix.arch }}*"
-          Compress-Archive -Path $files -DestinationPath "pfs-${{ matrix.os }}-${{ matrix.arch }}-${{ steps.version.outputs.date }}.zip"
+          $files = Get-ChildItem -Filter "agfs-*-${{ matrix.os }}-${{ matrix.arch }}*"
+          Compress-Archive -Path $files -DestinationPath "agfs-${{ matrix.os }}-${{ matrix.arch }}-${{ steps.version.outputs.date }}.zip"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: pfs-${{ matrix.os }}-${{ matrix.arch }}
+          name: agfs-${{ matrix.os }}-${{ matrix.arch }}
           path: |
-            build/pfs-${{ matrix.os }}-${{ matrix.arch }}-*.tar.gz
-            build/pfs-${{ matrix.os }}-${{ matrix.arch }}-*.zip
-            build/pfs-shell-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
-            build/pfs-shell-${{ matrix.os }}-${{ matrix.arch }}.zip
+            build/agfs-${{ matrix.os }}-${{ matrix.arch }}-*.tar.gz
+            build/agfs-${{ matrix.os }}-${{ matrix.arch }}-*.zip
+            build/agfs-shell-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
+            build/agfs-shell-${{ matrix.os }}-${{ matrix.arch }}.zip
           retention-days: 90
 
   create-release:
@@ -190,30 +190,30 @@ jobs:
             ### 📦 What's Included
 
             This release contains:
-            - **pfs-server**: Go binary (server)
-            - **pfs-shell**: Python portable CLI client (requires Python 3.10+, includes all dependencies)
+            - **agfs-server**: Go binary (server)
+            - **agfs-shell**: Python portable CLI client (requires Python 3.10+, includes all dependencies)
 
             ### Downloads
 
             #### Server Binaries
 
-            - **Linux AMD64**: `pfs-linux-amd64-${{ steps.version.outputs.date }}.tar.gz`
-            - **Linux ARM64**: `pfs-linux-arm64-${{ steps.version.outputs.date }}.tar.gz`
-            - **macOS AMD64**: `pfs-darwin-amd64-${{ steps.version.outputs.date }}.tar.gz`
-            - **macOS ARM64 (Apple Silicon)**: `pfs-darwin-arm64-${{ steps.version.outputs.date }}.tar.gz`
+            - **Linux AMD64**: `agfs-linux-amd64-${{ steps.version.outputs.date }}.tar.gz`
+            - **Linux ARM64**: `agfs-linux-arm64-${{ steps.version.outputs.date }}.tar.gz`
+            - **macOS AMD64**: `agfs-darwin-amd64-${{ steps.version.outputs.date }}.tar.gz`
+            - **macOS ARM64 (Apple Silicon)**: `agfs-darwin-arm64-${{ steps.version.outputs.date }}.tar.gz`
 
             #### CLI Client (Portable, Python 3.10+ required)
 
-            - **Linux AMD64**: `pfs-shell-linux-amd64.tar.gz`
-            - **macOS AMD64**: `pfs-shell-darwin-amd64.tar.gz`
-            - **macOS ARM64**: `pfs-shell-darwin-arm64.tar.gz`
+            - **Linux AMD64**: `agfs-shell-linux-amd64.tar.gz`
+            - **macOS AMD64**: `agfs-shell-darwin-amd64.tar.gz`
+            - **macOS ARM64**: `agfs-shell-darwin-arm64.tar.gz`
 
             ### Installation
 
             #### Quick Install (All-in-One)
 
             ```bash
-            curl -fsSL https://raw.githubusercontent.com/c4pt0r/pfs/master/install.sh | sh
+            curl -fsSL https://raw.githubusercontent.com/c4pt0r/agfs/master/install.sh | sh
             ```
 
             This will install both server and client to `~/.local/bin/`.
@@ -223,40 +223,40 @@ jobs:
             **Server (Linux/macOS):**
             ```bash
             # Extract
-            tar -xzf pfs-<os>-<arch>-${{ steps.version.outputs.date }}.tar.gz
+            tar -xzf agfs-<os>-<arch>-${{ steps.version.outputs.date }}.tar.gz
 
             # Make executable
-            chmod +x pfs-server-<os>-<arch>
+            chmod +x agfs-server-<os>-<arch>
 
             # Move to bin directory
-            mv pfs-server-<os>-<arch> ~/.local/bin/pfs-server
+            mv agfs-server-<os>-<arch> ~/.local/bin/agfs-server
 
             # Run server
-            pfs-server
+            agfs-server
             ```
 
             **Client (Linux/macOS):**
             ```bash
             # Extract
-            tar -xzf pfs-shell-<os>-<arch>.tar.gz
+            tar -xzf agfs-shell-<os>-<arch>.tar.gz
 
             # Run directly
-            ./pfs-portable/pfs --help
+            ./agfs-portable/agfs --help
 
             # Or install to system
-            cd pfs-portable && ./install.sh
+            cd agfs-portable && ./install.sh
             ```
 
             ### Quick Start
 
             ```bash
             # Start the server
-            pfs-server
+            agfs-server
 
             # In another terminal, use CLI
-            pfs shell
-            pfs ls /
-            pfs tree /
+            agfs shell
+            agfs ls /
+            agfs tree /
             ```
           files: release/*
           draft: false

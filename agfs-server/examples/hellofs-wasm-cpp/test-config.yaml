@@ -1,0 +1,9 @@
+# Test configuration for hellofs-wasm-cpp plugin
+filesystems:
+  - name: hellofs-cpp
+    type: wasm
+    mount: /hellofs-cpp
+    config:
+      wasm_path: ./hellofs-wasm-cpp.wasm
+      # Optional: configure host filesystem access
+      # host_prefix: /tmp

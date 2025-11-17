@@ -1,0 +1,16 @@
+[package]
+name = "agfs-ffi"
+version = "0.1.0"
+edition = "2021"
+authors = ["AGFS Contributors"]
+description = "FFI bindings for building AGFS filesystem plugins in Rust"
+license = "Apache-2.0"
+keywords = ["filesystem", "plugin", "ffi"]
+categories = ["api-bindings", "filesystem"]
+
+[dependencies]
+libc = "0.2"
+
+[lib]
+name = "agfs_ffi"
+path = "src/lib.rs"
