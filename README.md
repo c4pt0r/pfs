@@ -133,6 +133,20 @@ Hello World
 agfs:/hello-wasm>
 
 
+// Basic pipeline / IO redirect support 
+
+agfs:/s3fs/aws> echo 'hello world' > hello.txt
+Written 12 bytes to hello.txt
+agfs:/s3fs/aws> cat hello.txt | tee -a /sqlfs/tidb/hello_in_database | tee -a /local/hello_in_local
+hello world
+agfs:/s3fs/aws> cat /sqlfs/tidb/hello_in_database
+hello world
+agfs:/s3fs/aws> cat /local/hello_in_local
+hello world
+agfs:/s3fs/aws>
+
+
 ```
+
 
 
