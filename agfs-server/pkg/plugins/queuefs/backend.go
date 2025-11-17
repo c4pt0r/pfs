@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -222,10 +223,14 @@ type TiDBBackend struct {
 	db          *sql.DB
 	backend     DBBackend
 	backendType string
+	tableCache  map[string]string // queueName -> tableName cache
+	cacheMu     sync.RWMutex      // protects tableCache
 }
 
 func NewTiDBBackend() *TiDBBackend {
-	return &TiDBBackend{}
+	return &TiDBBackend{
+		tableCache: make(map[string]string),
+	}
 }
 
 func (b *TiDBBackend) Initialize(config map[string]interface{}) error {
@@ -274,19 +279,53 @@ func (b *TiDBBackend) GetType() string {
 	return b.backendType
 }
 
+// getTableName retrieves the table name for a queue, using cache when possible
+// If forceRefresh is true, it will bypass the cache and query from database
+func (b *TiDBBackend) getTableName(queueName string, forceRefresh bool) (string, error) {
+	// Try to get from cache first (unless force refresh)
+	if !forceRefresh {
+		b.cacheMu.RLock()
+		if tableName, exists := b.tableCache[queueName]; exists {
+			b.cacheMu.RUnlock()
+			return tableName, nil
+		}
+		b.cacheMu.RUnlock()
+	}
+
+	// Query from database
+	var tableName string
+	err := b.db.QueryRow(
+		"SELECT table_name FROM queuefs_registry WHERE queue_name = ?",
+		queueName,
+	).Scan(&tableName)
+
+	if err != nil {
+		return "", err
+	}
+
+	// Update cache
+	b.cacheMu.Lock()
+	b.tableCache[queueName] = tableName
+	b.cacheMu.Unlock()
+
+	return tableName, nil
+}
+
+// invalidateCache removes a queue from the cache
+func (b *TiDBBackend) invalidateCache(queueName string) {
+	b.cacheMu.Lock()
+	delete(b.tableCache, queueName)
+	b.cacheMu.Unlock()
+}
+
 func (b *TiDBBackend) Enqueue(queueName string, msg QueueMessage) error {
 	msgData, err := json.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("failed to marshal message: %w", err)
 	}
 
-	// Get table name from registry
-	var tableName string
-	err = b.db.QueryRow(
-		"SELECT table_name FROM queuefs_registry WHERE queue_name = ?",
-		queueName,
-	).Scan(&tableName)
-
+	// Get table name from cache (lazy loading)
+	tableName, err := b.getTableName(queueName, false)
 	if err == sql.ErrNoRows {
 		return fmt.Errorf("queue does not exist: %s (create it with mkdir first)", queueName)
 	} else if err != nil {
@@ -303,23 +342,12 @@ func (b *TiDBBackend) Enqueue(queueName string, msg QueueMessage) error {
 		return fmt.Errorf("failed to enqueue message: %w", err)
 	}
 
-	// Update last_updated in registry
-	_, err = b.db.Exec(
-		"UPDATE queuefs_registry SET last_updated = CURRENT_TIMESTAMP WHERE queue_name = ?",
-		queueName,
-	)
-
-	return err
+	return nil
 }
 
 func (b *TiDBBackend) Dequeue(queueName string) (QueueMessage, bool, error) {
-	// Get table name from registry
-	var tableName string
-	err := b.db.QueryRow(
-		"SELECT table_name FROM queuefs_registry WHERE queue_name = ?",
-		queueName,
-	).Scan(&tableName)
-
+	// Get table name from cache (lazy loading)
+	tableName, err := b.getTableName(queueName, false)
 	if err == sql.ErrNoRows {
 		return QueueMessage{}, false, nil
 	} else if err != nil {
@@ -333,12 +361,13 @@ func (b *TiDBBackend) Dequeue(queueName string) (QueueMessage, bool, error) {
 	}
 	defer tx.Rollback()
 
-	// Get the first non-deleted message
+	// Get and mark the first non-deleted message as deleted in a single atomic operation
+	// Using FOR UPDATE SKIP LOCKED to skip rows locked by other transactions for better concurrency
 	var id int64
 	var data string
 
 	querySQL := fmt.Sprintf(
-		"SELECT id, data FROM %s WHERE deleted = 0 ORDER BY id LIMIT 1",
+		"SELECT id, data FROM %s WHERE deleted = 0 ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED",
 		tableName,
 	)
 	err = tx.QueryRow(querySQL).Scan(&id, &data)
@@ -349,7 +378,7 @@ func (b *TiDBBackend) Dequeue(queueName string) (QueueMessage, bool, error) {
 		return QueueMessage{}, false, fmt.Errorf("failed to query message: %w", err)
 	}
 
-	// Mark the message as deleted instead of actually deleting it
+	// Mark the message as deleted
 	updateSQL := fmt.Sprintf(
 		"UPDATE %s SET deleted = 1, deleted_at = CURRENT_TIMESTAMP WHERE id = ?",
 		tableName,
@@ -374,13 +403,8 @@ func (b *TiDBBackend) Dequeue(queueName string) (QueueMessage, bool, error) {
 }
 
 func (b *TiDBBackend) Peek(queueName string) (QueueMessage, bool, error) {
-	// Get table name from registry
-	var tableName string
-	err := b.db.QueryRow(
-		"SELECT table_name FROM queuefs_registry WHERE queue_name = ?",
-		queueName,
-	).Scan(&tableName)
-
+	// Get table name from cache (lazy loading)
+	tableName, err := b.getTableName(queueName, false)
 	if err == sql.ErrNoRows {
 		return QueueMessage{}, false, nil
 	} else if err != nil {
@@ -410,13 +434,8 @@ func (b *TiDBBackend) Peek(queueName string) (QueueMessage, bool, error) {
 }
 
 func (b *TiDBBackend) Size(queueName string) (int, error) {
-	// Get table name from registry
-	var tableName string
-	err := b.db.QueryRow(
-		"SELECT table_name FROM queuefs_registry WHERE queue_name = ?",
-		queueName,
-	).Scan(&tableName)
-
+	// Get table name from cache (lazy loading)
+	tableName, err := b.getTableName(queueName, false)
 	if err == sql.ErrNoRows {
 		return 0, nil
 	} else if err != nil {
@@ -436,13 +455,8 @@ func (b *TiDBBackend) Size(queueName string) (int, error) {
 }
 
 func (b *TiDBBackend) Clear(queueName string) error {
-	// Get table name from registry
-	var tableName string
-	err := b.db.QueryRow(
-		"SELECT table_name FROM queuefs_registry WHERE queue_name = ?",
-		queueName,
-	).Scan(&tableName)
-
+	// Get table name from cache (lazy loading)
+	tableName, err := b.getTableName(queueName, false)
 	if err == sql.ErrNoRows {
 		return nil // Queue doesn't exist, nothing to clear
 	} else if err != nil {
@@ -489,13 +503,8 @@ func (b *TiDBBackend) ListQueues(prefix string) ([]string, error) {
 }
 
 func (b *TiDBBackend) GetLastEnqueueTime(queueName string) (time.Time, error) {
-	// Get table name from registry
-	var tableName string
-	err := b.db.QueryRow(
-		"SELECT table_name FROM queuefs_registry WHERE queue_name = ?",
-		queueName,
-	).Scan(&tableName)
-
+	// Get table name from cache (lazy loading)
+	tableName, err := b.getTableName(queueName, false)
 	if err == sql.ErrNoRows {
 		return time.Time{}, nil
 	} else if err != nil {
@@ -543,13 +552,18 @@ func (b *TiDBBackend) RemoveQueue(queueName string) error {
 			}{qName, tName})
 		}
 
-		// Drop all tables
+		// Drop all tables and clear cache
 		for _, q := range queuesToDelete {
 			dropSQL := fmt.Sprintf("DROP TABLE IF EXISTS %s", q.tableName)
 			if _, err := b.db.Exec(dropSQL); err != nil {
 				log.Warnf("[queuefs] Failed to drop table '%s': %v", q.tableName, err)
 			}
 		}
+
+		// Clear cache completely
+		b.cacheMu.Lock()
+		b.tableCache = make(map[string]string)
+		b.cacheMu.Unlock()
 
 		// Clear registry
 		_, err = b.db.Exec("DELETE FROM queuefs_registry")
@@ -582,7 +596,7 @@ func (b *TiDBBackend) RemoveQueue(queueName string) error {
 		}{qName, tName})
 	}
 
-	// Drop tables
+	// Drop tables and invalidate cache
 	for _, q := range queuesToDelete {
 		dropSQL := fmt.Sprintf("DROP TABLE IF EXISTS %s", q.tableName)
 		if _, err := b.db.Exec(dropSQL); err != nil {
@@ -590,6 +604,8 @@ func (b *TiDBBackend) RemoveQueue(queueName string) error {
 		} else {
 			log.Infof("[queuefs] Dropped queue table '%s' for queue '%s'", q.tableName, q.queueName)
 		}
+		// Invalidate cache for this queue
+		b.invalidateCache(q.queueName)
 	}
 
 	// Remove from registry
@@ -619,11 +635,26 @@ func (b *TiDBBackend) CreateQueue(queueName string) error {
 		return fmt.Errorf("failed to register queue: %w", err)
 	}
 
+	// Update cache
+	b.cacheMu.Lock()
+	b.tableCache[queueName] = tableName
+	b.cacheMu.Unlock()
+
 	log.Infof("[queuefs] Created queue table '%s' for queue '%s'", tableName, queueName)
 	return nil
 }
 
 func (b *TiDBBackend) QueueExists(queueName string) (bool, error) {
+	// Check cache first
+	b.cacheMu.RLock()
+	_, exists := b.tableCache[queueName]
+	b.cacheMu.RUnlock()
+
+	if exists {
+		return true, nil
+	}
+
+	// If not in cache, query database
 	var count int
 	err := b.db.QueryRow(
 		"SELECT COUNT(*) FROM queuefs_registry WHERE queue_name = ?",
