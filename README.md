@@ -25,7 +25,7 @@ See more details in:
 $ docker pull c4pt0r/agfs-server:latest
 ```
 
-```bash
+```plain
 $ agfs shell
     ___   _____________ _____
    /   | / ____/ ____// ___/
@@ -147,6 +147,7 @@ agfs:/s3fs/aws>
 
 
 ```
+
 
 
 
