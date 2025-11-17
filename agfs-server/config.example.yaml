@@ -4,6 +4,24 @@ server:
   address: ":8080"
   log_level: info # Options: debug, info, warn, error
 
+plugins:
+  serverinfofs:
+    enabled: true
+    path: /serverinfo
+    config:
+      version: "1.0.0"
+
+  queuefs:
+    enabled: true
+    path: /queuefs
+    config: {}
+
+  localfs:
+    enabled: true
+    path: /local
+    config: 
+      local_dir: /data
+
 # ============================================================================
 # Plugin Configurations
 # ============================================================================
@@ -11,165 +29,165 @@ server:
 # 1. Single instance: { enabled, path, config }
 # 2. Multiple instances: array of { name, enabled, path, config }
 
-plugins:
-  serverinfofs:
-    enabled: true
-    path: /serverinfofs
-    config:
-      version: "1.0.0"
-
-  memfs:
-    enabled: true
-    path: /memfs
-    config:
-      init_dirs:
-        - /home
-        - /tmp
-
-  queuefs:
-    enabled: true
-    path: /queuefs
-    config: {}
-
-  kvfs:
-    enabled: true
-    path: /kvfs
-    config:
-      initial_data:
-        welcome: "Hello from AGFS Server!"
-        version: "1.0.0"
-
-  hellofs:
-    enabled: true
-    path: /hellofs
-
-  streamfs:
-    enabled: true
-    path: /streamfs
-
-  # ============================================================================
-  # LocalFS - Local File System Mount
-  # ============================================================================
-  localfs:
-    enabled: true
-    path: /local/tmp
-    config:
-      local_dir: /tmp # Path to the local directory to mount
-
-  # Example: Multiple local mounts (uncomment to use)
-  # localfs_home:
-  #   enabled: false
-  #   path: /home
-  #   config:
-  #     local_dir: /Users/username  # Mount home directory
-
-  # localfs_data:
-  #   enabled: false
-  #   path: /data
-  #   config:
-  #     local_dir: /var/data  # Mount data directory
-
-  # ============================================================================
-  # SQLFS - Database-backed File System (Multiple Instances)
-  # ============================================================================
-  sqlfs:
-    # SQLite instance for local development
-    - name: local
-      enabled: true
-      path: /sqlfs
-      config:
-        backend: sqlite
-        db_path: sqlfs.db
-        cache_enabled: true
-        cache_max_size: 1000
-        cache_ttl_seconds: 5
-
-    # TiDB instance for production (disabled by default)
-    - name: tidb
-      enabled: true
-      path: /sqlfs_tidb
-      config:
-        backend: tidb
-        dsn: "<username>:<password>@tcp(addr)/<dbname>?charset=utf8mb4&parseTime=True&tls=tidb"
-        cache_enabled: true
-        cache_max_size: 1000
-        cache_ttl_seconds: 5
-
-  sqlfs2:
-    enabled: true
-    path: "/sqlfs2/tidb"
-    config:
-      backend: "tidb"
-      dsn: "<username>:<password>@tcp(addr)/<dbname>?charset=utf8mb4&parseTime=True&tls=tidb"
-
-
-  # ============================================================================
-  # ProxyFS - Remote AGFS Proxy (Multiple Instances)
-  # ============================================================================
-  proxyfs:
-    # Remote server 1 (disabled by default)
-    - name: remote1
-      enabled: false
-      path: /proxyfs/remote1
-      config:
-        base_url: "http://localhost:9090/api/v1"
-
-    # Remote server 2 (disabled by default)
-    - name: remote2
-      enabled: false
-      path: /proxyfs/remote2
-      config:
-        base_url: "http://another-server:8080/api/v1"
-
-  s3fs:
-    - name: aws
-      enabled: true
-      path: /s3fs/aws
-      config:
-        region: us-west-1
-        bucket: bucket-name
-        access_key_id: key_id
-        secret_access_key: secret
-        prefix: agfs/ # Optional: all keys will be prefixed with "agfs/"
-
-  # ============================================================================
-  # HTTPFS - HTTP File Server (Multiple Instances)
-  # ============================================================================
-  # HTTPFS serves AGFS paths over HTTP, similar to 'python3 -m http.server'.
-  # Each instance can serve a different AGFS path on a different port.
-  #
-  # Features:
-  # - Serve any AGFS filesystem (memfs, queuefs, s3fs, etc.) via HTTP
-  # - Browse directories and download files in web browser
-  # - README files display inline instead of downloading
-  # - Virtual status file: 'agfs cat /httagfs-memfs' shows instance info
-  # - Dynamic mounting: 'agfs mount httagfs /path agfs_path=/memfs http_port=9000'
-  #
-  httagfs:
-    # Instance 1: Serve memfs on port 9000
-    - name: httagfs-memfs
-      enabled: true
-      path: /httagfs-memfs
-      config:
-        agfs_path: /memfs        # The AGFS path to serve
-        port: "9000"       # HTTP server port
-
-    # Instance 2: Serve queuefs on port 9001 (disabled by default)
-    - name: httagfs-queue
-      enabled: false
-      path: /httagfs-queue
-      config:
-        agfs_path: /queuefs
-        port: "9001"
-
-    # Instance 3: Serve S3 content on port 9002 (disabled by default)
-    - name: httagfs-s3
-      enabled: false
-      path: /httagfs-s3
-      config:
-        agfs_path: /s3fs/aws
-        port: "9002"
-        host: "localhost"
+#plugins:
+#  serverinfofs:
+#    enabled: true
+#    path: /serverinfofs
+#    config:
+#      version: "1.0.0"
+#
+#  memfs:
+#    enabled: true
+#    path: /memfs
+#    config:
+#      init_dirs:
+#        - /home
+#        - /tmp
+#
+#  queuefs:
+#    enabled: true
+#    path: /queuefs
+#    config: {}
+#
+#  kvfs:
+#    enabled: true
+#    path: /kvfs
+#    config:
+#      initial_data:
+#        welcome: "Hello from AGFS Server!"
+#        version: "1.0.0"
+#
+#  hellofs:
+#    enabled: true
+#    path: /hellofs
+#
+#  streamfs:
+#    enabled: true
+#    path: /streamfs
+#
+#  # ============================================================================
+#  # LocalFS - Local File System Mount
+#  # ============================================================================
+#  localfs:
+#    enabled: true
+#    path: /local/tmp
+#    config:
+#      local_dir: /tmp # Path to the local directory to mount
+#
+#  # Example: Multiple local mounts (uncomment to use)
+#  # localfs_home:
+#  #   enabled: false
+#  #   path: /home
+#  #   config:
+#  #     local_dir: /Users/username  # Mount home directory
+#
+#  # localfs_data:
+#  #   enabled: false
+#  #   path: /data
+#  #   config:
+#  #     local_dir: /var/data  # Mount data directory
+#
+#  # ============================================================================
+#  # SQLFS - Database-backed File System (Multiple Instances)
+#  # ============================================================================
+#  sqlfs:
+#    # SQLite instance for local development
+#    - name: local
+#      enabled: true
+#      path: /sqlfs
+#      config:
+#        backend: sqlite
+#        db_path: sqlfs.db
+#        cache_enabled: true
+#        cache_max_size: 1000
+#        cache_ttl_seconds: 5
+#
+#    # TiDB instance for production (disabled by default)
+#    - name: tidb
+#      enabled: true
+#      path: /sqlfs_tidb
+#      config:
+#        backend: tidb
+#        dsn: "<username>:<password>@tcp(addr)/<dbname>?charset=utf8mb4&parseTime=True&tls=tidb"
+#        cache_enabled: true
+#        cache_max_size: 1000
+#        cache_ttl_seconds: 5
+#
+#  sqlfs2:
+#    enabled: true
+#    path: "/sqlfs2/tidb"
+#    config:
+#      backend: "tidb"
+#      dsn: "<username>:<password>@tcp(addr)/<dbname>?charset=utf8mb4&parseTime=True&tls=tidb"
+#
+#
+#  # ============================================================================
+#  # ProxyFS - Remote AGFS Proxy (Multiple Instances)
+#  # ============================================================================
+#  proxyfs:
+#    # Remote server 1 (disabled by default)
+#    - name: remote1
+#      enabled: false
+#      path: /proxyfs/remote1
+#      config:
+#        base_url: "http://localhost:9090/api/v1"
+#
+#    # Remote server 2 (disabled by default)
+#    - name: remote2
+#      enabled: false
+#      path: /proxyfs/remote2
+#      config:
+#        base_url: "http://another-server:8080/api/v1"
+#
+#  s3fs:
+#    - name: aws
+#      enabled: true
+#      path: /s3fs/aws
+#      config:
+#        region: us-west-1
+#        bucket: bucket-name
+#        access_key_id: key_id
+#        secret_access_key: secret
+#        prefix: agfs/ # Optional: all keys will be prefixed with "agfs/"
+#
+#  # ============================================================================
+#  # HTTPFS - HTTP File Server (Multiple Instances)
+#  # ============================================================================
+#  # HTTPFS serves AGFS paths over HTTP, similar to 'python3 -m http.server'.
+#  # Each instance can serve a different AGFS path on a different port.
+#  #
+#  # Features:
+#  # - Serve any AGFS filesystem (memfs, queuefs, s3fs, etc.) via HTTP
+#  # - Browse directories and download files in web browser
+#  # - README files display inline instead of downloading
+#  # - Virtual status file: 'agfs cat /httagfs-memfs' shows instance info
+#  # - Dynamic mounting: 'agfs mount httagfs /path agfs_path=/memfs http_port=9000'
+#  #
+#  httagfs:
+#    # Instance 1: Serve memfs on port 9000
+#    - name: httagfs-memfs
+#      enabled: true
+#      path: /httagfs-memfs
+#      config:
+#        agfs_path: /memfs        # The AGFS path to serve
+#        port: "9000"       # HTTP server port
+#
+#    # Instance 2: Serve queuefs on port 9001 (disabled by default)
+#    - name: httagfs-queue
+#      enabled: false
+#      path: /httagfs-queue
+#      config:
+#        agfs_path: /queuefs
+#        port: "9001"
+#
+#    # Instance 3: Serve S3 content on port 9002 (disabled by default)
+#    - name: httagfs-s3
+#      enabled: false
+#      path: /httagfs-s3
+#      config:
+#        agfs_path: /s3fs/aws
+#        port: "9002"
+#        host: "localhost"
 
   # Example: Single instance httagfs (uncomment to use)
   # httagfs_public:

@@ -29,12 +29,16 @@ WORKDIR /app
 # Copy binary from builder
 COPY --from=builder /build/agfs-server .
 
-# Copy configuration example
-COPY --from=builder /build/config.example.yaml .
+# Copy configuration files to root
+COPY --from=builder /build/config.example.yaml /config.example.yaml
+COPY --from=builder /build/config.example.yaml /config.yaml
+
+# Create directory for localfs mount
+RUN mkdir -p /data
 
 # Expose default port
 EXPOSE 8080
 
 # Run the server
 ENTRYPOINT ["./agfs-server"]
-CMD ["-c", "config.yaml"]
+CMD ["-c", "/config.yaml"]
