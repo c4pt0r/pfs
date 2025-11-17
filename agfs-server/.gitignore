@@ -20,7 +20,6 @@ config.yml
 # Build Artifacts - Go
 # ============================================================================
 # Binary files
-server
 agfs-server
 agfs-server.exe
 *.exe
