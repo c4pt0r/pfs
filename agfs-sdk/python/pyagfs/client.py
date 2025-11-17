@@ -1,6 +1,7 @@
 """AGFS Server API Client"""
 
 import requests
+import time
 from typing import List, Dict, Any, Optional
 from requests.exceptions import ConnectionError, Timeout, RequestException
 
@@ -142,25 +143,86 @@ class AGFSClient:
         except Exception as e:
             self._handle_request_error(e)
 
-    def write(self, path: str, data: bytes) -> str:
-        """Write data to file and return the response message"""
-        try:
-            # Calculate timeout based on file size
-            # Use 1 second per MB, with a minimum of 10 seconds and maximum of 300 seconds (5 minutes)
-            data_size_mb = len(data) / (1024 * 1024)
-            write_timeout = max(10, min(300, int(data_size_mb * 1 + 10)))
+    def write(self, path: str, data: bytes, max_retries: int = 3) -> str:
+        """Write data to file and return the response message
 
-            response = self.session.put(
-                f"{self.api_base}/files",
-                params={"path": path},
-                data=data,
-                timeout=write_timeout
-            )
-            response.raise_for_status()
-            result = response.json()
-            return result.get("message", "OK")
-        except Exception as e:
-            self._handle_request_error(e)
+        Args:
+            path: Path to write the file
+            data: File content as bytes
+            max_retries: Maximum number of retry attempts (default: 3)
+
+        Returns:
+            Response message from server
+        """
+        # Calculate timeout based on file size
+        # Use 1 second per MB, with a minimum of 10 seconds and maximum of 300 seconds (5 minutes)
+        data_size_mb = len(data) / (1024 * 1024)
+        write_timeout = max(10, min(300, int(data_size_mb * 1 + 10)))
+
+        last_error = None
+
+        for attempt in range(max_retries + 1):
+            try:
+                response = self.session.put(
+                    f"{self.api_base}/files",
+                    params={"path": path},
+                    data=data,
+                    timeout=write_timeout
+                )
+                response.raise_for_status()
+                result = response.json()
+
+                # If we succeeded after retrying, let user know
+                if attempt > 0:
+                    print(f"✓ Upload succeeded after {attempt} retry(ies)")
+
+                return result.get("message", "OK")
+
+            except (ConnectionError, Timeout) as e:
+                # Network errors and timeouts are retryable
+                last_error = e
+
+                if attempt < max_retries:
+                    # Exponential backoff: 1s, 2s, 4s
+                    wait_time = 2 ** attempt
+                    print(f"⚠ Upload failed (attempt {attempt + 1}/{max_retries + 1}): {type(e).__name__}")
+                    print(f"  Retrying in {wait_time} seconds...")
+                    time.sleep(wait_time)
+                else:
+                    # Last attempt failed
+                    print(f"✗ Upload failed after {max_retries + 1} attempts")
+                    self._handle_request_error(e)
+
+            except requests.exceptions.HTTPError as e:
+                # Check if it's a server error (5xx) which might be retryable
+                if hasattr(e, 'response') and e.response is not None:
+                    status_code = e.response.status_code
+
+                    # Server errors (5xx) are retryable
+                    if 500 <= status_code < 600:
+                        last_error = e
+
+                        if attempt < max_retries:
+                            wait_time = 2 ** attempt
+                            print(f"⚠ Server error {status_code} (attempt {attempt + 1}/{max_retries + 1})")
+                            print(f"  Retrying in {wait_time} seconds...")
+                            time.sleep(wait_time)
+                        else:
+                            print(f"✗ Upload failed after {max_retries + 1} attempts")
+                            self._handle_request_error(e)
+                    else:
+                        # Client errors (4xx) are not retryable
+                        self._handle_request_error(e)
+                else:
+                    self._handle_request_error(e)
+
+            except Exception as e:
+                # Other exceptions are not retryable
+                self._handle_request_error(e)
+
+        # Should not reach here, but just in case
+        if last_error:
+            self._handle_request_error(last_error)
 
     def create(self, path: str) -> Dict[str, Any]:
         """Create a new file"""

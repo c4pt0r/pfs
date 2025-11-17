@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/c4pt0r/agfs/agfs-server/pkg/filesystem"
@@ -217,30 +218,101 @@ func (c *Client) Read(path string, offset int64, size int64) ([]byte, error) {
 }
 
 // Write writes data to a file, creating it if necessary
+// Automatically retries on network errors and timeouts (max 3 retries with exponential backoff)
 func (c *Client) Write(path string, data []byte) ([]byte, error) {
+	return c.WriteWithRetry(path, data, 3)
+}
+
+// WriteWithRetry writes data to a file with configurable retry attempts
+func (c *Client) WriteWithRetry(path string, data []byte, maxRetries int) ([]byte, error) {
 	query := url.Values{}
 	query.Set("path", path)
 
-	resp, err := c.doRequest(http.MethodPut, "/files", query, bytes.NewReader(data))
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
+	var lastErr error
 
-	if resp.StatusCode != http.StatusOK {
-		var errResp ErrorResponse
-		if err := json.NewDecoder(resp.Body).Decode(&errResp); err != nil {
-			return nil, fmt.Errorf("HTTP %d: failed to decode error response", resp.StatusCode)
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		resp, err := c.doRequest(http.MethodPut, "/files", query, bytes.NewReader(data))
+		if err != nil {
+			lastErr = err
+
+			// Check if error is retryable (network/timeout errors)
+			if isRetryableError(err) && attempt < maxRetries {
+				waitTime := time.Duration(1<<uint(attempt)) * time.Second // 1s, 2s, 4s
+				fmt.Printf("⚠ Upload failed (attempt %d/%d): %v\n", attempt+1, maxRetries+1, err)
+				fmt.Printf("  Retrying in %v...\n", waitTime)
+				time.Sleep(waitTime)
+				continue
+			}
+
+			if attempt >= maxRetries {
+				fmt.Printf("✗ Upload failed after %d attempts\n", maxRetries+1)
+			}
+			return nil, err
 		}
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, errResp.Error)
+
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			var errResp ErrorResponse
+			if err := json.NewDecoder(resp.Body).Decode(&errResp); err != nil {
+				return nil, fmt.Errorf("HTTP %d: failed to decode error response", resp.StatusCode)
+			}
+
+			lastErr = fmt.Errorf("HTTP %d: %s", resp.StatusCode, errResp.Error)
+
+			// Retry on server errors (5xx)
+			if resp.StatusCode >= 500 && resp.StatusCode < 600 && attempt < maxRetries {
+				waitTime := time.Duration(1<<uint(attempt)) * time.Second
+				fmt.Printf("⚠ Server error %d (attempt %d/%d)\n", resp.StatusCode, attempt+1, maxRetries+1)
+				fmt.Printf("  Retrying in %v...\n", waitTime)
+				time.Sleep(waitTime)
+				continue
+			}
+
+			if attempt >= maxRetries {
+				fmt.Printf("✗ Upload failed after %d attempts\n", maxRetries+1)
+			}
+			return nil, lastErr
+		}
+
+		var successResp SuccessResponse
+		if err := json.NewDecoder(resp.Body).Decode(&successResp); err != nil {
+			return nil, fmt.Errorf("failed to decode success response: %w", err)
+		}
+
+		// If we succeeded after retrying, let user know
+		if attempt > 0 {
+			fmt.Printf("✓ Upload succeeded after %d retry(ies)\n", attempt)
+		}
+
+		return []byte(successResp.Message), nil
 	}
 
-	var successResp SuccessResponse
-	if err := json.NewDecoder(resp.Body).Decode(&successResp); err != nil {
-		return nil, fmt.Errorf("failed to decode success response: %w", err)
+	return nil, lastErr
+}
+
+// isRetryableError checks if an error is retryable (network/timeout errors)
+func isRetryableError(err error) bool {
+	if err == nil {
+		return false
 	}
 
-	return []byte(successResp.Message), nil
+	// Check for timeout errors
+	if netErr, ok := err.(interface{ Timeout() bool }); ok && netErr.Timeout() {
+		return true
+	}
+
+	// Check for temporary network errors
+	if netErr, ok := err.(interface{ Temporary() bool }); ok && netErr.Temporary() {
+		return true
+	}
+
+	// Check for connection errors
+	errStr := err.Error()
+	return strings.Contains(errStr, "connection refused") ||
+		strings.Contains(errStr, "connection reset") ||
+		strings.Contains(errStr, "broken pipe") ||
+		strings.Contains(errStr, "timeout")
 }
 
 // ReadDir lists the contents of a directory
