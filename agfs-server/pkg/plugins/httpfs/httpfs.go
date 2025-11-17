@@ -220,7 +220,7 @@ func (fs *HTTPFS) handleHTTPRequest(w http.ResponseWriter, r *http.Request) {
 	// Get file info
 	info, err := fs.rootFS.Stat(pfsPath)
 	if err != nil {
-		log.Warnf("[httpfs:%s] Not found: %s (PFS: %s)", fs.httpPort, urlPath, pfsPath)
+		log.Warnf("[httpfs:%s] Not found: %s (AGFS: %s)", fs.httpPort, urlPath, pfsPath)
 		http.NotFound(w, r)
 		return
 	}
