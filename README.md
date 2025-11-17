@@ -26,7 +26,7 @@ $ docker pull c4pt0r/agfs-server:latest
 ```
 
 ```bash
-agfs shell
+$ agfs shell
     ___   _____________ _____
    /   | / ____/ ____// ___/
   / /| |/ / __/ /_   \__ \
@@ -114,5 +114,25 @@ agfs:/sqlfs2/tidb/test/jobs> echo 'select 1' > query
 ]
 
 
+// Write your own Filesystem (in Wasm, see more details at agfs-server/examples) and mount it dynamicly
+
+agfs:/> plugins load pfs://s3fs/aws/hellofs-wasm.wasm
+Reading plugin from AGFS path: /s3fs/aws/hellofs-wasm.wasm
+Downloaded to temporary file: /var/folders/lf/nj7v40x934j5s8f8qmtcsx_m0000gn/T/agfs_plugin_vgcajk57.wasm (96192 bytes)
+Loaded external plugin: hellofs-wasm
+  Source: pfs://s3fs/aws/hellofs-wasm.wasm
+  Temporary file: /var/folders/lf/nj7v40x934j5s8f8qmtcsx_m0000gn/T/agfs_plugin_vgcajk57.wasm
+Cleaned up temporary file: /var/folders/lf/nj7v40x934j5s8f8qmtcsx_m0000gn/T/agfs_plugin_vgcajk57.wasm
+agfs:/> mount hellofs-wasm /hello-wasm
+  plugin mounted
+agfs:/> cd /hello-wasm
+agfs:/hello-wasm> ls
+-rw-r--r--       12 0001-01-01 00:00:00 hello.txt
+agfs:/hello-wasm> cat hello.txt
+Hello World
+agfs:/hello-wasm>
+
+
 ```
+
 
