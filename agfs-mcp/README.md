@@ -254,13 +254,13 @@ echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | agfs-mcp
          │ MCP Protocol (JSON-RPC over stdio)
          │
 ┌────────▼────────┐
-│  AGFS MCP Server │
-│   (agfs-mcp)     │
+│ AGFS MCP Server │
+│   (agfs-mcp)    │
 └────────┬────────┘
          │ HTTP API
          │
 ┌────────▼────────┐
-│   AGFS Server    │
+│   AGFS Server   │
 │  (Plugin-based  │
 │  File System)   │
 └─────────────────┘
