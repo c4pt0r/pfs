@@ -1,11 +1,13 @@
 AGFS
 ---
 
-Aggregated File System (Agent FS), originally known as pfs (Plugin File System)
+Aggregated File System (or Agent FS), originally known as pfs (Plugin File System)
 
 "Everything is a file."
+A tribute to Plan9, but in RESTful APIs.
 
-A tribute to Plan9, but in RESTful APIs
+The motivation for this project is that I wanted to find a unified way to coordinate and orchestrate multiple AI agents in a distributed environment. 
+In the end, I realized that bash + filesystem is actually the best solution.
 
 ## Installation
 
@@ -147,6 +149,7 @@ agfs:/s3fs/aws>
 See more details in:
 - [agfs-shell/README.md](https://github.com/c4pt0r/agfs/blob/master/agfs-shell/README.md)
 - [agfs-server/README.md](https://github.com/c4pt0r/agfs/blob/master/agfs-server/README.md)
+
 
 
 
