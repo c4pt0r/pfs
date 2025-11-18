@@ -100,7 +100,7 @@ def start_repl(api_base_url: str):
     # Test connection
     try:
         health_info = client.health()
-        print(r"""    ___   _____________ _____
+        print(r"""    ___   __________________
    /   | / ____/ ____// ___/
   / /| |/ / __/ /_   \__ \
  / ___ / /_/ / __/  ___/ /
