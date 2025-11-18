@@ -829,8 +829,8 @@ class CommandHandler:
             ("  unmount <path>", "Unmount plugin"),
             ("  plugins", "Show mounted plugins"),
             (
-                "  plugins load <lib|url>",
-                "Load external plugin from file or HTTP(S) URL",
+                "  plugins load <lib|url|pfs://...>",
+                "Load external plugin from file, HTTP(S), or pfs:// URL",
             ),
             ("  plugins unload <lib>", "Unload external plugin"),
             ("  plugins list", "List loaded external plugins"),
@@ -1564,7 +1564,7 @@ class CommandHandler:
 
         if subcommand == "load":
             if len(args) < 2:
-                console.print("Usage: plugins load <library_path|url>", highlight=False)
+                console.print("Usage: plugins load <library_path|url|pfs://...>", highlight=False)
                 console.print("\nExamples:", highlight=False)
                 console.print(
                     "  plugins load ./examples/plugins/hellofs-c/hellofs-c.dylib",
@@ -1576,6 +1576,14 @@ class CommandHandler:
                 )
                 console.print(
                     "  plugins load https://example.com/plugins/myplugin.dylib",
+                    highlight=False,
+                )
+                console.print(
+                    "  plugins load pfs://s3fs/aws/plugin.wasm",
+                    highlight=False,
+                )
+                console.print(
+                    "  plugins load pfs:///mnt/plugins/myplugin.so",
                     highlight=False,
                 )
                 return True
@@ -1613,7 +1621,7 @@ class CommandHandler:
             console.print("\nUsage:", highlight=False)
             console.print("  plugins           - List mounted plugins", highlight=False)
             console.print(
-                "  plugins load <library_path>   - Load external plugin",
+                "  plugins load <library_path|url|pfs://...>   - Load external plugin",
                 highlight=False,
             )
             console.print(

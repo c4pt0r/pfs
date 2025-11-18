@@ -405,7 +405,7 @@ func (mfs *MountableFS) Create(path string) error {
 	if found {
 		return mount.Plugin.GetFileSystem().Create(relPath)
 	}
-	return filesystem.NewNotFoundError("create", path)
+	return filesystem.NewPermissionDeniedError("create", path, "not allowed to create file in rootfs, use mount instead")
 }
 
 func (mfs *MountableFS) Mkdir(path string, perm uint32) error {
@@ -416,7 +416,7 @@ func (mfs *MountableFS) Mkdir(path string, perm uint32) error {
 	if found {
 		return mount.Plugin.GetFileSystem().Mkdir(relPath, perm)
 	}
-	return filesystem.NewNotFoundError("mkdir", path)
+	return filesystem.NewPermissionDeniedError("mkdir", path, "not allowed to create directory in rootfs, use mount instead")
 }
 
 func (mfs *MountableFS) Remove(path string) error {

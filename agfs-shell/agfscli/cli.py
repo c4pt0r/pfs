@@ -464,13 +464,15 @@ def plugins(ctx):
 @click.argument("library_path")
 @click.pass_context
 def plugins_load(ctx, library_path):
-    """Load an external plugin from a shared library or HTTP(S) URL
+    """Load an external plugin from a shared library, HTTP(S) URL, or pfs:// URL
 
     \b
     Examples:
       agfs plugins load ./examples/plugins/hellofs-c/hellofs-c.dylib
       agfs plugins load http://example.com/plugins/myplugin.so
       agfs plugins load https://example.com/plugins/myplugin.dylib
+      agfs plugins load pfs://s3fs/aws/plugin.wasm
+      agfs plugins load pfs:///mnt/plugins/myplugin.so
     """
     try:
         cli_commands.cmd_load_plugin(ctx.obj["client"], library_path)

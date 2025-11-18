@@ -48,7 +48,7 @@ def grep_example(client):
     print("=== Grep Search ===")
 
     # Create test files with content
-    test_dir = "/test_grep"
+    test_dir = "/local/test_grep"
     client.mkdir(test_dir)
 
     # Write test files
@@ -73,7 +73,7 @@ def streaming_example(client):
     print("=== Streaming Operations ===")
 
     # Create a test file
-    test_file = "/test_stream.txt"
+    test_file = "/streamfs/test_stream.txt"
     large_content = b"Line %d\n" * 100
     lines = b"".join([b"Line %d\n" % i for i in range(100)])
     client.write(test_file, lines)
@@ -100,7 +100,7 @@ def batch_operations(client):
     print("=== Batch Operations ===")
 
     # Create multiple files
-    batch_dir = "/test_batch"
+    batch_dir = "/local/test_batch"
     client.mkdir(batch_dir)
 
     print("Creating 10 files:")

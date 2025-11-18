@@ -2,9 +2,11 @@ import json
 import os
 import signal
 import sys
+import tempfile
 import time
 from datetime import datetime
 from typing import Optional
+from urllib.parse import urlparse
 from rich.console import Console
 
 console = Console()
@@ -354,17 +356,103 @@ def cmd_unmount(client, path: str):
     console.print(f"Unmounted plugin at {path}", highlight=False)
 
 
+def download_plugin_from_pfs(pfs_url: str, current_client) -> str:
+    """Download plugin file from current AGFS server via pfs:// URL
+
+    Args:
+        pfs_url: URL in format pfs://path/to/plugin.so or pfs:///path/to/plugin.so
+        current_client: Current AGFS client
+
+    Returns:
+        Path to the downloaded temporary file
+
+    Examples:
+        pfs://s3fs/aws/plugin.wasm
+        pfs:///mnt/plugins/myplugin.so
+        pfs://localfs/plugins/hellofs.dylib
+    """
+    if not pfs_url.startswith("pfs://"):
+        raise ValueError("URL must start with pfs://")
+
+    # Parse the URL
+    # Format: pfs://path/to/file or pfs:///path/to/file
+    url_part = pfs_url[6:]  # Remove 'pfs://'
+
+    # Handle absolute paths (starting with /)
+    if url_part.startswith("/"):
+        file_path = url_part
+    else:
+        # Relative paths need to be prefixed with /
+        file_path = "/" + url_part
+
+    # Download the file from current AGFS server
+    console.print(f"Reading plugin from AGFS path: {file_path}", highlight=False)
+    data = current_client.cat(file_path)
+
+    # Save to temporary file
+    # Get the original filename extension
+    _, ext = os.path.splitext(file_path)
+    if not ext:
+        ext = ".so"  # Default extension
+
+    # Create temporary file with the same extension
+    temp_fd, temp_path = tempfile.mkstemp(suffix=ext, prefix="agfs_plugin_")
+    try:
+        with os.fdopen(temp_fd, 'wb') as f:
+            f.write(data)
+        console.print(f"Downloaded to temporary file: {temp_path} ({len(data)} bytes)", highlight=False)
+        return temp_path
+    except Exception as e:
+        # Clean up on error
+        try:
+            os.unlink(temp_path)
+        except:
+            pass
+        raise e
+
+
 def cmd_load_plugin(client, library_path: str):
-    """Load an external plugin from a shared library or HTTP(S) URL
+    """Load an external plugin from a shared library, HTTP(S) URL, or pfs:// URL
 
     Args:
         client: AGFS client
-        library_path: Path to the shared library (.so/.dylib/.dll) or HTTP(S) URL
+        library_path: Path to the shared library (.so/.dylib/.dll), HTTP(S) URL, or pfs:// URL
+
+    Examples:
+        Local file: ./plugins/myplugin.so
+        HTTP(S): https://example.com/plugins/myplugin.so
+        pfs://: pfs://s3fs/aws/plugin.wasm or pfs:///mnt/plugins/myplugin.so
     """
-    result = client.load_plugin(library_path)
-    plugin_name = result.get("plugin_name", "unknown")
-    console.print(f"[green]Loaded external plugin:[/green] [bold cyan]{plugin_name}[/bold cyan]", highlight=False)
-    console.print(f"  Library: {library_path}", highlight=False)
+    # Check if it's a pfs:// URL
+    temp_file = None
+    actual_path = library_path
+
+    if library_path.startswith("pfs://"):
+        try:
+            # Download from remote AGFS server
+            temp_file = download_plugin_from_pfs(library_path, client)
+            actual_path = temp_file
+        except Exception as e:
+            console.print(f"[red]Failed to download plugin from pfs:// URL: {e}[/red]", highlight=False)
+            return
+
+    try:
+        result = client.load_plugin(actual_path)
+        plugin_name = result.get("plugin_name", "unknown")
+        console.print(f"[green]Loaded external plugin:[/green] [bold cyan]{plugin_name}[/bold cyan]", highlight=False)
+        console.print(f"  Source: {library_path}", highlight=False)
+        if temp_file:
+            console.print(f"  Temporary file: {temp_file}", highlight=False)
+    except Exception as e:
+        console.print(f"[red]Failed to load plugin: {e}[/red]", highlight=False)
+    finally:
+        # Clean up temporary file if it was created
+        if temp_file and os.path.exists(temp_file):
+            try:
+                os.unlink(temp_file)
+                console.print(f"Cleaned up temporary file: {temp_file}", highlight=False)
+            except Exception as e:
+                console.print(f"[yellow]Warning: Failed to clean up temporary file {temp_file}: {e}[/yellow]", highlight=False)
 
 
 def cmd_unload_plugin(client, library_path: str):
