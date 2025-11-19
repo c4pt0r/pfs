@@ -195,7 +195,7 @@ func (fs *sqlfs2FS) Read(path string, offset int64, size int64) ([]byte, error) 
 		return plugin.ApplyRangeRead(data, offset, size)
 	}
 
-	if operation == "query" || operation == "execute" {
+	if operation == "query" || operation == "execute" || operation == "insert_json" {
 		return nil, fmt.Errorf("%s is write-only", operation)
 	}
 
@@ -204,7 +204,7 @@ func (fs *sqlfs2FS) Read(path string, offset int64, size int64) ([]byte, error) 
 }
 
 func (fs *sqlfs2FS) Write(path string, data []byte) ([]byte, error) {
-	dbName, _, operation, err := fs.parsePath(path)
+	dbName, tableName, operation, err := fs.parsePath(path)
 	if err != nil {
 		return nil, err
 	}
@@ -213,18 +213,114 @@ func (fs *sqlfs2FS) Write(path string, data []byte) ([]byte, error) {
 		return nil, fmt.Errorf("cannot write to directory: %s", path)
 	}
 
-	if operation == "schema" {
-		return nil, fmt.Errorf("schema is read-only")
-	}
-
-	sqlStmt := strings.TrimSpace(string(data))
-	if sqlStmt == "" {
-		return nil, fmt.Errorf("empty SQL statement")
+	if operation == "schema" || operation == "count" {
+		return nil, fmt.Errorf("%s is read-only", operation)
 	}
 
 	// Switch to database if needed
 	if err := fs.plugin.backend.SwitchDatabase(fs.plugin.db, dbName); err != nil {
 		return nil, err
+	}
+
+	// Handle insert_json operation
+	if operation == "insert_json" {
+		if dbName == "" || tableName == "" {
+			return nil, fmt.Errorf("invalid path for insert_json: %s", path)
+		}
+
+		// Parse JSON data
+		var jsonData interface{}
+		if err := json.Unmarshal(data, &jsonData); err != nil {
+			return nil, fmt.Errorf("invalid JSON: %w", err)
+		}
+
+		// Get table columns
+		columns, err := fs.plugin.backend.GetTableColumns(fs.plugin.db, dbName, tableName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get table columns: %w", err)
+		}
+
+		if len(columns) == 0 {
+			return nil, fmt.Errorf("no columns found for table %s", tableName)
+		}
+
+		// Handle both single object and array of objects
+		var records []map[string]interface{}
+		switch v := jsonData.(type) {
+		case map[string]interface{}:
+			// Single JSON object
+			records = append(records, v)
+		case []interface{}:
+			// Array of JSON objects
+			for i, item := range v {
+				if record, ok := item.(map[string]interface{}); ok {
+					records = append(records, record)
+				} else {
+					return nil, fmt.Errorf("element at index %d is not a JSON object", i)
+				}
+			}
+		default:
+			return nil, fmt.Errorf("JSON must be an object or array of objects")
+		}
+
+		if len(records) == 0 {
+			return nil, fmt.Errorf("no records to insert")
+		}
+
+		// Build column names list
+		columnNames := make([]string, len(columns))
+		for i, col := range columns {
+			columnNames[i] = col.Name
+		}
+
+		// Execute inserts
+		insertedCount := 0
+		for _, record := range records {
+			// Build values list matching column order
+			values := make([]interface{}, len(columnNames))
+			for i, colName := range columnNames {
+				if val, ok := record[colName]; ok {
+					values[i] = val
+				} else {
+					values[i] = nil
+				}
+			}
+
+			// Build INSERT statement
+			placeholders := make([]string, len(columnNames))
+			for i := range placeholders {
+				placeholders[i] = "?"
+			}
+
+			insertSQL := fmt.Sprintf("INSERT INTO %s.%s (%s) VALUES (%s)",
+				dbName, tableName,
+				strings.Join(columnNames, ", "),
+				strings.Join(placeholders, ", "))
+
+			// Execute insert
+			_, err := fs.plugin.db.Exec(insertSQL, values...)
+			if err != nil {
+				return nil, fmt.Errorf("insert error at record %d: %w", insertedCount, err)
+			}
+			insertedCount++
+		}
+
+		// Return success response
+		response := map[string]interface{}{
+			"inserted_count": insertedCount,
+		}
+
+		output, err := json.MarshalIndent(response, "", "  ")
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal response: %w", err)
+		}
+
+		return output, nil
+	}
+
+	sqlStmt := strings.TrimSpace(string(data))
+	if sqlStmt == "" {
+		return nil, fmt.Errorf("empty SQL statement")
 	}
 
 	if operation == "query" {
@@ -413,7 +509,7 @@ func (fs *sqlfs2FS) ReadDir(path string) ([]filesystem.FileInfo, error) {
 		return tables, nil
 	}
 
-	// Table level: list operations (schema, execute, query, count)
+	// Table level: list operations (schema, execute, query, count, insert_json)
 	if operation == "" {
 		return []filesystem.FileInfo{
 			{
@@ -442,6 +538,14 @@ func (fs *sqlfs2FS) ReadDir(path string) ([]filesystem.FileInfo, error) {
 			},
 			{
 				Name:    "execute",
+				Size:    0,
+				Mode:    0222, // write-only
+				ModTime: now,
+				IsDir:   false,
+				Meta:    filesystem.MetaData{Name: PluginName, Type: "operation"},
+			},
+			{
+				Name:    "insert_json",
 				Size:    0,
 				Mode:    0222, // write-only
 				ModTime: now,
@@ -502,7 +606,7 @@ func (fs *sqlfs2FS) Stat(path string) (*filesystem.FileInfo, error) {
 	mode := uint32(0644)
 	if operation == "schema" || operation == "count" {
 		mode = 0444 // read-only
-	} else if operation == "query" || operation == "execute" {
+	} else if operation == "query" || operation == "execute" || operation == "insert_json" {
 		mode = 0222 // write-only
 	}
 
@@ -542,13 +646,14 @@ func getReadme() string {
 This plugin provides a SQL interface through file system operations.
 
 DIRECTORY STRUCTURE:
-  /sqlfs2/<dbName>/<tableName>/{schema, count, execute, query}
+  /sqlfs2/<dbName>/<tableName>/{schema, count, execute, query, insert_json}
 
 FILES:
-  schema  - Read-only file that returns SHOW CREATE TABLE output
-  count   - Read-only file that returns SELECT COUNT(*) result
-  query   - Write-only file for SELECT queries (returns JSON results)
-  execute - Write-only file for DML statements (INSERT/UPDATE/DELETE)
+  schema      - Read-only file that returns SHOW CREATE TABLE output
+  count       - Read-only file that returns SELECT COUNT(*) result
+  query       - Write-only file for SELECT queries (returns JSON results)
+  execute     - Write-only file for DML statements (INSERT/UPDATE/DELETE)
+  insert_json - Write-only file for inserting JSON documents (auto-generates INSERT statements)
 
 CONFIGURATION:
 
@@ -626,6 +731,12 @@ USAGE:
   Execute DELETE statement:
     echo "DELETE FROM users WHERE id=1" > /sqlfs2/mydb/users/execute
 
+  Insert JSON document (single object):
+    echo '{"name": "Alice", "email": "alice@example.com", "age": 30}' > /sqlfs2/mydb/users/insert_json
+
+  Insert JSON array (multiple records):
+    echo '[{"name": "Bob", "email": "bob@example.com"}, {"name": "Carol", "email": "carol@example.com"}]' > /sqlfs2/mydb/users/insert_json
+
   List databases:
     ls /sqlfs2/
 
@@ -660,10 +771,44 @@ EXAMPLES:
   agfs:/> cat /sqlfs2/main/test/count
   1
 
+  # Insert data using JSON (single object)
+  agfs:/> echo '{"id": 2, "name": "Bob"}' > /sqlfs2/main/test/insert_json
+  {
+    "inserted_count": 1
+  }
+
+  # Insert multiple records using JSON array
+  agfs:/> echo '[{"id": 3, "name": "Carol"}, {"id": 4, "name": "Dave"}]' > /sqlfs2/main/test/insert_json
+  {
+    "inserted_count": 2
+  }
+
+  # Verify the inserts
+  agfs:/> echo "SELECT * FROM test" > /sqlfs2/main/test/query
+  [
+    {
+      "id": 1,
+      "name": "Alice"
+    },
+    {
+      "id": 2,
+      "name": "Bob"
+    },
+    {
+      "id": 3,
+      "name": "Carol"
+    },
+    {
+      "id": 4,
+      "name": "Dave"
+    }
+  ]
+
 ADVANTAGES:
   - Direct SQL access through file system interface
   - Supports SQLite, MySQL, and TiDB backends
   - JSON output for query results
+  - Auto-generate INSERT statements from JSON documents
   - Simple and intuitive interface
   - TLS support for secure TiDB Cloud connections
 
@@ -672,6 +817,7 @@ USE CASES:
   - Data manipulation through file operations
   - Integration with shell scripts
   - Quick database operations without SQL client
+  - Import JSON data without writing SQL INSERT statements
 `
 }
 

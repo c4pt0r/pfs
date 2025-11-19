@@ -204,6 +204,35 @@ func (b *TiDBBackend) SwitchDatabase(db *sql.DB, dbName string) error {
 	return nil
 }
 
+func (b *TiDBBackend) GetTableColumns(db *sql.DB, dbName, tableName string) ([]ColumnInfo, error) {
+	// Switch to database first if needed
+	if dbName != "" {
+		if err := b.SwitchDatabase(db, dbName); err != nil {
+			return nil, err
+		}
+	}
+
+	query := fmt.Sprintf("SHOW COLUMNS FROM `%s`", tableName)
+	rows, err := db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get table columns: %w", err)
+	}
+	defer rows.Close()
+
+	var columns []ColumnInfo
+	for rows.Next() {
+		var field, colType string
+		var null, key, extra interface{}
+		var dflt interface{}
+
+		if err := rows.Scan(&field, &colType, &null, &key, &dflt, &extra); err != nil {
+			return nil, err
+		}
+		columns = append(columns, ColumnInfo{Name: field, Type: colType})
+	}
+	return columns, nil
+}
+
 // extractDatabaseName extracts database name from DSN or config
 func extractDatabaseName(dsn string, configDB string) string {
 	if dsn != "" {

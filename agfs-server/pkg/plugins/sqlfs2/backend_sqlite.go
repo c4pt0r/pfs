@@ -61,3 +61,26 @@ func (b *SQLiteBackend) SwitchDatabase(db *sql.DB, dbName string) error {
 	// SQLite doesn't need to switch databases
 	return nil
 }
+
+func (b *SQLiteBackend) GetTableColumns(db *sql.DB, dbName, tableName string) ([]ColumnInfo, error) {
+	query := fmt.Sprintf("PRAGMA table_info(%s)", tableName)
+	rows, err := db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get table columns: %w", err)
+	}
+	defer rows.Close()
+
+	var columns []ColumnInfo
+	for rows.Next() {
+		var cid int
+		var name, colType string
+		var notNull, pk int
+		var dfltValue interface{}
+
+		if err := rows.Scan(&cid, &name, &colType, &notNull, &dfltValue, &pk); err != nil {
+			return nil, err
+		}
+		columns = append(columns, ColumnInfo{Name: name, Type: colType})
+	}
+	return columns, nil
+}

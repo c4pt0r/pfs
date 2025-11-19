@@ -19,8 +19,17 @@ type Backend interface {
 	// SwitchDatabase switches to the specified database (no-op for SQLite)
 	SwitchDatabase(db *sql.DB, dbName string) error
 
+	// GetTableColumns retrieves column names and types for a table
+	GetTableColumns(db *sql.DB, dbName, tableName string) ([]ColumnInfo, error)
+
 	// Name returns the backend name
 	Name() string
+}
+
+// ColumnInfo contains information about a table column
+type ColumnInfo struct {
+	Name string
+	Type string
 }
 
 // newBackend creates a backend instance based on the backend type
