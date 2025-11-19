@@ -11,7 +11,12 @@ requires-python = ">=3.8"
 authors = [
     { name = "agfs authors" }
 ]
-dependencies = []
+dependencies = [
+    "pyagfs",
+]
+
+[tool.uv.sources]
+pyagfs = { path = "../agfs-sdk/python", editable = true }
 
 [project.scripts]
 agfs-shell2 = "agfs_shell2.cli:main"

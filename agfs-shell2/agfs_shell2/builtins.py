@@ -27,17 +27,25 @@ def cmd_cat(process: Process) -> int:
         data = process.stdin.read()
         process.stdout.write(data)
     else:
-        # Read from files
+        # Read from files using AGFS
         for filename in process.args:
             try:
-                with open(filename, 'rb') as f:
-                    data = f.read()
+                if process.filesystem:
+                    # Use AGFS to read file
+                    data = process.filesystem.read_file(filename)
                     process.stdout.write(data)
-            except FileNotFoundError:
-                process.stderr.write(f"cat: {filename}: No such file or directory\n")
-                return 1
+                else:
+                    # Fallback to local filesystem
+                    with open(filename, 'rb') as f:
+                        data = f.read()
+                        process.stdout.write(data)
             except Exception as e:
-                process.stderr.write(f"cat: {filename}: {str(e)}\n")
+                # Extract meaningful error message
+                error_msg = str(e)
+                if "No such file or directory" in error_msg or "not found" in error_msg.lower():
+                    process.stderr.write(f"cat: {filename}: No such file or directory\n")
+                else:
+                    process.stderr.write(f"cat: {filename}: {error_msg}\n")
                 return 1
     return 0
 
@@ -241,6 +249,122 @@ def cmd_tr(process: Process) -> int:
     return 0
 
 
+def cmd_ls(process: Process) -> int:
+    """
+    List directory contents
+
+    Usage: ls [path]
+    """
+    # Default to current directory (root in AGFS)
+    path = process.args[0] if process.args else "/"
+
+    if not process.filesystem:
+        process.stderr.write("ls: filesystem not available\n")
+        return 1
+
+    try:
+        files = process.filesystem.list_directory(path)
+
+        for file_info in files:
+            name = file_info.get('name', '')
+            is_dir = file_info.get('isDir', False)
+            size = file_info.get('size', 0)
+
+            # Format output similar to ls -l
+            file_type = 'd' if is_dir else '-'
+            mode = file_info.get('mode', 'rwxr-xr-x')
+
+            # Simple formatting
+            if is_dir:
+                output = f"{name}/\n"
+            else:
+                output = f"{name}\n"
+
+            process.stdout.write(output.encode('utf-8'))
+
+        return 0
+    except Exception as e:
+        error_msg = str(e)
+        if "No such file or directory" in error_msg or "not found" in error_msg.lower():
+            process.stderr.write(f"ls: {path}: No such file or directory\n")
+        else:
+            process.stderr.write(f"ls: {path}: {error_msg}\n")
+        return 1
+
+
+def cmd_pwd(process: Process) -> int:
+    """
+    Print working directory (always / in AGFS shell)
+
+    Usage: pwd
+    """
+    process.stdout.write(b"/\n")
+    return 0
+
+
+def cmd_mkdir(process: Process) -> int:
+    """
+    Create directory
+
+    Usage: mkdir path
+    """
+    if not process.args:
+        process.stderr.write("mkdir: missing operand\n")
+        return 1
+
+    if not process.filesystem:
+        process.stderr.write("mkdir: filesystem not available\n")
+        return 1
+
+    path = process.args[0]
+
+    try:
+        # Use AGFS client to create directory
+        process.filesystem.client.mkdir(path)
+        return 0
+    except Exception as e:
+        error_msg = str(e)
+        process.stderr.write(f"mkdir: {path}: {error_msg}\n")
+        return 1
+
+
+def cmd_rm(process: Process) -> int:
+    """
+    Remove file or directory
+
+    Usage: rm [-r] path
+    """
+    if not process.args:
+        process.stderr.write("rm: missing operand\n")
+        return 1
+
+    if not process.filesystem:
+        process.stderr.write("rm: filesystem not available\n")
+        return 1
+
+    recursive = False
+    path = None
+
+    for arg in process.args:
+        if arg == '-r' or arg == '-rf':
+            recursive = True
+        else:
+            path = arg
+
+    if not path:
+        process.stderr.write("rm: missing file operand\n")
+        return 1
+
+    try:
+        # Use AGFS client to remove file/directory
+        process.filesystem.client.rm(path, recursive=recursive)
+        return 0
+    except Exception as e:
+        error_msg = str(e)
+        process.stderr.write(f"rm: {path}: {error_msg}\n")
+        return 1
+
+
 # Registry of built-in commands
 BUILTINS = {
     'echo': cmd_echo,
@@ -252,6 +376,10 @@ BUILTINS = {
     'sort': cmd_sort,
     'uniq': cmd_uniq,
     'tr': cmd_tr,
+    'ls': cmd_ls,
+    'pwd': cmd_pwd,
+    'mkdir': cmd_mkdir,
+    'rm': cmd_rm,
 }
 
 

@@ -8,14 +8,18 @@ from .pipeline import Pipeline
 from .process import Process
 from .streams import InputStream, OutputStream, ErrorStream
 from .builtins import get_builtin
+from .filesystem import AGFSFileSystem
+from pyagfs import AGFSClientError
 
 
 class Shell:
     """Simple shell with pipeline support"""
 
-    def __init__(self):
+    def __init__(self, server_url: str = "http://localhost:8080"):
         self.parser = CommandParser()
         self.running = True
+        self.filesystem = AGFSFileSystem(server_url)
+        self.server_url = server_url
 
     def execute(self, command_line: str, stdin_data: Optional[bytes] = None) -> int:
         """
@@ -38,10 +42,11 @@ class Shell:
         if 'stdin' in redirections:
             input_file = redirections['stdin']
             try:
-                with open(input_file, 'rb') as f:
-                    stdin_data = f.read()
-            except FileNotFoundError:
-                sys.stderr.write(f"shell: {input_file}: No such file or directory\n")
+                # Use AGFS to read input file
+                stdin_data = self.filesystem.read_file(input_file)
+            except AGFSClientError as e:
+                error_msg = self.filesystem.get_error_message(e)
+                sys.stderr.write(f"shell: {error_msg}\n")
                 return 1
             except Exception as e:
                 sys.stderr.write(f"shell: {input_file}: {str(e)}\n")
@@ -62,14 +67,15 @@ class Shell:
             stdout = OutputStream.to_buffer()
             stderr = ErrorStream.to_buffer()
 
-            # Create process
+            # Create process with filesystem
             process = Process(
                 command=cmd,
                 args=args,
                 stdin=stdin,
                 stdout=stdout,
                 stderr=stderr,
-                executor=executor
+                executor=executor,
+                filesystem=self.filesystem
             )
             processes.append(process)
 
@@ -85,10 +91,14 @@ class Shell:
         if 'stdout' in redirections:
             output_file = redirections['stdout']
             mode = redirections.get('stdout_mode', 'write')
+            append = (mode == 'append')
             try:
-                open_mode = 'ab' if mode == 'append' else 'wb'
-                with open(output_file, open_mode) as f:
-                    f.write(stdout_data)
+                # Use AGFS to write output file
+                self.filesystem.write_file(output_file, stdout_data, append=append)
+            except AGFSClientError as e:
+                error_msg = self.filesystem.get_error_message(e)
+                sys.stderr.write(f"shell: {error_msg}\n")
+                return 1
             except Exception as e:
                 sys.stderr.write(f"shell: {output_file}: {str(e)}\n")
                 return 1
@@ -102,10 +112,14 @@ class Shell:
         if 'stderr' in redirections:
             error_file = redirections['stderr']
             mode = redirections.get('stderr_mode', 'write')
+            append = (mode == 'append')
             try:
-                open_mode = 'ab' if mode == 'append' else 'wb'
-                with open(error_file, open_mode) as f:
-                    f.write(stderr_data)
+                # Use AGFS to write error file
+                self.filesystem.write_file(error_file, stderr_data, append=append)
+            except AGFSClientError as e:
+                error_msg = self.filesystem.get_error_message(e)
+                sys.stderr.write(f"shell: {error_msg}\n")
+                return 1
             except Exception as e:
                 sys.stderr.write(f"shell: {error_file}: {str(e)}\n")
                 return 1
@@ -120,6 +134,13 @@ class Shell:
     def repl(self):
         """Run interactive REPL"""
         print("agfs-shell2 v0.1.0")
+        print(f"Connected to AGFS server at {self.server_url}")
+
+        # Check server connection
+        if not self.filesystem.check_connection():
+            print(f"⚠ Warning: Cannot connect to AGFS server at {self.server_url}")
+            print("  Make sure the server is running. File operations will fail.")
+
         print("Type 'exit' or 'quit' to exit, 'help' for help")
         print()
 
@@ -161,11 +182,17 @@ class Shell:
     def show_help(self):
         """Show help message"""
         help_text = """
-agfs-shell2 - Experimental shell with Unix pipeline support
+agfs-shell2 - Experimental shell with AGFS integration
 
-Built-in Commands:
+File System Commands (AGFS):
+  ls [path]              - List directory contents
+  pwd                    - Print working directory (always /)
+  mkdir path             - Create directory
+  rm [-r] path           - Remove file or directory
+  cat [file...]          - Read and concatenate files
+
+Text Processing Commands:
   echo [args...]         - Print arguments to stdout
-  cat [file...]          - Concatenate and print files or stdin
   grep pattern           - Search for pattern in stdin
   wc [-l] [-w] [-c]      - Count lines, words, and bytes
   head [-n count]        - Output first N lines (default 10)
@@ -178,22 +205,25 @@ Pipeline Syntax:
   command1 | command2 | command3
 
 Redirection Operators:
-  < file                 - Read input from file
-  > file                 - Write output to file (overwrite)
-  >> file                - Append output to file
-  2> file                - Write stderr to file
-  2>> file               - Append stderr to file
+  < file                 - Read input from AGFS file
+  > file                 - Write output to AGFS file (overwrite)
+  >> file                - Append output to AGFS file
+  2> file                - Write stderr to AGFS file
+  2>> file               - Append stderr to AGFS file
 
-Examples:
-  $ echo "hello world" | grep "hello"
-  $ echo "hello" | tr 'h' 'H'
-  $ cat < input.txt
-  $ echo "hello world" > output.txt
-  $ cat file.txt | grep pattern > results.txt
-  $ echo "line1" >> output.txt
+Examples (All paths are AGFS paths):
+  $ ls /local
+  $ echo "hello world" > /local/greeting.txt
+  $ cat /local/greeting.txt
+  $ cat /local/data.txt | grep "error" > /local/errors.txt
+  $ mkdir /local/mydir
+  $ rm -r /local/mydir
 
 Special Commands:
   help                   - Show this help
   exit, quit             - Exit the shell
+
+Note: All file operations use AGFS. Paths like /local/, /s3fs/, /sqlfs/
+      refer to different AGFS filesystem backends.
 """
         print(help_text)

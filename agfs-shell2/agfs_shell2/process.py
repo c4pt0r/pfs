@@ -1,6 +1,10 @@
 """Process class for command execution in pipelines"""
 
-from typing import List, Optional, Callable
+from typing import List, Optional, Callable, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .filesystem import AGFSFileSystem
+
 from .streams import InputStream, OutputStream, ErrorStream
 
 
@@ -14,7 +18,8 @@ class Process:
         stdin: Optional[InputStream] = None,
         stdout: Optional[OutputStream] = None,
         stderr: Optional[ErrorStream] = None,
-        executor: Optional[Callable] = None
+        executor: Optional[Callable] = None,
+        filesystem: Optional['AGFSFileSystem'] = None
     ):
         """
         Initialize a process
@@ -26,6 +31,7 @@ class Process:
             stdout: Output stream
             stderr: Error stream
             executor: Callable that executes the command
+            filesystem: AGFS file system instance for file operations
         """
         self.command = command
         self.args = args
@@ -33,6 +39,7 @@ class Process:
         self.stdout = stdout or OutputStream.to_buffer()
         self.stderr = stderr or ErrorStream.to_buffer()
         self.executor = executor
+        self.filesystem = filesystem
         self.exit_code = 0
 
     def execute(self) -> int:
