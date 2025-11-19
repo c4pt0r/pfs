@@ -6,6 +6,27 @@ from typing import List
 from .process import Process
 
 
+def _mode_to_rwx(mode: int) -> str:
+    """Convert octal file mode to rwx string format"""
+    # Handle both full mode (e.g., 0o100644) and just permissions (e.g., 0o644 or 420 decimal)
+    # Extract last 9 bits for user/group/other permissions
+    perms = mode & 0o777
+
+    def _triple(val):
+        """Convert 3-bit value to rwx"""
+        r = 'r' if val & 4 else '-'
+        w = 'w' if val & 2 else '-'
+        x = 'x' if val & 1 else '-'
+        return r + w + x
+
+    # Split into user, group, other (3 bits each)
+    user = (perms >> 6) & 7
+    group = (perms >> 3) & 7
+    other = perms & 7
+
+    return _triple(user) + _triple(group) + _triple(other)
+
+
 def cmd_echo(process: Process) -> int:
     """Echo arguments to stdout"""
     if process.args:
@@ -18,27 +39,57 @@ def cmd_echo(process: Process) -> int:
 
 def cmd_cat(process: Process) -> int:
     """
-    Concatenate and print files or stdin
+    Concatenate and print files or stdin (streaming mode)
 
     Usage: cat [file...]
     """
+    import sys
+
     if not process.args:
-        # Read from stdin
-        data = process.stdin.read()
-        process.stdout.write(data)
+        # Read from stdin in chunks
+        # Check if process.stdin has real data or if we should read from real stdin
+        stdin_value = process.stdin.get_value()
+
+        if stdin_value:
+            # Data already in stdin buffer (from pipeline)
+            process.stdout.write(stdin_value)
+            process.stdout.flush()
+        else:
+            # No data in buffer, read from real stdin (interactive mode)
+            try:
+                while True:
+                    chunk = sys.stdin.buffer.read(8192)
+                    if not chunk:
+                        break
+                    process.stdout.write(chunk)
+                    process.stdout.flush()
+            except KeyboardInterrupt:
+                process.stderr.write(b"\ncat: interrupted\n")
+                return 130
     else:
-        # Read from files using AGFS
+        # Read from files in streaming mode
         for filename in process.args:
             try:
                 if process.filesystem:
-                    # Use AGFS to read file
-                    data = process.filesystem.read_file(filename)
-                    process.stdout.write(data)
+                    # Stream file in chunks
+                    stream = process.filesystem.read_file(filename, stream=True)
+                    try:
+                        for chunk in stream:
+                            if chunk:
+                                process.stdout.write(chunk)
+                                process.stdout.flush()
+                    except KeyboardInterrupt:
+                        process.stderr.write(b"\ncat: interrupted\n")
+                        return 130
                 else:
                     # Fallback to local filesystem
                     with open(filename, 'rb') as f:
-                        data = f.read()
-                        process.stdout.write(data)
+                        while True:
+                            chunk = f.read(8192)
+                            if not chunk:
+                                break
+                            process.stdout.write(chunk)
+                            process.stdout.flush()
             except Exception as e:
                 # Extract meaningful error message
                 error_msg = str(e)
@@ -253,11 +304,22 @@ def cmd_ls(process: Process) -> int:
     """
     List directory contents
 
-    Usage: ls [path]
+    Usage: ls [-l] [path]
     """
-    # Default to current working directory
-    cwd = getattr(process, 'cwd', '/')
-    path = process.args[0] if process.args else cwd
+    # Parse arguments
+    long_format = False
+    path = None
+
+    for arg in process.args:
+        if arg == '-l':
+            long_format = True
+        elif not arg.startswith('-'):
+            path = arg
+
+    # Default to current working directory if no path specified
+    if path is None:
+        cwd = getattr(process, 'cwd', '/')
+        path = cwd
 
     if not process.filesystem:
         process.stderr.write("ls: filesystem not available\n")
@@ -268,18 +330,49 @@ def cmd_ls(process: Process) -> int:
 
         for file_info in files:
             name = file_info.get('name', '')
-            is_dir = file_info.get('isDir', False)
+            is_dir = file_info.get('isDir', False) or file_info.get('type') == 'directory'
             size = file_info.get('size', 0)
 
-            # Format output similar to ls -l
-            file_type = 'd' if is_dir else '-'
-            mode = file_info.get('mode', 'rwxr-xr-x')
+            if long_format:
+                # Long format output similar to ls -l
+                file_type = 'd' if is_dir else '-'
 
-            # Simple formatting
-            if is_dir:
-                output = f"{name}/\n"
+                # Get mode/permissions
+                mode_str = file_info.get('mode', '')
+                if mode_str and isinstance(mode_str, str) and len(mode_str) >= 9:
+                    # Already in rwxr-xr-x format
+                    perms = mode_str[:9]
+                elif mode_str and isinstance(mode_str, int):
+                    # Convert octal mode to rwx format
+                    perms = _mode_to_rwx(mode_str)
+                else:
+                    # Default permissions
+                    perms = 'rwxr-xr-x' if is_dir else 'rw-r--r--'
+
+                # Get modification time
+                mtime = file_info.get('modTime', file_info.get('mtime', ''))
+                if mtime:
+                    # Format timestamp (YYYY-MM-DD HH:MM:SS)
+                    if 'T' in mtime:
+                        # ISO format: 2025-11-18T22:00:25Z
+                        mtime = mtime.replace('T', ' ').replace('Z', '').split('.')[0]
+                    elif len(mtime) > 19:
+                        # Truncate to 19 chars if too long
+                        mtime = mtime[:19]
+                else:
+                    mtime = '0000-00-00 00:00:00'
+
+                # Format: permissions size date time name
+                output = f"{file_type}{perms} {size:>8} {mtime} {name}"
+                if is_dir:
+                    output += "/"
+                output += "\n"
             else:
-                output = f"{name}\n"
+                # Simple formatting
+                if is_dir:
+                    output = f"{name}/\n"
+                else:
+                    output = f"{name}\n"
 
             process.stdout.write(output.encode('utf-8'))
 

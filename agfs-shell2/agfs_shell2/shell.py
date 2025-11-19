@@ -3,6 +3,7 @@
 import sys
 import os
 from typing import Optional
+from rich.console import Console
 from .parser import CommandParser
 from .pipeline import Pipeline
 from .process import Process
@@ -21,6 +22,62 @@ class Shell:
         self.filesystem = AGFSFileSystem(server_url)
         self.server_url = server_url
         self.cwd = '/'  # Current working directory
+        self.console = Console(highlight=False)  # Rich console for output
+        self.multiline_buffer = []  # Buffer for multiline input
+
+    def _needs_more_input(self, line: str) -> bool:
+        """
+        Check if the line needs more input (multiline continuation)
+
+        Returns True if:
+        - Line ends with backslash \
+        - Unclosed quotes (single or double)
+        - Unclosed brackets/parentheses
+        """
+        # Check for backslash continuation
+        if line.rstrip().endswith('\\'):
+            return True
+
+        # Check for unclosed quotes
+        in_single_quote = False
+        in_double_quote = False
+        escape_next = False
+
+        for char in line:
+            if escape_next:
+                escape_next = False
+                continue
+
+            if char == '\\':
+                escape_next = True
+                continue
+
+            if char == '"' and not in_single_quote:
+                in_double_quote = not in_double_quote
+            elif char == "'" and not in_double_quote:
+                in_single_quote = not in_single_quote
+
+        if in_single_quote or in_double_quote:
+            return True
+
+        # Check for unclosed brackets/parentheses
+        bracket_count = 0
+        paren_count = 0
+
+        for char in line:
+            if char == '(':
+                paren_count += 1
+            elif char == ')':
+                paren_count -= 1
+            elif char == '{':
+                bracket_count += 1
+            elif char == '}':
+                bracket_count -= 1
+
+        if bracket_count > 0 or paren_count > 0:
+            return True
+
+        return False
 
     def resolve_path(self, path: str) -> str:
         """
@@ -78,9 +135,9 @@ class Shell:
             except Exception as e:
                 error_msg = str(e)
                 if "No such file or directory" in error_msg or "not found" in error_msg.lower():
-                    sys.stderr.write(f"cd: {target}: No such file or directory\n")
+                    self.console.print(f"[red]cd: {target}: No such file or directory[/red]", highlight=False)
                 else:
-                    sys.stderr.write(f"cd: {target}: {error_msg}\n")
+                    self.console.print(f"[red]cd: {target}: {error_msg}[/red]", highlight=False)
                 return 1
 
         # Resolve paths in redirections
@@ -91,10 +148,10 @@ class Shell:
                 stdin_data = self.filesystem.read_file(input_file)
             except AGFSClientError as e:
                 error_msg = self.filesystem.get_error_message(e)
-                sys.stderr.write(f"shell: {error_msg}\n")
+                self.console.print(f"[red]shell: {error_msg}[/red]", highlight=False)
                 return 1
             except Exception as e:
-                sys.stderr.write(f"shell: {input_file}: {str(e)}\n")
+                self.console.print(f"[red]shell: {input_file}: {str(e)}[/red]", highlight=False)
                 return 1
 
         # Build processes for each command
@@ -122,7 +179,13 @@ class Shell:
             else:
                 stdin = InputStream.from_bytes(b'')
 
-            stdout = OutputStream.to_buffer()
+            # For streaming output: if no redirections and last command in pipeline,
+            # output directly to real stdout for real-time streaming
+            if 'stdout' not in redirections and i == len(commands) - 1:
+                stdout = OutputStream.from_stdout()
+            else:
+                stdout = OutputStream.to_buffer()
+
             stderr = ErrorStream.to_buffer()
 
             # Create process with filesystem and cwd
@@ -139,34 +202,77 @@ class Shell:
             process.cwd = self.cwd
             processes.append(process)
 
-        # Create and execute pipeline
-        pipeline = Pipeline(processes)
-        exit_code = pipeline.execute()
+        # Special case: direct streaming from stdin to file
+        # When: single 'cat' command with no args, stdin from pipe, output to file
+        if ('stdout' in redirections and
+            len(processes) == 1 and
+            processes[0].command == 'cat' and
+            not processes[0].args and
+            stdin_data is None):
 
-        # Get results
-        stdout_data = pipeline.get_stdout()
-        stderr_data = pipeline.get_stderr()
-
-        # Handle output redirection (>)
-        if 'stdout' in redirections:
             output_file = self.resolve_path(redirections['stdout'])
             mode = redirections.get('stdout_mode', 'write')
             append = (mode == 'append')
+
+            # Create streaming generator that reads from stdin directly
+            def stdin_generator():
+                """Read from stdin in chunks"""
+                while True:
+                    chunk = sys.stdin.buffer.read(8192)
+                    if not chunk:
+                        break
+                    yield chunk
+
             try:
-                # Use AGFS to write output file
-                self.filesystem.write_file(output_file, stdout_data, append=append)
+                # Stream directly from stdin to AGFS file
+                self.filesystem.write_file(output_file, stdin_generator(), append=append)
+                exit_code = 0
+                stderr_data = b''
             except AGFSClientError as e:
                 error_msg = self.filesystem.get_error_message(e)
-                sys.stderr.write(f"shell: {error_msg}\n")
+                self.console.print(f"[red]shell: {error_msg}[/red]", highlight=False)
                 return 1
             except Exception as e:
-                sys.stderr.write(f"shell: {output_file}: {str(e)}\n")
+                self.console.print(f"[red]shell: {output_file}: {str(e)}[/red]", highlight=False)
                 return 1
         else:
-            # Output to stdout if no redirection
+            # Normal execution path
+            pipeline = Pipeline(processes)
+            exit_code = pipeline.execute()
+
+            # Get results
+            stdout_data = pipeline.get_stdout()
+            stderr_data = pipeline.get_stderr()
+
+            # Handle output redirection (>)
+            if 'stdout' in redirections:
+                output_file = self.resolve_path(redirections['stdout'])
+                mode = redirections.get('stdout_mode', 'write')
+                append = (mode == 'append')
+                try:
+                    # Use AGFS to write output file
+                    self.filesystem.write_file(output_file, stdout_data, append=append)
+                except AGFSClientError as e:
+                    error_msg = self.filesystem.get_error_message(e)
+                    self.console.print(f"[red]shell: {error_msg}[/red]", highlight=False)
+                    return 1
+                except Exception as e:
+                    self.console.print(f"[red]shell: {output_file}: {str(e)}[/red]", highlight=False)
+                    return 1
+
+        # Output handling
+        if 'stdout' not in redirections:
+            # Only output if we used buffered output (not direct stdout)
+            # When using OutputStream.from_stdout(), data was already written directly
             if stdout_data:
-                sys.stdout.buffer.write(stdout_data)
-                sys.stdout.buffer.flush()
+                try:
+                    # Decode and use rich console for output
+                    text = stdout_data.decode('utf-8', errors='replace')
+                    self.console.print(text, end='', highlight=False)
+                except Exception:
+                    # Fallback to raw output if decoding fails
+                    sys.stdout.buffer.write(stdout_data)
+                    sys.stdout.buffer.flush()
 
         # Handle error redirection (2>)
         if 'stderr' in redirections:
@@ -178,31 +284,37 @@ class Shell:
                 self.filesystem.write_file(error_file, stderr_data, append=append)
             except AGFSClientError as e:
                 error_msg = self.filesystem.get_error_message(e)
-                sys.stderr.write(f"shell: {error_msg}\n")
+                self.console.print(f"[red]shell: {error_msg}[/red]", highlight=False)
                 return 1
             except Exception as e:
-                sys.stderr.write(f"shell: {error_file}: {str(e)}\n")
+                self.console.print(f"[red]shell: {error_file}: {str(e)}[/red]", highlight=False)
                 return 1
         else:
             # Output to stderr if no redirection
             if stderr_data:
-                sys.stderr.buffer.write(stderr_data)
-                sys.stderr.buffer.flush()
+                try:
+                    # Decode and use rich console for stderr
+                    text = stderr_data.decode('utf-8', errors='replace')
+                    self.console.print(f"[red]{text}[/red]", end='', highlight=False)
+                except Exception:
+                    # Fallback to raw output
+                    sys.stderr.buffer.write(stderr_data)
+                    sys.stderr.buffer.flush()
 
         return exit_code
 
     def repl(self):
         """Run interactive REPL"""
-        print("agfs-shell2 v0.1.0")
-        print(f"Connected to AGFS server at {self.server_url}")
+        self.console.print("[bold cyan]agfs-shell2[/bold cyan] v0.1.0", highlight=False)
+        self.console.print(f"Connected to AGFS server at [green]{self.server_url}[/green]", highlight=False)
 
         # Check server connection
         if not self.filesystem.check_connection():
-            print(f"⚠ Warning: Cannot connect to AGFS server at {self.server_url}")
-            print("  Make sure the server is running. File operations will fail.")
+            self.console.print(f"[yellow]⚠ Warning:[/yellow] Cannot connect to AGFS server at {self.server_url}", highlight=False)
+            self.console.print("  Make sure the server is running. File operations will fail.", highlight=False)
 
-        print("Type 'exit' or 'quit' to exit, 'help' for help")
-        print()
+        self.console.print("Type [cyan]'help'[/cyan] for help, [cyan]Ctrl+D[/cyan] or [cyan]'exit'[/cyan] to quit", highlight=False)
+        self.console.print(highlight=False)
 
         # Setup tab completion
         try:
@@ -231,16 +343,62 @@ class Shell:
 
         while self.running:
             try:
-                # Read command
+                # Read command (possibly multiline)
                 try:
-                    # Show current directory in prompt
+                    # Primary prompt
                     prompt = f"{self.cwd}> " if self.cwd != '/' else "/> "
-                    command = input(prompt)
-                except EOFError:
-                    print()
-                    break
+                    line = input(prompt)
 
-                command = command.strip()
+                    # Start building the command
+                    self.multiline_buffer = [line]
+
+                    # Check if we need more input
+                    while self._needs_more_input(' '.join(self.multiline_buffer)):
+                        # Secondary prompt (like bash PS2)
+                        continuation_prompt = "> "
+                        try:
+                            next_line = input(continuation_prompt)
+                            self.multiline_buffer.append(next_line)
+                        except EOFError:
+                            # Ctrl+D during continuation - cancel multiline
+                            self.console.print(highlight=False)
+                            self.multiline_buffer = []
+                            break
+                        except KeyboardInterrupt:
+                            # Ctrl+C during continuation - cancel multiline
+                            self.console.print(highlight=False)
+                            self.multiline_buffer = []
+                            break
+
+                    # Join all lines for the complete command
+                    if not self.multiline_buffer:
+                        continue
+
+                    # Join lines: preserve newlines in quotes, remove backslash continuations
+                    full_command = []
+                    for i, line in enumerate(self.multiline_buffer):
+                        if line.rstrip().endswith('\\'):
+                            # Backslash continuation: remove \ and don't add newline
+                            full_command.append(line.rstrip()[:-1])
+                        else:
+                            # Regular line: add it
+                            full_command.append(line)
+                            # Add newline if not the last line
+                            if i < len(self.multiline_buffer) - 1:
+                                full_command.append('\n')
+
+                    command = ''.join(full_command).strip()
+                    self.multiline_buffer = []
+
+                except EOFError:
+                    # Ctrl+D - exit shell
+                    self.console.print(highlight=False)
+                    break
+                except KeyboardInterrupt:
+                    # Ctrl+C during input - just start new line
+                    self.console.print(highlight=False)
+                    self.multiline_buffer = []
+                    continue
 
                 # Handle special commands
                 if command in ('exit', 'quit'):
@@ -255,72 +413,82 @@ class Shell:
                 try:
                     self.execute(command)
                 except KeyboardInterrupt:
-                    print("^C")
+                    # Ctrl+C during command execution - interrupt command
+                    self.console.print("\n^C", highlight=False)
                     continue
                 except Exception as e:
-                    print(f"Error: {e}", file=sys.stderr)
+                    self.console.print(f"[red]Error: {e}[/red]", highlight=False)
 
             except KeyboardInterrupt:
-                print()
+                # Ctrl+C at top level - start new line
+                self.console.print(highlight=False)
+                self.multiline_buffer = []
                 continue
 
-        print("Goodbye!")
+        self.console.print("[cyan]Goodbye![/cyan]", highlight=False)
 
     def show_help(self):
         """Show help message"""
-        help_text = """
-agfs-shell2 - Experimental shell with AGFS integration
+        help_text = """[bold cyan]agfs-shell2[/bold cyan] - Experimental shell with AGFS integration
 
-File System Commands (AGFS):
-  cd [path]              - Change current directory (supports relative paths)
-  pwd                    - Print current working directory
-  ls [path]              - List directory contents (defaults to cwd)
-  mkdir path             - Create directory
-  rm [-r] path           - Remove file or directory
-  cat [file...]          - Read and concatenate files
+[bold yellow]File System Commands (AGFS):[/bold yellow]
+  [green]cd[/green] [path]              - Change current directory (supports relative paths)
+  [green]pwd[/green]                    - Print current working directory
+  [green]ls[/green] [-l] [path]         - List directory contents (use -l for details, defaults to cwd)
+  [green]mkdir[/green] path             - Create directory
+  [green]rm[/green] [-r] path           - Remove file or directory
+  [green]cat[/green] [file...]          - Read and concatenate files
 
-Text Processing Commands:
-  echo [args...]         - Print arguments to stdout
-  grep pattern           - Search for pattern in stdin
-  wc [-l] [-w] [-c]      - Count lines, words, and bytes
-  head [-n count]        - Output first N lines (default 10)
-  tail [-n count]        - Output last N lines (default 10)
-  sort [-r]              - Sort lines (use -r for reverse)
-  uniq                   - Remove duplicate adjacent lines
-  tr set1 set2           - Translate characters
+[bold yellow]Text Processing Commands:[/bold yellow]
+  [green]echo[/green] [args...]         - Print arguments to stdout
+  [green]grep[/green] pattern           - Search for pattern in stdin
+  [green]wc[/green] [-l] [-w] [-c]      - Count lines, words, and bytes
+  [green]head[/green] [-n count]        - Output first N lines (default 10)
+  [green]tail[/green] [-n count]        - Output last N lines (default 10)
+  [green]sort[/green] [-r]              - Sort lines (use -r for reverse)
+  [green]uniq[/green]                   - Remove duplicate adjacent lines
+  [green]tr[/green] set1 set2           - Translate characters
 
-Pipeline Syntax:
+[bold yellow]Pipeline Syntax:[/bold yellow]
   command1 | command2 | command3
 
-Redirection Operators:
+[bold yellow]Multiline Input:[/bold yellow]
+  Line ending with \\       - Continue on next line
+  Unclosed quotes (" or ')  - Continue until closed
+  Unclosed () or {{}}       - Continue until closed
+  Press Ctrl+C to cancel multiline input
+
+[bold yellow]Redirection Operators:[/bold yellow]
   < file                 - Read input from AGFS file
   > file                 - Write output to AGFS file (overwrite)
   >> file                - Append output to AGFS file
   2> file                - Write stderr to AGFS file
   2>> file               - Append stderr to AGFS file
 
-Path Resolution:
+[bold yellow]Path Resolution:[/bold yellow]
   - Absolute paths start with / (e.g., /local/file.txt)
   - Relative paths are resolved from current directory (e.g., file.txt, ../dir)
   - Special: . (current dir), .. (parent dir)
   - Tab completion works for both absolute and relative paths
 
-Examples:
-  $ cd /local/mydir      # Change to /local/mydir
-  $ pwd                  # Shows: /local/mydir
-  $ ls                   # List current directory
-  $ cat file.txt         # Read file from current directory
-  $ cd subdir            # Change to /local/mydir/subdir
-  $ cd ..                # Go back to /local/mydir
-  $ cd                   # Go to root (/)
-  $ echo "test" > data.txt        # Create file in current directory
-  $ cat /local/data.txt | grep "error" > errors.txt
+[bold yellow]Examples:[/bold yellow]
+  [dim]>[/dim] cd /local/mydir      [dim]# Change to /local/mydir[/dim]
+  [dim]>[/dim] pwd                  [dim]# Shows: /local/mydir[/dim]
+  [dim]>[/dim] ls                   [dim]# List current directory[/dim]
+  [dim]>[/dim] cat file.txt         [dim]# Read file from current directory[/dim]
+  [dim]>[/dim] cd subdir            [dim]# Change to /local/mydir/subdir[/dim]
+  [dim]>[/dim] cd ..                [dim]# Go back to /local/mydir[/dim]
+  [dim]>[/dim] cd                   [dim]# Go to root (/)[/dim]
+  [dim]>[/dim] echo "test" > data.txt        [dim]# Create file in current directory[/dim]
+  [dim]>[/dim] cat /local/data.txt | grep "error" > errors.txt
 
-Special Commands:
-  help                   - Show this help
-  exit, quit             - Exit the shell
+[bold yellow]Special Commands:[/bold yellow]
+  [green]help[/green]                   - Show this help
+  [green]exit[/green], [green]quit[/green]             - Exit the shell
+  [green]Ctrl+C[/green]                 - Interrupt current command
+  [green]Ctrl+D[/green]                 - Exit the shell
 
-Note: All file operations use AGFS. Paths like /local/, /s3fs/, /sqlfs/
-      refer to different AGFS filesystem backends.
+[dim]Note: All file operations use AGFS. Paths like /local/, /s3fs/, /sqlfs/
+      refer to different AGFS filesystem backends.[/dim]
 """
-        print(help_text)
+        self.console.print(help_text, highlight=False)

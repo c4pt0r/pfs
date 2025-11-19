@@ -2,7 +2,10 @@
 
 import sys
 import io
-from typing import Optional, Union, BinaryIO, TextIO
+from typing import Optional, Union, BinaryIO, TextIO, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .filesystem import AGFSFileSystem
 
 
 class Stream:
@@ -151,3 +154,67 @@ class ErrorStream(Stream):
     def to_buffer(cls):
         """Create to in-memory buffer"""
         return cls(None)
+
+
+class AGFSOutputStream(OutputStream):
+    """Output stream that writes directly to AGFS file in streaming mode"""
+
+    def __init__(self, filesystem: 'AGFSFileSystem', path: str, append: bool = False):
+        """
+        Initialize AGFS output stream
+
+        Args:
+            filesystem: AGFS filesystem instance
+            path: Target file path in AGFS
+            append: If True, append to file; if False, overwrite
+        """
+        # Don't call super().__init__ as we handle buffering differently
+        self.mode = 'wb'
+        self._fd = None
+        self._file = None
+        self._buffer = io.BytesIO()  # Temporary buffer
+        self.filesystem = filesystem
+        self.path = path
+        self.append = append
+        self._chunks = []  # Collect chunks
+        self._total_size = 0
+
+    def write(self, data: Union[bytes, str]) -> int:
+        """Write data to buffer"""
+        if isinstance(data, str):
+            data = data.encode('utf-8')
+
+        # Add to chunks
+        self._chunks.append(data)
+        self._total_size += len(data)
+
+        # Also write to buffer for get_value() compatibility
+        self._buffer.write(data)
+
+        return len(data)
+
+    def flush(self):
+        """Flush accumulated data to AGFS"""
+        if not self._chunks:
+            return
+
+        # Combine all chunks
+        data = b''.join(self._chunks)
+
+        # Write to AGFS
+        try:
+            self.filesystem.write_file(self.path, data, append=self.append)
+            # After first write, switch to append mode for subsequent flushes
+            self.append = True
+            # Clear chunks
+            self._chunks = []
+            self._total_size = 0
+        except Exception as e:
+            # Re-raise to let caller handle
+            raise
+
+    def close(self):
+        """Close stream and flush remaining data"""
+        self.flush()
+        if self._buffer is not None:
+            self._buffer.close()

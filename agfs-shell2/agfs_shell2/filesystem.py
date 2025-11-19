@@ -1,6 +1,6 @@
 """AGFS File System abstraction layer"""
 
-from typing import Optional
+from typing import Optional, Iterator, Union, BinaryIO
 from pyagfs import AGFSClient, AGFSClientError
 
 
@@ -31,31 +31,41 @@ class AGFSFileSystem:
         except AGFSClientError:
             return False
 
-    def read_file(self, path: str) -> bytes:
+    def read_file(self, path: str, offset: int = 0, size: int = -1, stream: bool = False) -> Union[bytes, Iterator[bytes]]:
         """
         Read file content from AGFS
 
         Args:
             path: File path in AGFS
+            offset: Starting byte offset (default: 0)
+            size: Number of bytes to read, -1 for all (default: -1)
+            stream: If True, return iterator for streaming; if False, return all content
 
         Returns:
-            File content as bytes
+            If stream=False: File content as bytes
+            If stream=True: Iterator yielding chunks of bytes
 
         Raises:
             AGFSClientError: If file cannot be read
         """
         try:
-            return self.client.cat(path)
+            if stream:
+                # Return streaming response iterator
+                response = self.client.cat(path, offset=offset, size=size, stream=True)
+                return response.iter_content(chunk_size=8192)
+            else:
+                # Return all content at once
+                return self.client.cat(path, offset=offset, size=size)
         except AGFSClientError as e:
             raise AGFSClientError(f"{path}: {str(e)}")
 
-    def write_file(self, path: str, data: bytes, append: bool = False) -> None:
+    def write_file(self, path: str, data: Union[bytes, Iterator[bytes], BinaryIO], append: bool = False) -> None:
         """
         Write data to file in AGFS
 
         Args:
             path: File path in AGFS
-            data: Data to write
+            data: Data to write (bytes, iterator of bytes, or file-like object)
             append: If True, append to file; if False, overwrite
 
         Raises:
@@ -63,14 +73,27 @@ class AGFSFileSystem:
         """
         try:
             if append:
-                # Read existing content, append new data, then write
+                # For append mode, we need to read existing content first
+                # This means we can't stream directly, need to collect all data
                 try:
                     existing = self.client.cat(path)
-                    data = existing + data
                 except AGFSClientError:
                     # File doesn't exist, just write new data
-                    pass
+                    existing = b''
 
+                # Collect data if it's streaming
+                if hasattr(data, '__iter__') and not isinstance(data, (bytes, bytearray)):
+                    chunks = [existing]
+                    for chunk in data:
+                        chunks.append(chunk)
+                    data = b''.join(chunks)
+                elif hasattr(data, 'read'):
+                    # File-like object
+                    data = existing + data.read()
+                else:
+                    data = existing + data
+
+            # Write to AGFS - SDK now supports streaming data directly
             # Use max_retries=0 for shell operations (fail fast)
             self.client.write(path, data, max_retries=0)
         except AGFSClientError as e:

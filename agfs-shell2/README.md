@@ -12,16 +12,19 @@ agfs-shell2 is a simple shell that demonstrates Unix pipeline concepts while int
 
 - **Unix-style pipelines**: Chain commands with `|` operator
 - **I/O Redirection**: Support for `<`, `>`, `>>`, `2>`, `2>>` operators
+- **Multiline input**: Backslash continuation, unclosed quotes, and bracket matching like bash
 - **Directory navigation**: `cd` command with current working directory tracking
 - **Relative paths**: Full support for `.`, `..`, and relative file paths
 - **Tab completion**: Smart completion for commands and paths (both absolute and relative)
 - **AGFS Integration**: All file operations use AGFS server (no local filesystem access)
+- **Streaming I/O**: Memory-efficient streaming for large files (8KB chunks)
 - **Stream handling**: Full STDIN/STDOUT/STDERR support
 - **Built-in commands**: cd, pwd, ls, cat, mkdir, rm, echo, grep, wc, head, tail, sort, uniq, tr
 - **Interactive REPL**: Interactive shell mode with dynamic prompt showing current directory
 - **Script execution**: Support for shebang scripts (`#!/usr/bin/env uv run agfs-shell2`)
 - **Non-interactive mode**: Execute commands from command line with `-c` flag
 - **Configurable server**: Support for custom AGFS server URL
+- **Rich output**: Colorized and formatted output using Rich library
 
 ## Prerequisites
 

@@ -13,6 +13,7 @@ authors = [
 ]
 dependencies = [
     "pyagfs",
+    "rich",
 ]
 
 [tool.uv.sources]

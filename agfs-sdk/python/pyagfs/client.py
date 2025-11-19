@@ -2,7 +2,7 @@
 
 import requests
 import time
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union, Iterator, BinaryIO
 from requests.exceptions import ConnectionError, Timeout, RequestException
 
 from .exceptions import AGFSClientError
@@ -146,21 +146,25 @@ class AGFSClient:
         except Exception as e:
             self._handle_request_error(e)
 
-    def write(self, path: str, data: bytes, max_retries: int = 3) -> str:
+    def write(self, path: str, data: Union[bytes, Iterator[bytes], BinaryIO], max_retries: int = 3) -> str:
         """Write data to file and return the response message
 
         Args:
             path: Path to write the file
-            data: File content as bytes
+            data: File content as bytes, iterator of bytes, or file-like object
             max_retries: Maximum number of retry attempts (default: 3)
 
         Returns:
             Response message from server
         """
-        # Calculate timeout based on file size
-        # Use 1 second per MB, with a minimum of 10 seconds and maximum of 300 seconds (5 minutes)
-        data_size_mb = len(data) / (1024 * 1024)
-        write_timeout = max(10, min(300, int(data_size_mb * 1 + 10)))
+        # Calculate timeout based on file size (if known)
+        # For streaming data, use a larger default timeout
+        if isinstance(data, bytes):
+            data_size_mb = len(data) / (1024 * 1024)
+            write_timeout = max(10, min(300, int(data_size_mb * 1 + 10)))
+        else:
+            # For streaming/unknown size, use no timeout
+            write_timeout = None
 
         last_error = None
 
@@ -169,7 +173,7 @@ class AGFSClient:
                 response = self.session.put(
                     f"{self.api_base}/files",
                     params={"path": path},
-                    data=data,
+                    data=data,  # requests supports bytes, iterator, or file-like object
                     timeout=write_timeout
                 )
                 response.raise_for_status()
