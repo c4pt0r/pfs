@@ -50,7 +50,7 @@ class Process:
             Exit code (0 for success, non-zero for error)
         """
         if self.executor is None:
-            self.stderr.write(f"Error: No executor for command '{self.command}'\n")
+            self.stderr.write(f"Error: No such command '{self.command}'\n")
             self.exit_code = 127
             return self.exit_code
 
