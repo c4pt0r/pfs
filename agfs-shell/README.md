@@ -41,7 +41,7 @@ make
 uv run agfs sh
 
 # Connect to custom server
-uv run agfs --agfs-api-baseurl http://localhost:9000/api/v1 sh
+uv run agfs --agfs-api-url http://localhost:9000/api/v1 sh
 
 # Direct command execution (no REPL)
 uv run agfs ls /
@@ -438,7 +438,7 @@ uv run agfs tail -n 50 /var/log/app.log
 uv run agfs tailf /var/log/app.log
 
 # With custom API URL
-uv run agfs --agfs-api-baseurl http://remote:8080/api/v1 ls /
+uv run agfs --agfs-api-url http://remote:8080/api/v1 ls /
 ```
 
 ## Command Reference
@@ -775,17 +775,17 @@ ffmpeg -i rtsp://camera.local/stream -f mpegts - | \
 uv run agfs sh
 
 # Custom server
-uv run agfs --agfs-api-baseurl http://localhost:9000/api/v1 sh
+uv run agfs --agfs-api-url http://localhost:9000/api/v1 sh
 
 # Remote server
-uv run agfs --agfs-api-baseurl https://agfs.example.com/api/v1 sh
+uv run agfs --agfs-api-url https://agfs.example.com/api/v1 sh
 
 # Using environment variable
 export AGFS_API_URL=http://localhost:8080/api/v1
 uv run agfs sh
 
 # Direct command with custom server
-uv run agfs --agfs-api-baseurl http://remote:8080/api/v1 ls /
+uv run agfs --agfs-api-url http://remote:8080/api/v1 ls /
 ```
 
 ### Recursive Operations
@@ -889,10 +889,10 @@ make
 Or check if you're using the correct API base URL:
 ```bash
 # Correct format (with /api/v1)
-uv run agfs --agfs-api-baseurl http://localhost:8080/api/v1 sh
+uv run agfs --agfs-api-url http://localhost:8080/api/v1 sh
 
 # Incorrect format (missing /api/v1)
-uv run agfs --agfs-api-baseurl http://localhost:8080 sh  # ❌ Will fail
+uv run agfs --agfs-api-url http://localhost:8080 sh  # ❌ Will fail
 ```
 
 ### Command Not Found

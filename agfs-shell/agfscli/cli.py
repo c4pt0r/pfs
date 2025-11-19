@@ -92,10 +92,10 @@ class AGFSCompleter(Completer):
                 pass
 
 
-def start_repl(api_base_url: str):
+def start_repl(agfs_api_url: str):
     """Start interactive REPL session"""
     # Initialize client
-    client = AGFSClient(api_base_url)
+    client = AGFSClient(agfs_api_url)
 
     # Test connection
     try:
@@ -114,11 +114,11 @@ def start_repl(api_base_url: str):
         server_build_time = health_info.get("buildTime", "unknown")
         console.print(f"[dim]Server: version={server_version}, commit={server_commit}, build={server_build_time}[/dim]", highlight=False)
 
-        console.print(f"Connected to agfs server at {api_base_url}", highlight=False)
+        console.print(f"Connected to agfs server at {agfs_api_url}", highlight=False)
         console.print("press 'help' or '?' for help", highlight=False)
         print()
     except Exception as e:
-        console.print(f"Failed to connect to {api_base_url}\n{e}", highlight=False)
+        console.print(f"Failed to connect to {agfs_api_url}\n{e}", highlight=False)
         sys.exit(1)
 
     # Setup history file with fallback to temp file
@@ -197,31 +197,31 @@ def start_repl(api_base_url: str):
 @click.group()
 @click.version_option(version=get_version_string(), prog_name="agfs")
 @click.option(
-    "--agfs-api-baseurl",
+    "--agfs-api-url",
     default=lambda: os.environ.get("AGFS_API_URL", "http://localhost:8080/api/v1"),
     help="AGFS API base URL (can also set via AGFS_API_URL environment variable)",
     show_default="http://localhost:8080/api/v1",
 )
 @click.pass_context
-def main(ctx, agfs_api_baseurl):
+def main(ctx, agfs_api_url):
     """AGFS CLI - Client for AGFS (Agent File System) Server"""
     ctx.ensure_object(dict)
-    ctx.obj["api_base_url"] = agfs_api_baseurl
-    ctx.obj["client"] = AGFSClient(agfs_api_baseurl)
+    ctx.obj["agfs_api_url"] = agfs_api_url
+    ctx.obj["client"] = AGFSClient(agfs_api_url)
 
 
 @main.command()
 @click.pass_context
 def sh(ctx):
     """Start interactive REPL shell"""
-    start_repl(ctx.obj["api_base_url"])
+    start_repl(ctx.obj["agfs_api_url"])
 
 
 @main.command()
 @click.pass_context
 def shell(ctx):
     """Start interactive REPL shell (alias for sh)"""
-    start_repl(ctx.obj["api_base_url"])
+    start_repl(ctx.obj["agfs_api_url"])
 
 
 @main.command()
