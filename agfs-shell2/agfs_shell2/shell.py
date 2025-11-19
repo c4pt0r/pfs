@@ -20,6 +20,30 @@ class Shell:
         self.running = True
         self.filesystem = AGFSFileSystem(server_url)
         self.server_url = server_url
+        self.cwd = '/'  # Current working directory
+
+    def resolve_path(self, path: str) -> str:
+        """
+        Resolve a relative or absolute path to an absolute path
+
+        Args:
+            path: Path to resolve (can be relative or absolute)
+
+        Returns:
+            Absolute path
+        """
+        if not path:
+            return self.cwd
+
+        # Already absolute
+        if path.startswith('/'):
+            # Normalize the path (remove redundant slashes, handle . and ..)
+            return os.path.normpath(path)
+
+        # Relative path - join with cwd
+        full_path = os.path.join(self.cwd, path)
+        # Normalize to handle . and ..
+        return os.path.normpath(full_path)
 
     def execute(self, command_line: str, stdin_data: Optional[bytes] = None) -> int:
         """
@@ -38,9 +62,30 @@ class Shell:
         if not commands:
             return 0
 
-        # Handle input redirection (<)
+        # Special handling for cd command (must be a single command, not in pipeline)
+        if len(commands) == 1 and commands[0][0] == 'cd':
+            cmd, args = commands[0]
+            # Resolve target path
+            target = args[0] if args else '/'
+            resolved_path = self.resolve_path(target)
+
+            # Verify the directory exists
+            try:
+                entries = self.filesystem.list_directory(resolved_path)
+                # Successfully listed - it's a valid directory
+                self.cwd = resolved_path
+                return 0
+            except Exception as e:
+                error_msg = str(e)
+                if "No such file or directory" in error_msg or "not found" in error_msg.lower():
+                    sys.stderr.write(f"cd: {target}: No such file or directory\n")
+                else:
+                    sys.stderr.write(f"cd: {target}: {error_msg}\n")
+                return 1
+
+        # Resolve paths in redirections
         if 'stdin' in redirections:
-            input_file = redirections['stdin']
+            input_file = self.resolve_path(redirections['stdin'])
             try:
                 # Use AGFS to read input file
                 stdin_data = self.filesystem.read_file(input_file)
@@ -58,6 +103,19 @@ class Shell:
             # Get the executor for this command
             executor = get_builtin(cmd)
 
+            # Resolve relative paths in arguments (for file-related commands)
+            # Commands that typically take file paths: cat, ls, mkdir, rm
+            if cmd in ('cat', 'ls', 'mkdir', 'rm'):
+                resolved_args = []
+                for arg in args:
+                    # Skip flags (starting with -)
+                    if arg.startswith('-'):
+                        resolved_args.append(arg)
+                    else:
+                        # Resolve path
+                        resolved_args.append(self.resolve_path(arg))
+                args = resolved_args
+
             # Create streams
             if i == 0 and stdin_data is not None:
                 stdin = InputStream.from_bytes(stdin_data)
@@ -67,7 +125,7 @@ class Shell:
             stdout = OutputStream.to_buffer()
             stderr = ErrorStream.to_buffer()
 
-            # Create process with filesystem
+            # Create process with filesystem and cwd
             process = Process(
                 command=cmd,
                 args=args,
@@ -77,6 +135,8 @@ class Shell:
                 executor=executor,
                 filesystem=self.filesystem
             )
+            # Pass cwd to process for pwd command
+            process.cwd = self.cwd
             processes.append(process)
 
         # Create and execute pipeline
@@ -89,7 +149,7 @@ class Shell:
 
         # Handle output redirection (>)
         if 'stdout' in redirections:
-            output_file = redirections['stdout']
+            output_file = self.resolve_path(redirections['stdout'])
             mode = redirections.get('stdout_mode', 'write')
             append = (mode == 'append')
             try:
@@ -110,7 +170,7 @@ class Shell:
 
         # Handle error redirection (2>)
         if 'stderr' in redirections:
-            error_file = redirections['stderr']
+            error_file = self.resolve_path(redirections['stderr'])
             mode = redirections.get('stderr_mode', 'write')
             append = (mode == 'append')
             try:
@@ -144,11 +204,38 @@ class Shell:
         print("Type 'exit' or 'quit' to exit, 'help' for help")
         print()
 
+        # Setup tab completion
+        try:
+            import readline
+            from .completer import ShellCompleter
+
+            completer = ShellCompleter(self.filesystem)
+            # Pass shell reference to completer for cwd
+            completer.shell = self
+            readline.set_completer(completer.complete)
+
+            # Different binding for libedit (macOS) vs GNU readline (Linux)
+            if 'libedit' in readline.__doc__:
+                # macOS/BSD libedit
+                readline.parse_and_bind("bind ^I rl_complete")
+            else:
+                # GNU readline
+                readline.parse_and_bind("tab: complete")
+
+            # Configure readline to use space and special chars as delimiters
+            # This allows path completion to work properly
+            readline.set_completer_delims(' \t\n;|&<>()')
+        except ImportError:
+            # readline not available (e.g., on Windows without pyreadline)
+            pass
+
         while self.running:
             try:
                 # Read command
                 try:
-                    command = input("$ ")
+                    # Show current directory in prompt
+                    prompt = f"{self.cwd}> " if self.cwd != '/' else "/> "
+                    command = input(prompt)
                 except EOFError:
                     print()
                     break
@@ -185,8 +272,9 @@ class Shell:
 agfs-shell2 - Experimental shell with AGFS integration
 
 File System Commands (AGFS):
-  ls [path]              - List directory contents
-  pwd                    - Print working directory (always /)
+  cd [path]              - Change current directory (supports relative paths)
+  pwd                    - Print current working directory
+  ls [path]              - List directory contents (defaults to cwd)
   mkdir path             - Create directory
   rm [-r] path           - Remove file or directory
   cat [file...]          - Read and concatenate files
@@ -211,13 +299,22 @@ Redirection Operators:
   2> file                - Write stderr to AGFS file
   2>> file               - Append stderr to AGFS file
 
-Examples (All paths are AGFS paths):
-  $ ls /local
-  $ echo "hello world" > /local/greeting.txt
-  $ cat /local/greeting.txt
-  $ cat /local/data.txt | grep "error" > /local/errors.txt
-  $ mkdir /local/mydir
-  $ rm -r /local/mydir
+Path Resolution:
+  - Absolute paths start with / (e.g., /local/file.txt)
+  - Relative paths are resolved from current directory (e.g., file.txt, ../dir)
+  - Special: . (current dir), .. (parent dir)
+  - Tab completion works for both absolute and relative paths
+
+Examples:
+  $ cd /local/mydir      # Change to /local/mydir
+  $ pwd                  # Shows: /local/mydir
+  $ ls                   # List current directory
+  $ cat file.txt         # Read file from current directory
+  $ cd subdir            # Change to /local/mydir/subdir
+  $ cd ..                # Go back to /local/mydir
+  $ cd                   # Go to root (/)
+  $ echo "test" > data.txt        # Create file in current directory
+  $ cat /local/data.txt | grep "error" > errors.txt
 
 Special Commands:
   help                   - Show this help

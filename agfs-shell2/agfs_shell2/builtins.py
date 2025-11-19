@@ -255,8 +255,9 @@ def cmd_ls(process: Process) -> int:
 
     Usage: ls [path]
     """
-    # Default to current directory (root in AGFS)
-    path = process.args[0] if process.args else "/"
+    # Default to current working directory
+    cwd = getattr(process, 'cwd', '/')
+    path = process.args[0] if process.args else cwd
 
     if not process.filesystem:
         process.stderr.write("ls: filesystem not available\n")
@@ -294,11 +295,40 @@ def cmd_ls(process: Process) -> int:
 
 def cmd_pwd(process: Process) -> int:
     """
-    Print working directory (always / in AGFS shell)
+    Print working directory
 
     Usage: pwd
     """
-    process.stdout.write(b"/\n")
+    # Get cwd from process metadata if available
+    cwd = getattr(process, 'cwd', '/')
+    process.stdout.write(f"{cwd}\n".encode('utf-8'))
+    return 0
+
+
+def cmd_cd(process: Process) -> int:
+    """
+    Change directory
+
+    Usage: cd [path]
+
+    Note: This is a special builtin that needs to be handled by the shell
+    """
+    if not process.args:
+        # cd with no args goes to root
+        target_path = '/'
+    else:
+        target_path = process.args[0]
+
+    if not process.filesystem:
+        process.stderr.write("cd: filesystem not available\n")
+        return 1
+
+    # Store the target path in process metadata for shell to handle
+    # The shell will resolve the path and verify it exists
+    process.cd_target = target_path
+
+    # Return special exit code to indicate cd operation
+    # Shell will check for this and update cwd
     return 0
 
 
@@ -378,6 +408,7 @@ BUILTINS = {
     'tr': cmd_tr,
     'ls': cmd_ls,
     'pwd': cmd_pwd,
+    'cd': cmd_cd,
     'mkdir': cmd_mkdir,
     'rm': cmd_rm,
 }

@@ -12,11 +12,15 @@ agfs-shell2 is a simple shell that demonstrates Unix pipeline concepts while int
 
 - **Unix-style pipelines**: Chain commands with `|` operator
 - **I/O Redirection**: Support for `<`, `>`, `>>`, `2>`, `2>>` operators
+- **Directory navigation**: `cd` command with current working directory tracking
+- **Relative paths**: Full support for `.`, `..`, and relative file paths
+- **Tab completion**: Smart completion for commands and paths (both absolute and relative)
 - **AGFS Integration**: All file operations use AGFS server (no local filesystem access)
 - **Stream handling**: Full STDIN/STDOUT/STDERR support
-- **Built-in commands**: echo, cat, grep, wc, head, tail, sort, uniq, tr
-- **Interactive REPL**: Interactive shell mode with server connection status
-- **Non-interactive mode**: Execute commands from command line
+- **Built-in commands**: cd, pwd, ls, cat, mkdir, rm, echo, grep, wc, head, tail, sort, uniq, tr
+- **Interactive REPL**: Interactive shell mode with dynamic prompt showing current directory
+- **Script execution**: Support for shebang scripts (`#!/usr/bin/env uv run agfs-shell2`)
+- **Non-interactive mode**: Execute commands from command line with `-c` flag
 - **Configurable server**: Support for custom AGFS server URL
 
 ## Prerequisites
@@ -132,8 +136,9 @@ uv run agfs-shell2 echo hello world
 ## Built-in Commands
 
 ### File System Commands (AGFS)
-- **ls [path]** - List directory contents (defaults to `/`)
-- **pwd** - Print working directory (always `/`)
+- **cd [path]** - Change current directory (supports relative paths: `.`, `..`, etc.)
+- **pwd** - Print current working directory
+- **ls [path]** - List directory contents (defaults to current directory)
 - **cat [file...]** - Concatenate and print files or stdin
 - **mkdir path** - Create directory
 - **rm [-r] path** - Remove file or directory
@@ -147,6 +152,17 @@ uv run agfs-shell2 echo hello world
 - **sort [-r]** - Sort lines (use -r for reverse)
 - **uniq** - Remove duplicate adjacent lines
 - **tr set1 set2** - Translate characters
+
+## Path Support
+
+agfs-shell2 supports both absolute and relative paths:
+
+- **Absolute paths**: Start with `/` (e.g., `/local/file.txt`, `/s3fs/bucket/data.csv`)
+- **Relative paths**: Resolved from current directory (e.g., `file.txt`, `../parent/file.txt`)
+- **Special paths**: `.` (current directory), `..` (parent directory)
+- **Tab completion**: Works for both absolute and relative paths
+
+The shell prompt shows your current directory (e.g., `/local/project >`)
 
 ## Examples
 
@@ -202,6 +218,64 @@ uv run agfs-shell2 "cat /sqlfs/query_results.txt | grep ERROR > /local/errors.tx
 uv run agfs-shell2 "cat /local/access.log | grep 404 | sort | uniq > /local/404_urls.txt"
 ```
 
+### Using cd and Relative Paths
+
+Interactive mode with directory navigation:
+
+```bash
+$ uv run agfs-shell2
+
+agfs-shell2 v0.1.0
+Connected to AGFS server at http://localhost:8080
+Type 'exit' or 'quit' to exit, 'help' for help
+
+> pwd
+/
+
+> cd /local/project
+
+/local/project > pwd
+/local/project
+
+/local/project > ls
+README.md
+src/
+tests/
+
+/local/project > cat README.md
+This is my project
+
+/local/project > cd src
+
+/local/project/src > ls
+main.py
+utils.py
+
+/local/project/src > cat main.py
+def main():
+    print("Hello World")
+
+/local/project/src > cd ../tests
+
+/local/project/tests > pwd
+/local/project/tests
+
+/local/project/tests > cd
+
+> pwd
+/
+```
+
+Using relative paths in commands:
+
+```bash
+# After cd /local/project
+/local/project > echo "new file" > data.txt        # Creates /local/project/data.txt
+/local/project > cat data.txt                      # Reads from current directory
+/local/project > cat src/main.py                   # Relative path to subdirectory
+/local/project > cat ../other_project/file.txt    # Relative path to parent
+```
+
 ### Testing
 
 Run the integration tests (requires AGFS server):
@@ -230,12 +304,15 @@ agfs-shell2/
 │   ├── builtins.py      # Built-in command implementations (AGFS-aware)
 │   ├── filesystem.py    # AGFS filesystem abstraction layer
 │   ├── config.py        # Configuration management
-│   ├── shell.py         # Shell with REPL and AGFS integration
+│   ├── shell.py         # Shell with REPL, cd support, and AGFS integration
+│   ├── completer.py     # Tab completion for commands and paths
 │   └── cli.py           # CLI entry point with argument parsing
 ├── pyproject.toml       # Project configuration (with pyagfs dependency)
 ├── examples.sh          # Example commands
 ├── test_redirections.sh # Redirection tests
 ├── test_agfs_integration.sh  # AGFS integration tests
+├── test_cd_relative.sh  # cd and relative path tests
+├── demo_cd_relative.sh  # Demo of cd and relative path features
 └── README.md           # This file
 ```
 
@@ -247,8 +324,10 @@ This is an experimental/educational project demonstrating:
 2. **Process composition**: How simple commands can be composed into complex operations
 3. **Pipeline execution**: How stdout of one process becomes stdin of the next
 4. **I/O Redirection**: Unix-style file redirection with `<`, `>`, and `>>`
-5. **AGFS Integration**: How to build applications using distributed/pluggable filesystems
-6. **Python implementation**: Pure Python implementation without subprocess module
+5. **Directory navigation**: Working directory concept with relative path resolution
+6. **Tab completion**: Interactive command and path completion using readline
+7. **AGFS Integration**: How to build applications using distributed/pluggable filesystems
+8. **Python implementation**: Pure Python implementation without subprocess module
 
 ### Key Design Decisions
 
@@ -256,6 +335,8 @@ This is an experimental/educational project demonstrating:
 - **In-memory pipeline buffers**: Pipeline data flows through memory buffers, not temporary files
 - **Synchronous execution**: Processes execute sequentially for simplicity (not true parallel execution)
 - **AGFS path model**: Paths like `/local/file.txt`, `/s3fs/bucket/file.txt` show filesystem plugin architecture
+- **Current working directory**: Tracked in shell state, allowing navigation within AGFS filesystem hierarchy
+- **Path resolution**: Both absolute and relative paths supported, with `.` and `..` handling
 
 ### Features Implemented
 
@@ -265,8 +346,12 @@ This is an experimental/educational project demonstrating:
 - ✅ Append redirection (`>>`)
 - ✅ Error redirection (`2>`, `2>>`)
 - ✅ Combining pipelines with redirections
-- ✅ 9 built-in commands (echo, cat, grep, wc, head, tail, sort, uniq, tr)
-- ✅ Interactive REPL mode
-- ✅ Non-interactive command execution
+- ✅ Directory navigation (`cd` command)
+- ✅ Relative path support (`.`, `..`, relative files)
+- ✅ Tab completion for commands and paths
+- ✅ 14 built-in commands (cd, pwd, ls, cat, mkdir, rm, echo, grep, wc, head, tail, sort, uniq, tr)
+- ✅ Interactive REPL mode with dynamic prompt
+- ✅ Script file execution (shebang support)
+- ✅ Non-interactive command execution (-c flag)
 
 The implementation uses in-memory buffers for streams, making it suitable for learning but not for production use.
