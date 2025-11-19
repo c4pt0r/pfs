@@ -204,6 +204,7 @@ class Shell:
 
         # Special case: direct streaming from stdin to file
         # When: single 'cat' command with no args, stdin from pipe, output to file
+        # Implementation: Loop and write chunks (like agfs-shell's write --stream)
         if ('stdout' in redirections and
             len(processes) == 1 and
             processes[0].command == 'cat' and
@@ -212,20 +213,28 @@ class Shell:
 
             output_file = self.resolve_path(redirections['stdout'])
             mode = redirections.get('stdout_mode', 'write')
-            append = (mode == 'append')
-
-            # Create streaming generator that reads from stdin directly
-            def stdin_generator():
-                """Read from stdin in chunks"""
-                while True:
-                    chunk = sys.stdin.buffer.read(8192)
-                    if not chunk:
-                        break
-                    yield chunk
 
             try:
-                # Stream directly from stdin to AGFS file
-                self.filesystem.write_file(output_file, stdin_generator(), append=append)
+                # Streaming write: read chunks and write each one separately
+                # This enables true streaming (each chunk sent immediately to server)
+                chunk_size = 8192  # 8KB chunks
+                total_bytes = 0
+                is_first_chunk = True
+
+                while True:
+                    chunk = sys.stdin.buffer.read(chunk_size)
+                    if not chunk:
+                        break
+
+                    # First chunk: overwrite or append based on mode
+                    # Subsequent chunks: always append
+                    append = (mode == 'append') or (not is_first_chunk)
+
+                    # Write chunk immediately (separate HTTP request per chunk)
+                    self.filesystem.write_file(output_file, chunk, append=append)
+                    total_bytes += len(chunk)
+                    is_first_chunk = False
+
                 exit_code = 0
                 stderr_data = b''
             except AGFSClientError as e:
