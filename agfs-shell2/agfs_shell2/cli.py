@@ -14,23 +14,46 @@ def execute_script_file(shell, script_path):
             lines = f.readlines()
 
         exit_code = 0
-        for line_num, line in enumerate(lines, 1):
-            line = line.strip()
+        i = 0
+        while i < len(lines):
+            line = lines[i].strip()
+            line_num = i + 1
 
             # Skip empty lines and comments
             if not line or line.startswith('#'):
+                i += 1
                 continue
 
             # Execute the command
             try:
                 exit_code = shell.execute(line)
+
+                # Check if if-statement needs to be collected
+                if exit_code == -998:
+                    # Collect if/then/else/fi statement
+                    if_lines = [line]
+                    i += 1
+                    while i < len(lines):
+                        next_line = lines[i].strip()
+                        if_lines.append(next_line)
+                        if next_line == 'fi':
+                            break
+                        i += 1
+
+                    # Execute the if statement
+                    exit_code = shell.execute_if_statement(if_lines)
+                    if exit_code != 0:
+                        sys.stderr.write(f"Error at line {line_num}: if statement failed with exit code {exit_code}\n")
+                        return exit_code
                 # If a command fails, stop execution
-                if exit_code != 0:
+                elif exit_code != 0:
                     sys.stderr.write(f"Error at line {line_num}: command failed with exit code {exit_code}\n")
                     return exit_code
             except Exception as e:
                 sys.stderr.write(f"Error at line {line_num}: {str(e)}\n")
                 return 1
+
+            i += 1
 
         return exit_code
     except FileNotFoundError:
@@ -87,8 +110,57 @@ def main():
         if not sys.stdin.isatty() and not has_input_redir:
             if select.select([sys.stdin], [], [], 0.0)[0]:
                 stdin_data = sys.stdin.buffer.read()
-        exit_code = shell.execute(command, stdin_data=stdin_data)
-        sys.exit(exit_code)
+
+        # Check if command contains semicolons (multiple commands)
+        # Split intelligently: respect if/then/else/fi blocks
+        if ';' in command:
+            # Split by semicolons but preserve if statements as single units
+            commands = []
+            current_cmd = []
+            in_if_statement = False
+
+            for part in command.split(';'):
+                part = part.strip()
+                if not part:
+                    continue
+
+                # Check if this part starts an if statement
+                if part.startswith('if '):
+                    in_if_statement = True
+                    current_cmd.append(part)
+                # Check if we're in an if statement
+                elif in_if_statement:
+                    current_cmd.append(part)
+                    # Check if this part ends the if statement
+                    if 'fi' in part:
+                        # Complete if statement
+                        commands.append('; '.join(current_cmd))
+                        current_cmd = []
+                        in_if_statement = False
+                else:
+                    # Regular command
+                    if current_cmd:
+                        commands.append('; '.join(current_cmd))
+                        current_cmd = []
+                    commands.append(part)
+
+            # Add any remaining command
+            if current_cmd:
+                commands.append('; '.join(current_cmd))
+
+            # Execute each command in sequence
+            exit_code = 0
+            for cmd in commands:
+                exit_code = shell.execute(cmd, stdin_data=stdin_data)
+                stdin_data = None  # Only first command gets stdin
+                if exit_code != 0 and exit_code not in [-998, -999]:
+                    # Stop on error (unless it's a special code)
+                    break
+            sys.exit(exit_code)
+        else:
+            # Single command
+            exit_code = shell.execute(command, stdin_data=stdin_data)
+            sys.exit(exit_code)
 
     elif args.script and os.path.isfile(args.script):
         # Mode 2: script file

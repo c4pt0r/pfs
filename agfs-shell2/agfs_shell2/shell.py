@@ -26,6 +26,7 @@ class Shell:
         self.console = Console(highlight=False)  # Rich console for output
         self.multiline_buffer = []  # Buffer for multiline input
         self.env = {}  # Environment variables
+        self.env['?'] = '0'  # Last command exit code
         self.interactive = False  # Flag to indicate if running in interactive REPL mode
 
     def _execute_command_substitution(self, command: str) -> str:
@@ -99,11 +100,15 @@ class Shell:
     def _expand_variables(self, text: str) -> str:
         """
         Expand environment variables and command substitutions in text
-        Supports: $VAR, ${VAR}, $(command), and `command` syntax
+        Supports: $VAR, ${VAR}, $(command), `command`, and $? (exit code)
         """
         import re
 
-        # First, expand command substitutions: $(command) and `command`
+        # First, expand special variables like $?
+        # $? - exit code of last command
+        text = text.replace('$?', self.env.get('?', '0'))
+
+        # Then, expand command substitutions: $(command) and `command`
         # Process $(...) command substitution
         def replace_command_subst(match):
             command = match.group(1)
@@ -292,8 +297,15 @@ class Shell:
                 if current_condition is not None:
                     result['conditions'].append((current_condition, current_block))
                 # Start new condition
-                current_condition = line[5:].strip().rstrip(';')
-                state = 'if'
+                condition_part = line[5:].strip()
+                # Check if 'then' is on the same line
+                has_then = condition_part.endswith(' then')
+                # Remove trailing 'then' if present on same line
+                if has_then:
+                    condition_part = condition_part[:-5].strip()
+                current_condition = condition_part.rstrip(';')
+                # If 'then' was on same line, move to 'then' state
+                state = 'then' if has_then else 'if'
                 current_block = []
             elif line == 'else':
                 # Save previous condition block
@@ -316,11 +328,16 @@ class Shell:
             elif line.startswith('if '):
                 # Initial if statement - extract condition
                 condition_part = line[3:].strip()
+                # Check if 'then' is on the same line
+                has_then = condition_part.endswith(' then')
                 # Remove trailing 'then' if present on same line
-                if condition_part.endswith(' then'):
+                if has_then:
                     condition_part = condition_part[:-5].strip()
                 current_condition = condition_part.rstrip(';')
-                state = 'if'
+                # If 'then' was on same line, move to 'then' state
+                state = 'then' if has_then else 'if'
+                if has_then:
+                    current_block = []
             else:
                 # Regular command in current block
                 if state == 'then' or state == 'else':
@@ -731,7 +748,9 @@ class Shell:
                             continue
 
                         # Execute the if statement
-                        self.execute_if_statement(if_lines)
+                        exit_code = self.execute_if_statement(if_lines)
+                        # Update $? with the exit code
+                        self.env['?'] = str(exit_code)
 
                     # Check if heredoc is needed
                     elif exit_code == -999:
@@ -762,7 +781,14 @@ class Shell:
                                 heredoc_content += '\n'
 
                             # Execute command again with heredoc data
-                            self.execute(command, heredoc_data=heredoc_content.encode('utf-8'))
+                            exit_code = self.execute(command, heredoc_data=heredoc_content.encode('utf-8'))
+                            # Update $? with the exit code
+                            self.env['?'] = str(exit_code)
+                    else:
+                        # Normal command execution - update $?
+                        # Skip special exit codes for internal use
+                        if exit_code not in [-998, -999]:
+                            self.env['?'] = str(exit_code)
 
                 except KeyboardInterrupt:
                     # Ctrl+C during command execution - interrupt command

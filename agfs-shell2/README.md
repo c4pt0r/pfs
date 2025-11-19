@@ -13,9 +13,10 @@ agfs-shell2 is a simple shell that demonstrates Unix pipeline concepts while int
 - **Unix-style pipelines**: Chain commands with `|` operator
 - **I/O Redirection**: Support for `<`, `>`, `>>`, `2>`, `2>>` operators
 - **Variables**: Shell variable assignment and expansion (`VAR=value`, `$VAR`, `${VAR}`)
+- **Special variables**: `$?` for exit code of last command
 - **Command substitution**: Capture command output with `$(command)` or backticks
 - **Control flow**: if/then/elif/else/fi statements for conditional execution
-- **Conditional testing**: `test` and `[ ]` commands for file, string, and logical tests
+- **Conditional testing**: `test` and `[ ]` commands for file, string, integer, and logical tests
 - **Multiline input**: Backslash continuation, unclosed quotes, and bracket matching like bash
 - **Directory navigation**: `cd` command with current working directory tracking
 - **Relative paths**: Full support for `.`, `..`, and relative file paths
@@ -174,6 +175,22 @@ uv run agfs-shell2 echo hello world
 
 agfs-shell2 supports shell variables and command substitution, allowing you to capture command output and reuse it.
 
+### Special Variables
+
+- **$?** - Exit code of the last executed command (0 for success, non-zero for failure)
+
+```bash
+# Check the exit code of the last command
+echo "test"
+echo $?  # Prints: 0
+
+# Use in conditionals
+[ "a" = "a" ]
+if [ $? -eq 0 ]; then
+  echo "Test succeeded"
+fi
+```
+
 ### Variable Assignment
 
 ```bash
@@ -288,6 +305,14 @@ The `test` command (or `[ ]` syntax) is used to evaluate conditions:
 - `STRING1 = STRING2` - True if strings are equal
 - `STRING1 != STRING2` - True if strings are not equal
 
+**Integer tests:**
+- `INT1 -eq INT2` - True if integers are equal
+- `INT1 -ne INT2` - True if integers are not equal
+- `INT1 -gt INT2` - True if INT1 is greater than INT2
+- `INT1 -lt INT2` - True if INT1 is less than INT2
+- `INT1 -ge INT2` - True if INT1 is greater than or equal to INT2
+- `INT1 -le INT2` - True if INT1 is less than or equal to INT2
+
 **Logical operators:**
 - `! EXPR` - True if expression is false (negation)
 - `EXPR -a EXPR` - True if both expressions are true (AND)
@@ -344,6 +369,24 @@ elif [ "$status" = "running" ]; then
   echo "Service is running"
 else
   echo "Unknown status"
+fi
+
+# Using $? (exit code)
+echo "Running command..."
+if [ $? -eq 0 ]; then
+  echo "Command succeeded"
+else
+  echo "Command failed with exit code: $?"
+fi
+
+# Integer comparisons
+count=10
+if [ $count -gt 5 ]; then
+  echo "Count is greater than 5"
+fi
+
+if [ $count -le 100 ]; then
+  echo "Count is within limit"
 fi
 ```
 
@@ -518,9 +561,9 @@ This is an experimental/educational project demonstrating:
 2. **Process composition**: How simple commands can be composed into complex operations
 3. **Pipeline execution**: How stdout of one process becomes stdin of the next
 4. **I/O Redirection**: Unix-style file redirection with `<`, `>`, and `>>`
-5. **Variables and substitution**: Shell variable expansion and command substitution
+5. **Variables and substitution**: Shell variable expansion, command substitution, and special variables ($?)
 6. **Control flow**: Conditional execution with if/then/elif/else/fi statements
-7. **Conditional testing**: File and string tests using test and [ ] commands
+7. **Conditional testing**: File, string, and integer tests using test and [ ] commands
 8. **Directory navigation**: Working directory concept with relative path resolution
 9. **Tab completion**: Interactive command and path completion using readline
 10. **AGFS Integration**: How to build applications using distributed/pluggable filesystems

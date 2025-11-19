@@ -591,6 +591,14 @@ def cmd_test(process: Process) -> int:
       STRING1 = STRING2   True if strings are equal
       STRING1 != STRING2  True if strings are not equal
 
+    Integer operators:
+      INT1 -eq INT2  True if integers are equal
+      INT1 -ne INT2  True if integers are not equal
+      INT1 -gt INT2  True if INT1 is greater than INT2
+      INT1 -lt INT2  True if INT1 is less than INT2
+      INT1 -ge INT2  True if INT1 is greater than or equal to INT2
+      INT1 -le INT2  True if INT1 is less than or equal to INT2
+
     Logical operators:
       ! EXPR     True if expr is false
       EXPR -a EXPR  True if both expressions are true (AND)
@@ -693,6 +701,26 @@ def _evaluate_test_expression(args: List[str], process: Process) -> bool:
 
         if args[1] == '!=':
             return args[0] != args[2]
+
+        # Integer comparison
+        if args[1] in ['-eq', '-ne', '-gt', '-lt', '-ge', '-le']:
+            try:
+                left = int(args[0])
+                right = int(args[2])
+                if args[1] == '-eq':
+                    return left == right
+                elif args[1] == '-ne':
+                    return left != right
+                elif args[1] == '-gt':
+                    return left > right
+                elif args[1] == '-lt':
+                    return left < right
+                elif args[1] == '-ge':
+                    return left >= right
+                elif args[1] == '-le':
+                    return left <= right
+            except ValueError:
+                raise ValueError(f"integer expression expected: {args[0]} or {args[2]}")
 
     # Default: non-empty first argument
     return bool(args[0])
