@@ -1,5 +1,7 @@
 # agfs-shell2
 
+DO NOT USE IT NOW, UNDER CONSTRUCTION
+
 Experimental agfs shell implementation with Unix-style pipeline support and **AGFS integration** in pure Python.
 
 ## Overview
