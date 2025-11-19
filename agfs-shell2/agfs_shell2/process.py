@@ -19,7 +19,8 @@ class Process:
         stdout: Optional[OutputStream] = None,
         stderr: Optional[ErrorStream] = None,
         executor: Optional[Callable] = None,
-        filesystem: Optional['AGFSFileSystem'] = None
+        filesystem: Optional['AGFSFileSystem'] = None,
+        env: Optional[dict] = None
     ):
         """
         Initialize a process
@@ -32,6 +33,7 @@ class Process:
             stderr: Error stream
             executor: Callable that executes the command
             filesystem: AGFS file system instance for file operations
+            env: Environment variables dictionary
         """
         self.command = command
         self.args = args
@@ -40,6 +42,7 @@ class Process:
         self.stderr = stderr or ErrorStream.to_buffer()
         self.executor = executor
         self.filesystem = filesystem
+        self.env = env or {}
         self.exit_code = 0
 
     def execute(self) -> int:

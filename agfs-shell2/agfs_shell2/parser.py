@@ -86,18 +86,19 @@ class CommandParser:
 
         Returns:
             Tuple of (cleaned command, redirection dict)
-            Redirection dict keys: 'stdin', 'stdout', 'stderr', 'stdout_mode'
+            Redirection dict keys: 'stdin', 'stdout', 'stderr', 'stdout_mode', 'heredoc_delimiter'
         """
         redirections = {}
 
         # Pattern to match redirection operators
-        # Match: <, >, >>, 2>, 2>>, &> followed by filename
+        # Match: <<, <, >, >>, 2>, 2>>, &> followed by filename or delimiter
         patterns = [
-            (r'\s+<\s+(\S+)', 'stdin', None),           # < file (input)
-            (r'\s+2>>\s+(\S+)', 'stderr', 'append'),    # 2>> file (append stderr)
-            (r'\s+2>\s+(\S+)', 'stderr', 'write'),      # 2> file (stderr)
-            (r'\s+>>\s+(\S+)', 'stdout', 'append'),     # >> file (append)
-            (r'\s+>\s+(\S+)', 'stdout', 'write'),       # > file (output)
+            (r'\s+<<\s*(\S+)', 'heredoc_delimiter', None),  # << DELIMITER (heredoc)
+            (r'\s+<\s+(\S+)', 'stdin', None),               # < file (input)
+            (r'\s+2>>\s+(\S+)', 'stderr', 'append'),        # 2>> file (append stderr)
+            (r'\s+2>\s+(\S+)', 'stderr', 'write'),          # 2> file (stderr)
+            (r'\s+>>\s+(\S+)', 'stdout', 'append'),         # >> file (append)
+            (r'\s+>\s+(\S+)', 'stdout', 'write'),           # > file (output)
         ]
 
         cleaned_line = command_line

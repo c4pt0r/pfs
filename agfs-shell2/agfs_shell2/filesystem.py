@@ -57,7 +57,8 @@ class AGFSFileSystem:
                 # Return all content at once
                 return self.client.cat(path, offset=offset, size=size)
         except AGFSClientError as e:
-            raise AGFSClientError(f"{path}: {str(e)}")
+            # SDK error already includes path, don't duplicate it
+            raise AGFSClientError(str(e))
 
     def write_file(self, path: str, data: Union[bytes, Iterator[bytes], BinaryIO], append: bool = False) -> None:
         """
@@ -97,7 +98,8 @@ class AGFSFileSystem:
             # Use max_retries=0 for shell operations (fail fast)
             self.client.write(path, data, max_retries=0)
         except AGFSClientError as e:
-            raise AGFSClientError(f"{path}: {str(e)}")
+            # SDK error already includes path, don't duplicate it
+            raise AGFSClientError(str(e))
 
     def file_exists(self, path: str) -> bool:
         """
@@ -148,7 +150,8 @@ class AGFSFileSystem:
         try:
             return self.client.ls(path)
         except AGFSClientError as e:
-            raise AGFSClientError(f"{path}: {str(e)}")
+            # SDK error already includes path, don't duplicate it
+            raise AGFSClientError(str(e))
 
     def get_error_message(self, error: Exception) -> str:
         """

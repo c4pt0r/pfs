@@ -24,6 +24,113 @@ class Shell:
         self.cwd = '/'  # Current working directory
         self.console = Console(highlight=False)  # Rich console for output
         self.multiline_buffer = []  # Buffer for multiline input
+        self.env = {}  # Environment variables
+
+    def _execute_command_substitution(self, command: str) -> str:
+        """
+        Execute a command and return its output as a string
+        Used for command substitution: $(command) or `command`
+        """
+        from .streams import OutputStream, InputStream, ErrorStream
+        from .builtins import get_builtin
+
+        # Parse and execute the command, capturing stdout
+        try:
+            # Parse the command (no variable expansion to avoid recursion)
+            commands, redirections = self.parser.parse_command_line(command)
+            if not commands:
+                return ''
+
+            # Build processes for each command (simplified, no redirections)
+            processes = []
+            for i, (cmd, args) in enumerate(commands):
+                executor = get_builtin(cmd)
+
+                # Resolve paths for file commands
+                if cmd in ('cat', 'ls', 'mkdir', 'rm'):
+                    resolved_args = []
+                    for arg in args:
+                        if arg.startswith('-'):
+                            resolved_args.append(arg)
+                        else:
+                            resolved_args.append(self.resolve_path(arg))
+                    args = resolved_args
+
+                # Create streams - always capture to buffer
+                stdin = InputStream.from_bytes(b'')
+                stdout = OutputStream.to_buffer()
+                stderr = ErrorStream.to_buffer()
+
+                # Create process
+                process = Process(
+                    command=cmd,
+                    args=args,
+                    stdin=stdin,
+                    stdout=stdout,
+                    stderr=stderr,
+                    executor=executor,
+                    filesystem=self.filesystem,
+                    env=self.env
+                )
+                process.cwd = self.cwd
+                processes.append(process)
+
+            # Connect pipeline
+            for i in range(len(processes) - 1):
+                output = processes[i].stdout
+                processes[i + 1].stdin = InputStream.from_stream(output)
+
+            # Execute pipeline
+            for process in processes:
+                process.execute()
+
+            # Get output from last process
+            output = processes[-1].get_stdout()
+            output_str = output.decode('utf-8', errors='replace')
+            # Only remove trailing newline (not all whitespace)
+            if output_str.endswith('\n'):
+                output_str = output_str[:-1]
+            return output_str
+        except Exception as e:
+            return ''
+
+    def _expand_variables(self, text: str) -> str:
+        """
+        Expand environment variables and command substitutions in text
+        Supports: $VAR, ${VAR}, $(command), and `command` syntax
+        """
+        import re
+
+        # First, expand command substitutions: $(command) and `command`
+        # Process $(...) command substitution
+        def replace_command_subst(match):
+            command = match.group(1)
+            return self._execute_command_substitution(command)
+
+        text = re.sub(r'\$\(([^)]+)\)', replace_command_subst, text)
+
+        # Process `...` command substitution (backticks)
+        def replace_backtick_subst(match):
+            command = match.group(1)
+            return self._execute_command_substitution(command)
+
+        text = re.sub(r'`([^`]+)`', replace_backtick_subst, text)
+
+        # Then expand ${VAR} (higher priority than $VAR)
+        def replace_braced(match):
+            var_name = match.group(1)
+            return self.env.get(var_name, '')
+
+        text = re.sub(r'\$\{([A-Za-z_][A-Za-z0-9_]*)\}', replace_braced, text)
+
+        # Finally expand $VAR
+        def replace_simple(match):
+            var_name = match.group(1)
+            return self.env.get(var_name, '')
+
+        text = re.sub(r'\$([A-Za-z_][A-Za-z0-9_]*)', replace_simple, text)
+
+        return text
 
     def _needs_more_input(self, line: str) -> bool:
         """
@@ -102,19 +209,44 @@ class Shell:
         # Normalize to handle . and ..
         return os.path.normpath(full_path)
 
-    def execute(self, command_line: str, stdin_data: Optional[bytes] = None) -> int:
+    def execute(self, command_line: str, stdin_data: Optional[bytes] = None, heredoc_data: Optional[bytes] = None) -> int:
         """
         Execute a command line (possibly with pipelines and redirections)
 
         Args:
             command_line: Command string to execute
             stdin_data: Optional stdin data to provide to first command
+            heredoc_data: Optional heredoc data (for << redirections)
 
         Returns:
             Exit code of the pipeline
         """
+        # Check for variable assignment (VAR=value)
+        if '=' in command_line and not command_line.strip().startswith('='):
+            parts = command_line.split('=', 1)
+            if len(parts) == 2:
+                var_name = parts[0].strip()
+                # Check if it's a valid variable name (not a command with = in args)
+                if var_name and var_name.replace('_', '').isalnum() and not ' ' in var_name:
+                    var_value = self._expand_variables(parts[1].strip())
+                    self.env[var_name] = var_value
+                    return 0
+
+        # Expand variables in command line
+        command_line = self._expand_variables(command_line)
+
         # Parse the command line with redirections
         commands, redirections = self.parser.parse_command_line(command_line)
+
+        # If heredoc is detected but no data provided, return special code to signal REPL
+        # to read heredoc content
+        if 'heredoc_delimiter' in redirections and heredoc_data is None:
+            # Return special code -999 to signal that heredoc data is needed
+            return -999
+
+        # If heredoc data is provided, use it as stdin
+        if heredoc_data is not None:
+            stdin_data = heredoc_data
 
         if not commands:
             return 0
@@ -188,7 +320,7 @@ class Shell:
 
             stderr = ErrorStream.to_buffer()
 
-            # Create process with filesystem and cwd
+            # Create process with filesystem, cwd, and env
             process = Process(
                 command=cmd,
                 args=args,
@@ -196,7 +328,8 @@ class Shell:
                 stdout=stdout,
                 stderr=stderr,
                 executor=executor,
-                filesystem=self.filesystem
+                filesystem=self.filesystem,
+                env=self.env
             )
             # Pass cwd to process for pwd command
             process.cwd = self.cwd
@@ -420,7 +553,39 @@ class Shell:
 
                 # Execute command
                 try:
-                    self.execute(command)
+                    exit_code = self.execute(command)
+
+                    # Check if heredoc is needed
+                    if exit_code == -999:
+                        # Parse command to get heredoc delimiter
+                        commands, redirections = self.parser.parse_command_line(command)
+                        if 'heredoc_delimiter' in redirections:
+                            delimiter = redirections['heredoc_delimiter']
+
+                            # Read heredoc content
+                            heredoc_lines = []
+                            try:
+                                while True:
+                                    heredoc_line = input()
+                                    if heredoc_line.strip() == delimiter:
+                                        break
+                                    heredoc_lines.append(heredoc_line)
+                            except EOFError:
+                                # Ctrl+D before delimiter
+                                self.console.print(f"\nWarning: here-document delimited by end-of-file (wanted `{delimiter}`)", highlight=False)
+                            except KeyboardInterrupt:
+                                # Ctrl+C during heredoc - cancel
+                                self.console.print("\n^C", highlight=False)
+                                continue
+
+                            # Join heredoc content
+                            heredoc_content = '\n'.join(heredoc_lines)
+                            if heredoc_lines:  # Add final newline if there was content
+                                heredoc_content += '\n'
+
+                            # Execute command again with heredoc data
+                            self.execute(command, heredoc_data=heredoc_content.encode('utf-8'))
+
                 except KeyboardInterrupt:
                     # Ctrl+C during command execution - interrupt command
                     self.console.print("\n^C", highlight=False)

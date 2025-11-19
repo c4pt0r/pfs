@@ -488,6 +488,72 @@ def cmd_rm(process: Process) -> int:
         return 1
 
 
+def cmd_export(process: Process) -> int:
+    """
+    Set or display environment variables
+
+    Usage: export [VAR=value ...]
+    """
+    if not process.args:
+        # Display all environment variables (like 'env')
+        if hasattr(process, 'env'):
+            for key, value in sorted(process.env.items()):
+                process.stdout.write(f"{key}={value}\n".encode('utf-8'))
+        return 0
+
+    # Set environment variables
+    for arg in process.args:
+        if '=' in arg:
+            var_name, var_value = arg.split('=', 1)
+            var_name = var_name.strip()
+            var_value = var_value.strip()
+
+            # Validate variable name
+            if var_name and var_name.replace('_', '').replace('-', '').isalnum():
+                if hasattr(process, 'env'):
+                    process.env[var_name] = var_value
+            else:
+                process.stderr.write(f"export: invalid variable name: {var_name}\n")
+                return 1
+        else:
+            process.stderr.write(f"export: usage: export VAR=value\n")
+            return 1
+
+    return 0
+
+
+def cmd_env(process: Process) -> int:
+    """
+    Display all environment variables
+
+    Usage: env
+    """
+    if hasattr(process, 'env'):
+        for key, value in sorted(process.env.items()):
+            process.stdout.write(f"{key}={value}\n".encode('utf-8'))
+    return 0
+
+
+def cmd_unset(process: Process) -> int:
+    """
+    Unset environment variables
+
+    Usage: unset VAR [VAR ...]
+    """
+    if not process.args:
+        process.stderr.write("unset: missing variable name\n")
+        return 1
+
+    if not hasattr(process, 'env'):
+        return 0
+
+    for var_name in process.args:
+        if var_name in process.env:
+            del process.env[var_name]
+
+    return 0
+
+
 # Registry of built-in commands
 BUILTINS = {
     'echo': cmd_echo,
@@ -504,6 +570,9 @@ BUILTINS = {
     'cd': cmd_cd,
     'mkdir': cmd_mkdir,
     'rm': cmd_rm,
+    'export': cmd_export,
+    'env': cmd_env,
+    'unset': cmd_unset,
 }
 
 
