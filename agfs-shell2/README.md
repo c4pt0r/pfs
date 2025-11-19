@@ -14,6 +14,8 @@ agfs-shell2 is a simple shell that demonstrates Unix pipeline concepts while int
 - **I/O Redirection**: Support for `<`, `>`, `>>`, `2>`, `2>>` operators
 - **Variables**: Shell variable assignment and expansion (`VAR=value`, `$VAR`, `${VAR}`)
 - **Command substitution**: Capture command output with `$(command)` or backticks
+- **Control flow**: if/then/elif/else/fi statements for conditional execution
+- **Conditional testing**: `test` and `[ ]` commands for file, string, and logical tests
 - **Multiline input**: Backslash continuation, unclosed quotes, and bracket matching like bash
 - **Directory navigation**: `cd` command with current working directory tracking
 - **Relative paths**: Full support for `.`, `..`, and relative file paths
@@ -21,7 +23,7 @@ agfs-shell2 is a simple shell that demonstrates Unix pipeline concepts while int
 - **AGFS Integration**: All file operations use AGFS server (no local filesystem access)
 - **Streaming I/O**: Memory-efficient streaming for large files (8KB chunks)
 - **Stream handling**: Full STDIN/STDOUT/STDERR support
-- **Built-in commands**: cd, pwd, ls, cat, mkdir, rm, stat, echo, grep, wc, head, tail, sort, uniq, tr, export, env, unset
+- **Built-in commands**: cd, pwd, ls, cat, mkdir, rm, stat, echo, grep, wc, head, tail, sort, uniq, tr, export, env, unset, test, [
 - **Interactive REPL**: Interactive shell mode with dynamic prompt showing current directory
 - **Script execution**: Support for shebang scripts (`#!/usr/bin/env uv run agfs-shell2`)
 - **Non-interactive mode**: Execute commands from command line with `-c` flag
@@ -164,6 +166,10 @@ uv run agfs-shell2 echo hello world
 - **env** - Display all environment variables
 - **unset VAR [VAR ...]** - Unset environment variables
 
+### Conditional Testing
+- **test EXPRESSION** - Evaluate conditional expressions
+- **[ EXPRESSION ]** - Alternative syntax for test command
+
 ## Variables and Command Substitution
 
 agfs-shell2 supports shell variables and command substitution, allowing you to capture command output and reuse it.
@@ -219,12 +225,6 @@ echo "Found $error_count errors"
 ### Examples
 
 ```bash
-# Check if file exists before reading
-if stat /local/file.txt 2>/dev/null; then
-    content=$(cat /local/file.txt)
-    echo "File content: $content"
-fi
-
 # Count files in directory
 file_count=$(ls /local | wc -l)
 echo "Found $file_count files"
@@ -238,6 +238,113 @@ cat $input_file | sort | uniq > $output_file
 base=/local
 project=myproject
 echo "Project files:" > $base/$project/info.txt
+```
+
+## Control Flow (if/then/else/fi)
+
+agfs-shell2 supports bash-style if statements for conditional execution.
+
+### Syntax
+
+```bash
+# Basic if/then/fi
+if condition; then
+  commands
+fi
+
+# If/else
+if condition; then
+  commands
+else
+  commands
+fi
+
+# If/elif/else
+if condition1; then
+  commands
+elif condition2; then
+  commands
+else
+  commands
+fi
+
+# Single-line syntax
+if condition; then command; fi
+if condition; then command1; else command2; fi
+```
+
+### Conditional Tests
+
+The `test` command (or `[ ]` syntax) is used to evaluate conditions:
+
+**File tests:**
+- `-f FILE` - True if file exists and is a regular file
+- `-d FILE` - True if file exists and is a directory
+- `-e FILE` - True if file exists
+
+**String tests:**
+- `-z STRING` - True if string is empty
+- `-n STRING` - True if string is not empty
+- `STRING1 = STRING2` - True if strings are equal
+- `STRING1 != STRING2` - True if strings are not equal
+
+**Logical operators:**
+- `! EXPR` - True if expression is false (negation)
+- `EXPR -a EXPR` - True if both expressions are true (AND)
+- `EXPR -o EXPR` - True if either expression is true (OR)
+
+### Examples
+
+```bash
+# String comparison
+if [ "hello" = "hello" ]; then
+  echo "Strings match"
+fi
+
+# File existence check
+if [ -f /local/data.txt ]; then
+  echo "File exists"
+  cat /local/data.txt
+else
+  echo "File not found"
+fi
+
+# Directory check
+if [ -d /local/mydir ]; then
+  echo "Directory exists"
+fi
+
+# String emptiness test
+name=""
+if [ -z "$name" ]; then
+  echo "Name is empty"
+fi
+
+# Negation
+if [ ! -f /local/file.txt ]; then
+  echo "File does not exist"
+fi
+
+# Multi-line if statement (in interactive mode)
+if [ -f /local/input.txt ]
+then
+  content=$(cat /local/input.txt)
+  if [ -n "$content" ]
+  then
+    echo "Processing file..."
+    cat /local/input.txt | sort > /local/output.txt
+  fi
+fi
+
+# elif chain
+status="running"
+if [ "$status" = "stopped" ]; then
+  echo "Service is stopped"
+elif [ "$status" = "running" ]; then
+  echo "Service is running"
+else
+  echo "Unknown status"
+fi
 ```
 
 ## Path Support
@@ -412,10 +519,12 @@ This is an experimental/educational project demonstrating:
 3. **Pipeline execution**: How stdout of one process becomes stdin of the next
 4. **I/O Redirection**: Unix-style file redirection with `<`, `>`, and `>>`
 5. **Variables and substitution**: Shell variable expansion and command substitution
-6. **Directory navigation**: Working directory concept with relative path resolution
-7. **Tab completion**: Interactive command and path completion using readline
-8. **AGFS Integration**: How to build applications using distributed/pluggable filesystems
-9. **Python implementation**: Pure Python implementation without subprocess module
+6. **Control flow**: Conditional execution with if/then/elif/else/fi statements
+7. **Conditional testing**: File and string tests using test and [ ] commands
+8. **Directory navigation**: Working directory concept with relative path resolution
+9. **Tab completion**: Interactive command and path completion using readline
+10. **AGFS Integration**: How to build applications using distributed/pluggable filesystems
+11. **Python implementation**: Pure Python implementation without subprocess module
 
 ### Key Design Decisions
 
@@ -437,10 +546,12 @@ This is an experimental/educational project demonstrating:
 - ✅ Shell variables (`VAR=value`, `$VAR`, `${VAR}`)
 - ✅ Command substitution (`$(command)`, backticks)
 - ✅ Environment variable management (`export`, `env`, `unset`)
+- ✅ Control flow (`if/then/elif/else/fi` statements)
+- ✅ Conditional testing (`test` and `[ ]` commands with file, string, and logical tests)
 - ✅ Directory navigation (`cd` command)
 - ✅ Relative path support (`.`, `..`, relative files)
 - ✅ Tab completion for commands and paths
-- ✅ 18 built-in commands (cd, pwd, ls, cat, mkdir, rm, stat, echo, grep, wc, head, tail, sort, uniq, tr, export, env, unset)
+- ✅ 20 built-in commands (cd, pwd, ls, cat, mkdir, rm, stat, echo, grep, wc, head, tail, sort, uniq, tr, export, env, unset, test, [)
 - ✅ Interactive REPL mode with dynamic prompt
 - ✅ Script file execution (shebang support)
 - ✅ Non-interactive command execution (-c flag)

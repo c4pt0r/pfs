@@ -573,6 +573,132 @@ def cmd_unset(process: Process) -> int:
 
 
 @command(needs_path_resolution=True)
+def cmd_test(process: Process) -> int:
+    """
+    Evaluate conditional expressions (similar to bash test/[)
+
+    Usage: test EXPRESSION
+           [ EXPRESSION ]
+
+    File operators:
+      -f FILE    True if file exists and is a regular file
+      -d FILE    True if file exists and is a directory
+      -e FILE    True if file exists
+
+    String operators:
+      -z STRING  True if string is empty
+      -n STRING  True if string is not empty
+      STRING1 = STRING2   True if strings are equal
+      STRING1 != STRING2  True if strings are not equal
+
+    Logical operators:
+      ! EXPR     True if expr is false
+      EXPR -a EXPR  True if both expressions are true (AND)
+      EXPR -o EXPR  True if either expression is true (OR)
+    """
+    # Handle [ command - last arg should be ]
+    if process.command == '[':
+        if not process.args or process.args[-1] != ']':
+            process.stderr.write("[: missing ']'\n")
+            return 2
+        # Remove the closing ]
+        process.args = process.args[:-1]
+
+    if not process.args:
+        # Empty test is false
+        return 1
+
+    # Evaluate the expression
+    try:
+        result = _evaluate_test_expression(process.args, process)
+        return 0 if result else 1
+    except Exception as e:
+        process.stderr.write(f"test: {e}\n")
+        return 2
+
+
+def _evaluate_test_expression(args: List[str], process: Process) -> bool:
+    """Evaluate a test expression"""
+    if not args:
+        return False
+
+    # Single argument - test if non-empty string
+    if len(args) == 1:
+        return bool(args[0])
+
+    # Negation operator
+    if args[0] == '!':
+        return not _evaluate_test_expression(args[1:], process)
+
+    # File test operators
+    if args[0] == '-f':
+        if len(args) < 2:
+            raise ValueError("-f requires an argument")
+        path = args[1]
+        if process.filesystem:
+            try:
+                info = process.filesystem.get_file_info(path)
+                is_dir = info.get('isDir', False) or info.get('type') == 'directory'
+                return not is_dir
+            except:
+                return False
+        return False
+
+    if args[0] == '-d':
+        if len(args) < 2:
+            raise ValueError("-d requires an argument")
+        path = args[1]
+        if process.filesystem:
+            return process.filesystem.is_directory(path)
+        return False
+
+    if args[0] == '-e':
+        if len(args) < 2:
+            raise ValueError("-e requires an argument")
+        path = args[1]
+        if process.filesystem:
+            return process.filesystem.file_exists(path)
+        return False
+
+    # String test operators
+    if args[0] == '-z':
+        if len(args) < 2:
+            raise ValueError("-z requires an argument")
+        return len(args[1]) == 0
+
+    if args[0] == '-n':
+        if len(args) < 2:
+            raise ValueError("-n requires an argument")
+        return len(args[1]) > 0
+
+    # Binary operators
+    if len(args) >= 3:
+        # Logical AND
+        if '-a' in args:
+            idx = args.index('-a')
+            left = _evaluate_test_expression(args[:idx], process)
+            right = _evaluate_test_expression(args[idx+1:], process)
+            return left and right
+
+        # Logical OR
+        if '-o' in args:
+            idx = args.index('-o')
+            left = _evaluate_test_expression(args[:idx], process)
+            right = _evaluate_test_expression(args[idx+1:], process)
+            return left or right
+
+        # String comparison
+        if args[1] == '=':
+            return args[0] == args[2]
+
+        if args[1] == '!=':
+            return args[0] != args[2]
+
+    # Default: non-empty first argument
+    return bool(args[0])
+
+
+@command(needs_path_resolution=True)
 def cmd_stat(process: Process) -> int:
     """
     Display file status and check if file exists
@@ -656,6 +782,8 @@ BUILTINS = {
     'export': cmd_export,
     'env': cmd_env,
     'unset': cmd_unset,
+    'test': cmd_test,
+    '[': cmd_test,  # [ is an alias for test
     'stat': cmd_stat,
 }
 

@@ -211,6 +211,123 @@ class Shell:
         # Normalize to handle . and ..
         return os.path.normpath(full_path)
 
+    def execute_if_statement(self, lines: List[str]) -> int:
+        """
+        Execute an if/then/else/fi statement
+
+        Args:
+            lines: List of lines making up the if statement
+
+        Returns:
+            Exit code of executed commands
+        """
+        parsed = self._parse_if_statement(lines)
+
+        # Evaluate conditions in order
+        for condition_cmd, commands_block in parsed['conditions']:
+            # Execute the condition command
+            exit_code = self.execute(condition_cmd)
+
+            # If condition is true (exit code 0), execute this block
+            if exit_code == 0:
+                last_exit_code = 0
+                for cmd in commands_block:
+                    last_exit_code = self.execute(cmd)
+                return last_exit_code
+
+        # If no condition was true, execute else block if present
+        if parsed['else_block']:
+            last_exit_code = 0
+            for cmd in parsed['else_block']:
+                last_exit_code = self.execute(cmd)
+            return last_exit_code
+
+        return 0
+
+    def _parse_if_statement(self, lines: List[str]) -> dict:
+        """
+        Parse an if/then/else/fi statement from a list of lines
+
+        Returns:
+            Dict with structure: {
+                'conditions': [(condition_cmd, commands_block), ...],
+                'else_block': [commands] or None
+            }
+        """
+        result = {
+            'conditions': [],
+            'else_block': None
+        }
+
+        current_block = []
+        current_condition = None
+        state = 'if'  # States: 'if', 'then', 'elif', 'else'
+
+        for line in lines:
+            line = line.strip()
+
+            if not line or line.startswith('#'):
+                continue
+
+            if line == 'fi':
+                # End of if statement
+                if state == 'then' and current_condition is not None:
+                    result['conditions'].append((current_condition, current_block))
+                elif state == 'else':
+                    result['else_block'] = current_block
+                break
+            elif line == 'then':
+                state = 'then'
+                current_block = []
+            elif line.startswith('then '):
+                # 'then' with command on same line (e.g., "then echo foo")
+                state = 'then'
+                current_block = []
+                # Extract command after 'then'
+                cmd_after_then = line[5:].strip()
+                if cmd_after_then:
+                    current_block.append(cmd_after_then)
+            elif line.startswith('elif '):
+                # Save previous condition block
+                if current_condition is not None:
+                    result['conditions'].append((current_condition, current_block))
+                # Start new condition
+                current_condition = line[5:].strip().rstrip(';')
+                state = 'if'
+                current_block = []
+            elif line == 'else':
+                # Save previous condition block
+                if current_condition is not None:
+                    result['conditions'].append((current_condition, current_block))
+                state = 'else'
+                current_block = []
+                current_condition = None
+            elif line.startswith('else '):
+                # 'else' with command on same line
+                if current_condition is not None:
+                    result['conditions'].append((current_condition, current_block))
+                state = 'else'
+                current_block = []
+                current_condition = None
+                # Extract command after 'else'
+                cmd_after_else = line[5:].strip()
+                if cmd_after_else:
+                    current_block.append(cmd_after_else)
+            elif line.startswith('if '):
+                # Initial if statement - extract condition
+                condition_part = line[3:].strip()
+                # Remove trailing 'then' if present on same line
+                if condition_part.endswith(' then'):
+                    condition_part = condition_part[:-5].strip()
+                current_condition = condition_part.rstrip(';')
+                state = 'if'
+            else:
+                # Regular command in current block
+                if state == 'then' or state == 'else':
+                    current_block.append(line)
+
+        return result
+
     def execute(self, command_line: str, stdin_data: Optional[bytes] = None, heredoc_data: Optional[bytes] = None) -> int:
         """
         Execute a command line (possibly with pipelines and redirections)
@@ -223,6 +340,22 @@ class Shell:
         Returns:
             Exit code of the pipeline
         """
+        # Check for if statement (special handling required)
+        if command_line.strip().startswith('if '):
+            # Check if it's a complete single-line if statement
+            if 'fi' in command_line:
+                # Single-line if statement - parse and execute directly
+                # Split by semicolons but preserve the structure
+                import re
+                # Split by '; ' while keeping keywords intact
+                parts = re.split(r';\s*', command_line)
+                lines = [part.strip() for part in parts if part.strip()]
+                return self.execute_if_statement(lines)
+            else:
+                # Multi-line if statement - signal to REPL to collect more lines
+                # Return special code -998 to signal if statement collection needed
+                return -998
+
         # Check for variable assignment (VAR=value)
         if '=' in command_line and not command_line.strip().startswith('='):
             parts = command_line.split('=', 1)
@@ -578,8 +711,30 @@ class Shell:
                 try:
                     exit_code = self.execute(command)
 
+                    # Check if if-statement is needed
+                    if exit_code == -998:
+                        # Collect if/then/else/fi statement
+                        if_lines = [command]
+                        try:
+                            while True:
+                                if_line = input("> ")
+                                if_lines.append(if_line)
+                                # Check if we reached the end with 'fi'
+                                if if_line.strip() == 'fi':
+                                    break
+                        except EOFError:
+                            # Ctrl+D before fi
+                            self.console.print("\nWarning: if-statement ended by end-of-file (wanted `fi`)", highlight=False)
+                        except KeyboardInterrupt:
+                            # Ctrl+C during if-statement - cancel
+                            self.console.print("\n^C", highlight=False)
+                            continue
+
+                        # Execute the if statement
+                        self.execute_if_statement(if_lines)
+
                     # Check if heredoc is needed
-                    if exit_code == -999:
+                    elif exit_code == -999:
                         # Parse command to get heredoc delimiter
                         commands, redirections = self.parser.parse_command_line(command)
                         if 'heredoc_delimiter' in redirections:
