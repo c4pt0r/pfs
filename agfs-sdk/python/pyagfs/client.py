@@ -99,6 +99,9 @@ class AGFSClient:
         except Exception as e:
             self._handle_request_error(e)
 
+    def read(self, path: str, offset: int = 0, size: int = -1, stream: bool = False):
+        return self.cat(path, offset, size, stream)
+
     def cat(self, path: str, offset: int = 0, size: int = -1, stream: bool = False):
         """Read file content with optional offset and size
 

@@ -8,7 +8,8 @@ class Config:
 
     def __init__(self):
         # Default AGFS server URL
-        self.server_url = os.getenv('AGFS_SERVER_URL', 'http://localhost:8080')
+        # Support both AGFS_API_URL (preferred) and AGFS_SERVER_URL (backward compatibility)
+        self.server_url = os.getenv('AGFS_API_URL') or os.getenv('AGFS_SERVER_URL', 'http://localhost:8080')
 
     @classmethod
     def from_env(cls):

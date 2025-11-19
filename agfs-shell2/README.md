@@ -62,9 +62,13 @@ By default, agfs-shell2 connects to `http://localhost:8080`. You can configure a
 
 ```bash
 # Via command line argument
-uv run agfs-shell2 --server http://192.168.1.100:8080
+uv run agfs-shell2 --agfs-api-url http://192.168.1.100:8080
 
-# Via environment variable
+# Via environment variable (AGFS_API_URL is preferred)
+export AGFS_API_URL=http://192.168.1.100:8080
+uv run agfs-shell2
+
+# Backward compatibility with AGFS_SERVER_URL
 export AGFS_SERVER_URL=http://192.168.1.100:8080
 uv run agfs-shell2
 ```
@@ -93,6 +97,27 @@ If the server is not running, you'll see a warning:
 
 ### Non-Interactive Mode
 
+#### Using `-c` flag (recommended)
+
+```bash
+# Execute a command string
+uv run agfs-shell2 -c "echo 'hello world' > /local/test.txt"
+
+# Read from AGFS
+uv run agfs-shell2 -c "cat /local/test.txt"
+
+# Use with shell pipes
+echo "test data" | uv run agfs-shell2 -c "cat | grep test > /local/results.txt"
+
+# Complex pipelines with AGFS
+uv run agfs-shell2 -c "cat /local/input.txt | sort | uniq > /local/output.txt"
+
+# Multiple commands in one script
+uv run agfs-shell2 -c "ls / | grep local"
+```
+
+#### Using positional arguments (also works)
+
 ```bash
 # Write to AGFS
 uv run agfs-shell2 "echo 'hello world' > /local/test.txt"
@@ -100,11 +125,8 @@ uv run agfs-shell2 "echo 'hello world' > /local/test.txt"
 # Read from AGFS
 uv run agfs-shell2 "cat /local/test.txt"
 
-# Use with shell pipes
-echo "test data" | uv run agfs-shell2 "cat | grep test > /local/results.txt"
-
-# Complex pipelines with AGFS
-uv run agfs-shell2 "cat /local/input.txt | sort | uniq > /local/output.txt"
+# Without quotes (splits on spaces)
+uv run agfs-shell2 echo hello world
 ```
 
 ## Built-in Commands
