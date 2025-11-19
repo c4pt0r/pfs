@@ -12,6 +12,8 @@ agfs-shell2 is a simple shell that demonstrates Unix pipeline concepts while int
 
 - **Unix-style pipelines**: Chain commands with `|` operator
 - **I/O Redirection**: Support for `<`, `>`, `>>`, `2>`, `2>>` operators
+- **Variables**: Shell variable assignment and expansion (`VAR=value`, `$VAR`, `${VAR}`)
+- **Command substitution**: Capture command output with `$(command)` or backticks
 - **Multiline input**: Backslash continuation, unclosed quotes, and bracket matching like bash
 - **Directory navigation**: `cd` command with current working directory tracking
 - **Relative paths**: Full support for `.`, `..`, and relative file paths
@@ -19,7 +21,7 @@ agfs-shell2 is a simple shell that demonstrates Unix pipeline concepts while int
 - **AGFS Integration**: All file operations use AGFS server (no local filesystem access)
 - **Streaming I/O**: Memory-efficient streaming for large files (8KB chunks)
 - **Stream handling**: Full STDIN/STDOUT/STDERR support
-- **Built-in commands**: cd, pwd, ls, cat, mkdir, rm, echo, grep, wc, head, tail, sort, uniq, tr
+- **Built-in commands**: cd, pwd, ls, cat, mkdir, rm, stat, echo, grep, wc, head, tail, sort, uniq, tr, export, env, unset
 - **Interactive REPL**: Interactive shell mode with dynamic prompt showing current directory
 - **Script execution**: Support for shebang scripts (`#!/usr/bin/env uv run agfs-shell2`)
 - **Non-interactive mode**: Execute commands from command line with `-c` flag
@@ -141,10 +143,11 @@ uv run agfs-shell2 echo hello world
 ### File System Commands (AGFS)
 - **cd [path]** - Change current directory (supports relative paths: `.`, `..`, etc.)
 - **pwd** - Print current working directory
-- **ls [path]** - List directory contents (defaults to current directory)
+- **ls [-l] [path]** - List directory contents (defaults to current directory, -l for long format)
 - **cat [file...]** - Concatenate and print files or stdin
 - **mkdir path** - Create directory
 - **rm [-r] path** - Remove file or directory
+- **stat path** - Display file status and check if file exists
 
 ### Text Processing Commands
 - **echo [args...]** - Print arguments to stdout
@@ -155,6 +158,87 @@ uv run agfs-shell2 echo hello world
 - **sort [-r]** - Sort lines (use -r for reverse)
 - **uniq** - Remove duplicate adjacent lines
 - **tr set1 set2** - Translate characters
+
+### Environment Variables
+- **export [VAR=value ...]** - Set or display environment variables
+- **env** - Display all environment variables
+- **unset VAR [VAR ...]** - Unset environment variables
+
+## Variables and Command Substitution
+
+agfs-shell2 supports shell variables and command substitution, allowing you to capture command output and reuse it.
+
+### Variable Assignment
+
+```bash
+# Simple variable assignment
+name=Alice
+path=/local/data.txt
+
+# Variable assignment with command substitution
+content=$(cat /local/file.txt)
+count=$(echo "hello world" | wc -w)
+files=`ls /local`  # backtick syntax also supported
+```
+
+### Variable Expansion
+
+```bash
+# Simple variable expansion
+echo $name
+
+# Braced variable expansion (recommended)
+echo ${name}
+
+# Using variables in commands
+file=/local/test.txt
+cat $file
+```
+
+### Command Substitution
+
+Command substitution allows you to use the output of a command as part of another command:
+
+```bash
+# Using $() syntax (recommended)
+line_count=$(wc -l < /local/data.txt)
+echo "File has $line_count lines"
+
+# Using backticks (also supported)
+current_dir=`pwd`
+echo "Current directory: $current_dir"
+
+# Nested command substitution
+file_size=$(stat $(echo /local/test.txt))
+
+# With pipelines
+error_count=$(cat /local/log.txt | grep ERROR | wc -l)
+echo "Found $error_count errors"
+```
+
+### Examples
+
+```bash
+# Check if file exists before reading
+if stat /local/file.txt 2>/dev/null; then
+    content=$(cat /local/file.txt)
+    echo "File content: $content"
+fi
+
+# Count files in directory
+file_count=$(ls /local | wc -l)
+echo "Found $file_count files"
+
+# Process file based on variable
+input_file=/local/input.txt
+output_file=/local/output.txt
+cat $input_file | sort | uniq > $output_file
+
+# Dynamic path construction
+base=/local
+project=myproject
+echo "Project files:" > $base/$project/info.txt
+```
 
 ## Path Support
 
@@ -327,10 +411,11 @@ This is an experimental/educational project demonstrating:
 2. **Process composition**: How simple commands can be composed into complex operations
 3. **Pipeline execution**: How stdout of one process becomes stdin of the next
 4. **I/O Redirection**: Unix-style file redirection with `<`, `>`, and `>>`
-5. **Directory navigation**: Working directory concept with relative path resolution
-6. **Tab completion**: Interactive command and path completion using readline
-7. **AGFS Integration**: How to build applications using distributed/pluggable filesystems
-8. **Python implementation**: Pure Python implementation without subprocess module
+5. **Variables and substitution**: Shell variable expansion and command substitution
+6. **Directory navigation**: Working directory concept with relative path resolution
+7. **Tab completion**: Interactive command and path completion using readline
+8. **AGFS Integration**: How to build applications using distributed/pluggable filesystems
+9. **Python implementation**: Pure Python implementation without subprocess module
 
 ### Key Design Decisions
 
@@ -349,10 +434,13 @@ This is an experimental/educational project demonstrating:
 - ✅ Append redirection (`>>`)
 - ✅ Error redirection (`2>`, `2>>`)
 - ✅ Combining pipelines with redirections
+- ✅ Shell variables (`VAR=value`, `$VAR`, `${VAR}`)
+- ✅ Command substitution (`$(command)`, backticks)
+- ✅ Environment variable management (`export`, `env`, `unset`)
 - ✅ Directory navigation (`cd` command)
 - ✅ Relative path support (`.`, `..`, relative files)
 - ✅ Tab completion for commands and paths
-- ✅ 14 built-in commands (cd, pwd, ls, cat, mkdir, rm, echo, grep, wc, head, tail, sort, uniq, tr)
+- ✅ 18 built-in commands (cd, pwd, ls, cat, mkdir, rm, stat, echo, grep, wc, head, tail, sort, uniq, tr, export, env, unset)
 - ✅ Interactive REPL mode with dynamic prompt
 - ✅ Script file execution (shebang support)
 - ✅ Non-interactive command execution (-c flag)

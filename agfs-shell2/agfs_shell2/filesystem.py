@@ -178,6 +178,25 @@ class AGFSFileSystem:
             # SDK error already includes path, don't duplicate it
             raise AGFSClientError(str(e))
 
+    def get_file_info(self, path: str):
+        """
+        Get file/directory information
+
+        Args:
+            path: File or directory path in AGFS
+
+        Returns:
+            Dict containing file information (name, size, mode, modTime, isDir, etc.)
+
+        Raises:
+            AGFSClientError: If file/directory does not exist
+        """
+        try:
+            return self.client.stat(path)
+        except AGFSClientError as e:
+            # SDK error already includes path, don't duplicate it
+            raise AGFSClientError(str(e))
+
     def get_error_message(self, error: Exception) -> str:
         """
         Get user-friendly error message
