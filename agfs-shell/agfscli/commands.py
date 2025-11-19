@@ -66,9 +66,10 @@ class PipelineCommand(ABC):
 class CommandHandler:
     """Handler for REPL commands"""
 
-    def __init__(self, client):
+    def __init__(self, client, prompt_session=None):
         self.client = client
         self.current_path = "/"
+        self.prompt_session = prompt_session  # Store prompt session for heredoc paste support
         self.commands = {
             "help": self.cmd_help,
             "?": self.cmd_help,
@@ -119,6 +120,10 @@ class CommandHandler:
             return True
 
         try:
+            # Check for heredoc (<<) operator
+            if "<<" in line and "|" not in line:
+                return self._handle_heredoc(line)
+
             # Check for pipe operator
             if "|" in line:
                 return self._execute_pipeline(line)
@@ -736,6 +741,141 @@ class CommandHandler:
 
         return False
 
+    def _handle_heredoc(self, line: str) -> bool:
+        """
+        Handle heredoc (<<) syntax for multi-line input.
+
+        Syntax: command << DELIMITER > file
+                command << DELIMITER >> file
+
+        Collects lines until DELIMITER is encountered, then executes the command
+        with the collected content.
+
+        Args:
+            line: Command line containing << operator
+
+        Returns:
+            True to continue REPL, False to exit
+        """
+        # Parse the command line to extract delimiter
+        # Format: cmd << DELIMITER > file  OR  cmd << DELIMITER >> file
+        heredoc_match = re.search(r'<<\s*([A-Za-z_][A-Za-z0-9_]*)', line)
+        if not heredoc_match:
+            console.print("Syntax error: heredoc delimiter must be an identifier", highlight=False)
+            return True
+
+        delimiter = heredoc_match.group(1)
+
+        # Get the part after << DELIMITER
+        after_heredoc = line[heredoc_match.end():].strip()
+
+        # Parse the command and find the redirection operator
+        redirect_op = None
+        redirect_target = None
+
+        if ">>" in after_heredoc:
+            idx = after_heredoc.index(">>")
+            redirect_op = ">>"
+            redirect_target = after_heredoc[idx + 2:].strip()
+        elif ">" in after_heredoc:
+            idx = after_heredoc.index(">")
+            redirect_op = ">"
+            redirect_target = after_heredoc[idx + 1:].strip()
+
+        if not redirect_target:
+            console.print("Syntax error: heredoc requires redirection after delimiter (e.g., cat << EOF > file)", highlight=False)
+            return True
+
+        # Collect heredoc input
+        import sys
+        lines = []
+
+        # Use the stored prompt session if available (for better paste support)
+        if self.prompt_session:
+            # Use the main prompt session for heredoc input
+            # This allows pasted content to be properly handled
+            while True:
+                try:
+                    input_line = self.prompt_session.prompt("> ")
+                    # Check if line matches delimiter exactly (bash behavior)
+                    if input_line == delimiter:
+                        break
+                    lines.append(input_line)
+                except KeyboardInterrupt:
+                    console.print("\n[yellow]Heredoc cancelled[/yellow]", highlight=False)
+                    return True
+                except EOFError:
+                    console.print("\n[yellow]Warning: heredoc terminated by EOF[/yellow]", highlight=False)
+                    break
+        else:
+            # Fallback for when no prompt_session is available
+            try:
+                from prompt_toolkit import PromptSession
+                from prompt_toolkit.history import InMemoryHistory
+
+                # Create a simple session for heredoc input (no history persistence)
+                heredoc_session = PromptSession(history=InMemoryHistory())
+
+                while True:
+                    try:
+                        input_line = heredoc_session.prompt("> ")
+                        # Check if line matches delimiter exactly (bash behavior)
+                        if input_line == delimiter:
+                            break
+                        lines.append(input_line)
+                    except KeyboardInterrupt:
+                        console.print("\n[yellow]Heredoc cancelled[/yellow]", highlight=False)
+                        return True
+                    except EOFError:
+                        console.print("\n[yellow]Warning: heredoc terminated by EOF[/yellow]", highlight=False)
+                        break
+            except ImportError:
+                # Ultimate fallback if prompt_toolkit is not available
+                while True:
+                    try:
+                        input_line = input("> ")
+                        # Check if line matches delimiter exactly (bash behavior)
+                        if input_line == delimiter:
+                            break
+                        lines.append(input_line)
+                    except KeyboardInterrupt:
+                        console.print("\n[yellow]Heredoc cancelled[/yellow]", highlight=False)
+                        return True
+                    except EOFError:
+                        console.print("\n[yellow]Warning: heredoc terminated by EOF[/yellow]", highlight=False)
+                        break
+
+        # Join lines with newlines to form heredoc content
+        # Note: In bash, heredoc always adds content line by line, each ending with \n
+        # But we skip the final \n to avoid an empty line at the end for NDJSON compatibility
+        heredoc_content = "\n".join(lines) if lines else ""
+
+        # Resolve target path
+        target_path = self._resolve_path(redirect_target)
+
+        # Execute the write operation
+        try:
+            content_bytes = heredoc_content.encode('utf-8')
+
+            if redirect_op == ">>":
+                # Append mode
+                try:
+                    existing = self.client.cat(target_path)
+                    content_bytes = existing + content_bytes
+                except:
+                    # File doesn't exist, just use new content
+                    pass
+
+            # Write the content
+            msg = self.client.write(target_path, content_bytes)
+            if msg:
+                console.print(msg, highlight=False)
+
+        except Exception as e:
+            console.print(self._format_error("heredoc", target_path, e), highlight=False)
+
+        return True
+
     def _format_error(self, cmd: str, path: str, error: Exception) -> str:
         """Format error message in Unix style"""
         # Handle AGFSClientError - already formatted nicely
@@ -801,6 +941,8 @@ class CommandHandler:
             ("  write --stream <file>", "Stream write from stdin (use outside REPL)"),
             ("  echo <content> > <file>", "Write content to file"),
             ("  echo <content> >> <file>", "Append content to file"),
+            ("  cat << EOF > <file>", "Write multi-line content (heredoc)"),
+            ("  cat << EOF >> <file>", "Append multi-line content (heredoc)"),
             ("  mkdir <dir>", "Create directory"),
             ("  rm [-r] <path>", "Remove file/directory"),
             ("  touch <file>", "Create empty file"),
@@ -870,6 +1012,16 @@ class CommandHandler:
             (
                 "  echo 'select count(*)' > /sqlfs/q > /s3/backup.txt",
                 "Query, save to S3",
+            ),
+            ("", ""),
+            ("Heredoc Examples (multi-line input)", ""),
+            (
+                "  cat << EOF > /sqlfs2/mydb/users/insert_json",
+                "Insert JSON data via heredoc",
+            ),
+            (
+                "  cat << END >> /data/config.json",
+                "Append multi-line content",
             ),
             ("", ""),
             ("Streaming Examples (outside REPL)", ""),

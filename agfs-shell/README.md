@@ -8,6 +8,7 @@ Interactive command-line client for AGFS (Plugin-based File System) Server
 - **Unix-like Commands**: ls, cd, cat, mkdir, rm, mv, chmod, cp, etc.
 - **Pipeline Support**: Chain commands together with `|` operator for data flow
 - **Chained Redirection**: Chain multiple redirections for data transformation (e.g., `echo 'query' > file1 > file2`)
+- **Heredoc Support**: Multi-line input with `<< EOF` syntax for writing complex content
 - **Tee Command**: Split data flow to multiple destinations while passing through (`echo 'hello' | tee output`)
 - **File Streaming**: Stream file contents for video/audio playback and continuous data feeds
 - **Upload/Download**: Transfer files between local filesystem and AGFS
@@ -172,6 +173,82 @@ agfs:/> cat /file2.txt >> /combined.txt
 agfs:/> echo "Hello World" > /greeting.txt
 agfs:/> echo "More text" >> /greeting.txt
 ```
+
+### Heredoc (Multi-line Input)
+
+Use heredoc syntax to write multi-line content to files (bash-compatible syntax):
+
+```bash
+# Write multi-line JSON using heredoc
+agfs:/> cat << EOF > /sqlfs2/mydb/users/insert_json
+> {"id": 1, "name": "Alice", "email": "alice@example.com"}
+> {"id": 2, "name": "Bob", "email": "bob@example.com"}
+> {"id": 3, "name": "Carol", "email": "carol@example.com"}
+> EOF
+
+# Append multi-line content
+agfs:/> cat << END >> /data/config.json
+> {
+>   "timeout": 30,
+>   "retries": 3
+> }
+> END
+
+# Write script content
+agfs:/> cat << SCRIPT > /scripts/process.sh
+> #!/bin/bash
+> echo "Processing data..."
+> cat input.txt | grep "pattern" > output.txt
+> SCRIPT
+```
+
+**How Heredoc Works:**
+1. Type the command with `<< DELIMITER` followed by `>` or `>>` and the target file
+2. Enter your multi-line content **line by line** (press Enter after each line)
+3. Type the delimiter on a line by itself to finish
+4. Content is automatically written to the specified file
+
+**⚠️ IMPORTANT: Heredoc and Pasting**
+
+Heredoc in REPL mode is designed for **interactive line-by-line input**, not for pasting multi-line content.
+
+**Why pasting doesn't work:**
+- When you paste multi-line heredoc, all lines (including the delimiter) are read as content
+- This is a limitation of how REPL processes input buffer
+
+**✅ Recommended alternatives for pasting:**
+
+1. **Use `upload` command** (Best for files):
+   ```bash
+   # Create a local file with your content
+   $ cat > /tmp/data.ndjson
+   {"id":1,"name":"test1"}
+   {"id":2,"name":"test2"}
+
+   # Upload it
+   agfs:/> upload /tmp/data.ndjson /sqlfs2/mydb/users/insert_json
+   ```
+
+2. **Use `echo` with multi-line string** (For small content):
+   ```bash
+   agfs:/> echo '{"id":1,"name":"test1"}
+   {"id":2,"name":"test2"}' > /sqlfs2/mydb/users/insert_json
+   ```
+
+3. **Type heredoc line by line** (Don't paste):
+   ```bash
+   agfs:/> cat << EOF > /sqlfs2/mydb/users/insert_json
+   > {"id":1,"name":"test1"}    # Type this line manually
+   > {"id":2,"name":"test2"}    # Type this line manually
+   > EOF                        # Type this line manually
+   ```
+
+**Supported Features:**
+- Works with both `>` (write) and `>>` (append) operators
+- Any alphanumeric delimiter (e.g., `EOF`, `END`, `DELIMITER`)
+- Press Ctrl+C to cancel heredoc input
+- Automatically handles NDJSON format for streaming data
+- Bash-compatible syntax: `cat << EOF > file`
 
 ### Pipelines and Chained Redirections
 

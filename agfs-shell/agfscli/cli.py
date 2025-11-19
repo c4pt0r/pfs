@@ -121,12 +121,6 @@ def start_repl(api_base_url: str):
         console.print(f"Failed to connect to {api_base_url}\n{e}", highlight=False)
         sys.exit(1)
 
-    # Initialize command handler
-    handler = CommandHandler(client)
-
-    # Setup custom completer with file path support
-    completer = AGFSCompleter(handler)
-
     # Setup history file with fallback to temp file
     default_history = "~/.agfscli_history"
     history_path = os.path.expanduser(default_history)
@@ -151,13 +145,31 @@ def start_repl(api_base_url: str):
         )
         history = FileHistory(temp_history_path)
 
-    # Setup prompt session
+    # Setup prompt session with paste mode enabled
+    session = PromptSession(
+        history=history,
+        auto_suggest=AutoSuggestFromHistory(),
+        complete_while_typing=True,
+        enable_open_in_editor=False,  # Disable editor mode
+        multiline=False,  # Single line mode
+    )
+
+    # Initialize command handler with the prompt session (for heredoc paste support)
+    handler = CommandHandler(client, prompt_session=session)
+
+    # Setup custom completer with file path support
+    completer = AGFSCompleter(handler)
+
+    # Update session with completer
     session = PromptSession(
         history=history,
         auto_suggest=AutoSuggestFromHistory(),
         completer=completer,
         complete_while_typing=True,
     )
+
+    # Update handler with the new session that has completer
+    handler.prompt_session = session
 
     # REPL loop
     while True:

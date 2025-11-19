@@ -198,8 +198,12 @@ class AGFSClient:
                 if hasattr(e, 'response') and e.response is not None:
                     status_code = e.response.status_code
 
-                    # Server errors (5xx) are retryable
-                    if 500 <= status_code < 600:
+                    # Only retry specific server errors that indicate temporary issues
+                    # 502 Bad Gateway, 503 Service Unavailable, 504 Gateway Timeout
+                    # Do NOT retry 500 Internal Server Error (usually indicates business logic errors)
+                    retryable_5xx = [502, 503, 504]
+
+                    if status_code in retryable_5xx:
                         last_error = e
 
                         if attempt < max_retries:
@@ -211,7 +215,8 @@ class AGFSClient:
                             print(f"✗ Upload failed after {max_retries + 1} attempts")
                             self._handle_request_error(e)
                     else:
-                        # Client errors (4xx) are not retryable
+                        # 500 and other errors (including 4xx) are not retryable
+                        # They usually indicate business logic errors or client mistakes
                         self._handle_request_error(e)
                 else:
                     self._handle_request_error(e)

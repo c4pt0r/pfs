@@ -228,12 +228,6 @@ func (fs *sqlfs2FS) Write(path string, data []byte) ([]byte, error) {
 			return nil, fmt.Errorf("invalid path for insert_json: %s", path)
 		}
 
-		// Parse JSON data
-		var jsonData interface{}
-		if err := json.Unmarshal(data, &jsonData); err != nil {
-			return nil, fmt.Errorf("invalid JSON: %w", err)
-		}
-
 		// Get table columns
 		columns, err := fs.plugin.backend.GetTableColumns(fs.plugin.db, dbName, tableName)
 		if err != nil {
@@ -244,38 +238,99 @@ func (fs *sqlfs2FS) Write(path string, data []byte) ([]byte, error) {
 			return nil, fmt.Errorf("no columns found for table %s", tableName)
 		}
 
-		// Handle both single object and array of objects
-		var records []map[string]interface{}
-		switch v := jsonData.(type) {
-		case map[string]interface{}:
-			// Single JSON object
-			records = append(records, v)
-		case []interface{}:
-			// Array of JSON objects
-			for i, item := range v {
-				if record, ok := item.(map[string]interface{}); ok {
-					records = append(records, record)
-				} else {
-					return nil, fmt.Errorf("element at index %d is not a JSON object", i)
-				}
-			}
-		default:
-			return nil, fmt.Errorf("JSON must be an object or array of objects")
-		}
-
-		if len(records) == 0 {
-			return nil, fmt.Errorf("no records to insert")
-		}
-
 		// Build column names list
 		columnNames := make([]string, len(columns))
 		for i, col := range columns {
 			columnNames[i] = col.Name
 		}
 
+		// Try to detect stream mode (NDJSON - Newline Delimited JSON)
+		// Stream mode: each line is a complete JSON object
+		dataStr := string(data)
+
+		// Don't trim the entire string first, split directly
+		lines := strings.Split(dataStr, "\n")
+
+		// Filter out empty lines for counting
+		nonEmptyLines := 0
+		firstNonEmptyIdx := -1
+		for i, line := range lines {
+			if strings.TrimSpace(line) != "" {
+				nonEmptyLines++
+				if firstNonEmptyIdx == -1 {
+					firstNonEmptyIdx = i
+				}
+			}
+		}
+
+		isStreamMode := false
+		if nonEmptyLines > 1 && firstNonEmptyIdx >= 0 {
+			// Check if first non-empty line is a valid JSON object (not array)
+			var testObj map[string]interface{}
+			firstLine := strings.TrimSpace(lines[firstNonEmptyIdx])
+			if err := json.Unmarshal([]byte(firstLine), &testObj); err == nil {
+				// Also check it's not a JSON array
+				isStreamMode = true
+			}
+		}
+
+		var records []map[string]interface{}
+		var streamErrors []string
+
+		if isStreamMode {
+			// Stream mode: parse line by line (NDJSON format)
+			for lineNum, line := range lines {
+				line = strings.TrimSpace(line)
+				if line == "" {
+					continue
+				}
+
+				var record map[string]interface{}
+				if err := json.Unmarshal([]byte(line), &record); err != nil {
+					streamErrors = append(streamErrors, fmt.Sprintf("line %d: %v", lineNum+1, err))
+					continue
+				}
+				records = append(records, record)
+			}
+		} else {
+			// Normal mode: parse as single JSON or JSON array
+			var jsonData interface{}
+			if err := json.Unmarshal(data, &jsonData); err != nil {
+				return nil, fmt.Errorf("invalid JSON: %w", err)
+			}
+
+			// Handle both single object and array of objects
+			switch v := jsonData.(type) {
+			case map[string]interface{}:
+				// Single JSON object
+				records = append(records, v)
+			case []interface{}:
+				// Array of JSON objects
+				for i, item := range v {
+					if record, ok := item.(map[string]interface{}); ok {
+						records = append(records, record)
+					} else {
+						return nil, fmt.Errorf("element at index %d is not a JSON object", i)
+					}
+				}
+			default:
+				return nil, fmt.Errorf("JSON must be an object or array of objects")
+			}
+		}
+
+		if len(records) == 0 {
+			if len(streamErrors) > 0 {
+				return nil, fmt.Errorf("no valid records found. Errors: %s", strings.Join(streamErrors, "; "))
+			}
+			return nil, fmt.Errorf("no records to insert")
+		}
+
 		// Execute inserts
 		insertedCount := 0
-		for _, record := range records {
+		failedCount := 0
+		var insertErrors []string
+
+		for idx, record := range records {
 			// Build values list matching column order
 			values := make([]interface{}, len(columnNames))
 			for i, colName := range columnNames {
@@ -300,7 +355,13 @@ func (fs *sqlfs2FS) Write(path string, data []byte) ([]byte, error) {
 			// Execute insert
 			_, err := fs.plugin.db.Exec(insertSQL, values...)
 			if err != nil {
-				return nil, fmt.Errorf("insert error at record %d: %w", insertedCount, err)
+				failedCount++
+				insertErrors = append(insertErrors, fmt.Sprintf("record %d: %v", idx+1, err))
+				// In stream mode, continue on error; in normal mode, fail fast
+				if !isStreamMode {
+					return nil, fmt.Errorf("insert error at record %d: %w", idx+1, err)
+				}
+				continue
 			}
 			insertedCount++
 		}
@@ -308,6 +369,19 @@ func (fs *sqlfs2FS) Write(path string, data []byte) ([]byte, error) {
 		// Return success response
 		response := map[string]interface{}{
 			"inserted_count": insertedCount,
+			"mode":           "normal",
+		}
+
+		if isStreamMode {
+			response["mode"] = "stream"
+			response["total_lines"] = len(lines)
+			if failedCount > 0 {
+				response["failed_count"] = failedCount
+				response["errors"] = insertErrors
+			}
+			if len(streamErrors) > 0 {
+				response["parse_errors"] = streamErrors
+			}
 		}
 
 		output, err := json.MarshalIndent(response, "", "  ")
@@ -654,6 +728,10 @@ FILES:
   query       - Write-only file for SELECT queries (returns JSON results)
   execute     - Write-only file for DML statements (INSERT/UPDATE/DELETE)
   insert_json - Write-only file for inserting JSON documents (auto-generates INSERT statements)
+                Supports 3 modes (auto-detected):
+                1. Single JSON object: {"name": "Alice"}
+                2. JSON array: [{"name": "Bob"}, {"name": "Carol"}]
+                3. NDJSON stream: {"name": "Alice"}\n{"name": "Bob"}\n (newline-delimited)
 
 CONFIGURATION:
 
@@ -737,6 +815,13 @@ USAGE:
   Insert JSON array (multiple records):
     echo '[{"name": "Bob", "email": "bob@example.com"}, {"name": "Carol", "email": "carol@example.com"}]' > /sqlfs2/mydb/users/insert_json
 
+  Insert using NDJSON stream mode (auto-detected when input has newline-separated JSON objects):
+    cat data.ndjson > /sqlfs2/mydb/users/insert_json
+    # data.ndjson format:
+    # {"name": "Alice", "email": "alice@example.com"}
+    # {"name": "Bob", "email": "bob@example.com"}
+    # {"name": "Carol", "email": "carol@example.com"}
+
   List databases:
     ls /sqlfs2/
 
@@ -780,7 +865,20 @@ EXAMPLES:
   # Insert multiple records using JSON array
   agfs:/> echo '[{"id": 3, "name": "Carol"}, {"id": 4, "name": "Dave"}]' > /sqlfs2/main/test/insert_json
   {
-    "inserted_count": 2
+    "inserted_count": 2,
+    "mode": "normal"
+  }
+
+  # Insert using NDJSON stream mode (newline-delimited JSON)
+  agfs:/> cat <<EOF > /sqlfs2/main/test/insert_json
+  {"id": 5, "name": "Eve"}
+  {"id": 6, "name": "Frank"}
+  {"id": 7, "name": "Grace"}
+  EOF
+  {
+    "inserted_count": 3,
+    "mode": "stream",
+    "total_lines": 3
   }
 
   # Verify the inserts
@@ -809,6 +907,7 @@ ADVANTAGES:
   - Supports SQLite, MySQL, and TiDB backends
   - JSON output for query results
   - Auto-generate INSERT statements from JSON documents
+  - NDJSON streaming support for large data imports
   - Simple and intuitive interface
   - TLS support for secure TiDB Cloud connections
 
@@ -818,6 +917,7 @@ USE CASES:
   - Integration with shell scripts
   - Quick database operations without SQL client
   - Import JSON data without writing SQL INSERT statements
+  - Stream large NDJSON files directly into database
 `
 }
 
