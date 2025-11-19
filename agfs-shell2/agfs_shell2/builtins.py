@@ -4,6 +4,7 @@ import re
 import os
 from typing import List
 from .process import Process
+from .command_decorators import command
 
 
 def _mode_to_rwx(mode: int) -> str:
@@ -27,6 +28,7 @@ def _mode_to_rwx(mode: int) -> str:
     return _triple(user) + _triple(group) + _triple(other)
 
 
+@command()
 def cmd_echo(process: Process) -> int:
     """Echo arguments to stdout"""
     if process.args:
@@ -37,6 +39,7 @@ def cmd_echo(process: Process) -> int:
     return 0
 
 
+@command(needs_path_resolution=True, supports_streaming=True)
 def cmd_cat(process: Process) -> int:
     """
     Concatenate and print files or stdin (streaming mode)
@@ -101,6 +104,7 @@ def cmd_cat(process: Process) -> int:
     return 0
 
 
+@command()
 def cmd_grep(process: Process) -> int:
     """
     Search for pattern in stdin
@@ -128,6 +132,7 @@ def cmd_grep(process: Process) -> int:
     return 0 if matched else 1
 
 
+@command()
 def cmd_wc(process: Process) -> int:
     """
     Count lines, words, and bytes
@@ -173,6 +178,7 @@ def cmd_wc(process: Process) -> int:
     return 0
 
 
+@command()
 def cmd_head(process: Process) -> int:
     """
     Output the first part of files
@@ -203,6 +209,7 @@ def cmd_head(process: Process) -> int:
     return 0
 
 
+@command()
 def cmd_tail(process: Process) -> int:
     """
     Output the last part of files
@@ -233,6 +240,7 @@ def cmd_tail(process: Process) -> int:
     return 0
 
 
+@command()
 def cmd_sort(process: Process) -> int:
     """
     Sort lines of text
@@ -251,6 +259,7 @@ def cmd_sort(process: Process) -> int:
     return 0
 
 
+@command()
 def cmd_uniq(process: Process) -> int:
     """
     Report or omit repeated lines
@@ -272,6 +281,7 @@ def cmd_uniq(process: Process) -> int:
     return 0
 
 
+@command()
 def cmd_tr(process: Process) -> int:
     """
     Translate characters
@@ -300,6 +310,7 @@ def cmd_tr(process: Process) -> int:
     return 0
 
 
+@command(needs_path_resolution=True)
 def cmd_ls(process: Process) -> int:
     """
     List directory contents
@@ -386,6 +397,7 @@ def cmd_ls(process: Process) -> int:
         return 1
 
 
+@command()
 def cmd_pwd(process: Process) -> int:
     """
     Print working directory
@@ -398,6 +410,7 @@ def cmd_pwd(process: Process) -> int:
     return 0
 
 
+@command(no_pipeline=True, changes_cwd=True, needs_path_resolution=True)
 def cmd_cd(process: Process) -> int:
     """
     Change directory
@@ -425,6 +438,7 @@ def cmd_cd(process: Process) -> int:
     return 0
 
 
+@command(needs_path_resolution=True)
 def cmd_mkdir(process: Process) -> int:
     """
     Create directory
@@ -451,6 +465,7 @@ def cmd_mkdir(process: Process) -> int:
         return 1
 
 
+@command(needs_path_resolution=True)
 def cmd_rm(process: Process) -> int:
     """
     Remove file or directory
@@ -488,6 +503,7 @@ def cmd_rm(process: Process) -> int:
         return 1
 
 
+@command()
 def cmd_export(process: Process) -> int:
     """
     Set or display environment variables
@@ -522,6 +538,7 @@ def cmd_export(process: Process) -> int:
     return 0
 
 
+@command()
 def cmd_env(process: Process) -> int:
     """
     Display all environment variables
@@ -534,6 +551,7 @@ def cmd_env(process: Process) -> int:
     return 0
 
 
+@command()
 def cmd_unset(process: Process) -> int:
     """
     Unset environment variables

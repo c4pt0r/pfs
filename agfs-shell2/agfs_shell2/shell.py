@@ -10,6 +10,7 @@ from .process import Process
 from .streams import InputStream, OutputStream, ErrorStream
 from .builtins import get_builtin
 from .filesystem import AGFSFileSystem
+from .command_decorators import CommandMetadata
 from pyagfs import AGFSClientError
 
 
@@ -47,8 +48,8 @@ class Shell:
             for i, (cmd, args) in enumerate(commands):
                 executor = get_builtin(cmd)
 
-                # Resolve paths for file commands
-                if cmd in ('cat', 'ls', 'mkdir', 'rm'):
+                # Resolve paths for file commands (using metadata instead of hardcoded list)
+                if CommandMetadata.needs_path_resolution(cmd):
                     resolved_args = []
                     for arg in args:
                         if arg.startswith('-'):
@@ -253,7 +254,8 @@ class Shell:
             return 0
 
         # Special handling for cd command (must be a single command, not in pipeline)
-        if len(commands) == 1 and commands[0][0] == 'cd':
+        # Using metadata instead of hardcoded check
+        if len(commands) == 1 and CommandMetadata.changes_cwd(commands[0][0]):
             cmd, args = commands[0]
             # Resolve target path
             target = args[0] if args else '/'
@@ -294,8 +296,8 @@ class Shell:
             executor = get_builtin(cmd)
 
             # Resolve relative paths in arguments (for file-related commands)
-            # Commands that typically take file paths: cat, ls, mkdir, rm
-            if cmd in ('cat', 'ls', 'mkdir', 'rm'):
+            # Using metadata instead of hardcoded list
+            if CommandMetadata.needs_path_resolution(cmd):
                 resolved_args = []
                 for arg in args:
                     # Skip flags (starting with -)
@@ -337,11 +339,12 @@ class Shell:
             processes.append(process)
 
         # Special case: direct streaming from stdin to file
-        # When: single 'cat' command with no args, stdin from pipe, output to file
+        # When: single streaming-capable command with no args, stdin from pipe, output to file
         # Implementation: Loop and write chunks (like agfs-shell's write --stream)
+        # Using metadata instead of hardcoded check for 'cat'
         if ('stdout' in redirections and
             len(processes) == 1 and
-            processes[0].command == 'cat' and
+            CommandMetadata.supports_streaming(processes[0].command) and
             not processes[0].args and
             stdin_data is None):
 

@@ -149,6 +149,7 @@ INSTRUCTIONS:
    - Technical insights (if applicable)
    - Significance and implications
    - Your analysis and commentary
+   - Using Chinese to summary
 
 3. Format your response as JSON with this structure:
 {{
@@ -167,7 +168,7 @@ INSTRUCTIONS:
     ]
 }}
 
-4. Save your complete JSON results to agfs(use agfs tool to upload): {results_path}/{task_id}/agent-{agent_name}.json
+4. Save your complete JSON results to !!!!agfs!!!! not local file system (use agfs tool to upload): {results_path}/{task_id}/agent-{agent_name}.json
 
 Use the WebFetch tool to retrieve article content. Focus on extracting meaningful insights.
 """
