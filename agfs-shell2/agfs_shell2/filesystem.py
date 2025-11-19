@@ -1,6 +1,7 @@
 """AGFS File System abstraction layer"""
 
-from typing import Optional, Iterator, Union, BinaryIO
+from typing import BinaryIO, Iterator, Optional, Union
+
 from pyagfs import AGFSClient, AGFSClientError
 
 
@@ -31,7 +32,9 @@ class AGFSFileSystem:
         except AGFSClientError:
             return False
 
-    def read_file(self, path: str, offset: int = 0, size: int = -1, stream: bool = False) -> Union[bytes, Iterator[bytes]]:
+    def read_file(
+        self, path: str, offset: int = 0, size: int = -1, stream: bool = False
+    ) -> Union[bytes, Iterator[bytes]]:
         """
         Read file content from AGFS
 
@@ -50,9 +53,24 @@ class AGFSFileSystem:
         """
         try:
             if stream:
-                # Return streaming response iterator
-                response = self.client.cat(path, offset=offset, size=size, stream=True)
-                return response.iter_content(chunk_size=8192)
+                # Try streaming mode on server side first
+                try:
+                    response = self.client.cat(
+                        path, offset=offset, size=size, stream=True
+                    )
+                    return response.iter_content(chunk_size=8192)
+                except AGFSClientError as e:
+                    # Fallback to regular read and simulate streaming
+                    content = self.client.cat(
+                        path, offset=offset, size=size, stream=False
+                    )
+
+                    # Return iterator that yields chunks
+                    def chunk_generator(data, chunk_size=8192):
+                        for i in range(0, len(data), chunk_size):
+                            yield data[i : i + chunk_size]
+
+                    return chunk_generator(content)
             else:
                 # Return all content at once
                 return self.client.cat(path, offset=offset, size=size)
@@ -60,7 +78,12 @@ class AGFSFileSystem:
             # SDK error already includes path, don't duplicate it
             raise AGFSClientError(str(e))
 
-    def write_file(self, path: str, data: Union[bytes, Iterator[bytes], BinaryIO], append: bool = False) -> None:
+    def write_file(
+        self,
+        path: str,
+        data: Union[bytes, Iterator[bytes], BinaryIO],
+        append: bool = False,
+    ) -> None:
         """
         Write data to file in AGFS
 
@@ -80,15 +103,17 @@ class AGFSFileSystem:
                     existing = self.client.cat(path)
                 except AGFSClientError:
                     # File doesn't exist, just write new data
-                    existing = b''
+                    existing = b""
 
                 # Collect data if it's streaming
-                if hasattr(data, '__iter__') and not isinstance(data, (bytes, bytearray)):
+                if hasattr(data, "__iter__") and not isinstance(
+                    data, (bytes, bytearray)
+                ):
                     chunks = [existing]
                     for chunk in data:
                         chunks.append(chunk)
-                    data = b''.join(chunks)
-                elif hasattr(data, 'read'):
+                    data = b"".join(chunks)
+                elif hasattr(data, "read"):
                     # File-like object
                     data = existing + data.read()
                 else:
@@ -130,7 +155,7 @@ class AGFSFileSystem:
         try:
             info = self.client.stat(path)
             # Check if it's a directory based on mode or isDir field
-            return info.get('isDir', False)
+            return info.get("isDir", False)
         except AGFSClientError:
             return False
 

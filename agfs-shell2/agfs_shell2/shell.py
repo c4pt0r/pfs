@@ -25,6 +25,7 @@ class Shell:
         self.console = Console(highlight=False)  # Rich console for output
         self.multiline_buffer = []  # Buffer for multiline input
         self.env = {}  # Environment variables
+        self.interactive = False  # Flag to indicate if running in interactive REPL mode
 
     def _execute_command_substitution(self, command: str) -> str:
         """
@@ -404,6 +405,10 @@ class Shell:
 
         # Output handling
         if 'stdout' not in redirections:
+            # Check if we need to add a newline
+            # Get the last process to check if output ended with newline
+            last_process = processes[-1] if processes else None
+
             # Only output if we used buffered output (not direct stdout)
             # When using OutputStream.from_stdout(), data was already written directly
             if stdout_data:
@@ -411,10 +416,22 @@ class Shell:
                     # Decode and use rich console for output
                     text = stdout_data.decode('utf-8', errors='replace')
                     self.console.print(text, end='', highlight=False)
+                    # Ensure output ends with newline (only in interactive mode)
+                    if self.interactive and text and not text.endswith('\n'):
+                        self.console.print(highlight=False)
                 except Exception:
                     # Fallback to raw output if decoding fails
                     sys.stdout.buffer.write(stdout_data)
                     sys.stdout.buffer.flush()
+                    # Ensure output ends with newline (only in interactive mode)
+                    if self.interactive and stdout_data and not stdout_data.endswith(b'\n'):
+                        sys.stdout.write('\n')
+                        sys.stdout.flush()
+            elif last_process and hasattr(last_process.stdout, 'ends_with_newline'):
+                # When using from_stdout() (direct output), check if we need newline (only in interactive mode)
+                if self.interactive and not last_process.stdout.ends_with_newline():
+                    sys.stdout.write('\n')
+                    sys.stdout.flush()
 
         # Handle error redirection (2>)
         if 'stderr' in redirections:
@@ -447,6 +464,9 @@ class Shell:
 
     def repl(self):
         """Run interactive REPL"""
+        # Set interactive mode flag
+        self.interactive = True
+
         self.console.print("[bold cyan]agfs-shell2[/bold cyan] v0.1.0", highlight=False)
         self.console.print(f"Connected to AGFS server at [green]{self.server_url}[/green]", highlight=False)
 

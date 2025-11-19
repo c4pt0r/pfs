@@ -127,6 +127,22 @@ class OutputStream(Stream):
 
     def __init__(self, fd: Optional[Union[int, BinaryIO, TextIO]] = None):
         super().__init__(fd, mode='wb')
+        self._last_char = None  # Track last written character
+
+    def write(self, data: Union[bytes, str]) -> int:
+        """Write to stream and track last character"""
+        result = super().write(data)
+        # Track last character for newline checking
+        if data:
+            if isinstance(data, str):
+                data = data.encode('utf-8')
+            if len(data) > 0:
+                self._last_char = data[-1:]
+        return result
+
+    def ends_with_newline(self) -> bool:
+        """Check if the last written data ended with a newline"""
+        return self._last_char == b'\n' if self._last_char else True
 
     @classmethod
     def from_stdout(cls):
@@ -173,6 +189,7 @@ class AGFSOutputStream(OutputStream):
         self._fd = None
         self._file = None
         self._buffer = io.BytesIO()  # Temporary buffer
+        self._last_char = None  # Track last written character
         self.filesystem = filesystem
         self.path = path
         self.append = append
@@ -184,6 +201,10 @@ class AGFSOutputStream(OutputStream):
         if isinstance(data, str):
             data = data.encode('utf-8')
 
+        # Track last character for newline checking
+        if data and len(data) > 0:
+            self._last_char = data[-1:]
+
         # Add to chunks
         self._chunks.append(data)
         self._total_size += len(data)
@@ -192,6 +213,10 @@ class AGFSOutputStream(OutputStream):
         self._buffer.write(data)
 
         return len(data)
+
+    def ends_with_newline(self) -> bool:
+        """Check if the last written data ended with a newline"""
+        return self._last_char == b'\n' if self._last_char else True
 
     def flush(self):
         """Flush accumulated data to AGFS"""
