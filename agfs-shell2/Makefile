@@ -1,4 +1,4 @@
-.PHONY: build install clean uninstall help
+.PHONY: build install clean uninstall test help
 
 # Installation directory (can be overridden)
 INSTALL_DIR ?= $(HOME)/.local/agfs-shell2
@@ -11,6 +11,7 @@ help:
 	@echo "  make build      - Build portable distribution with uv"
 	@echo "  make install    - Install to $(INSTALL_DIR)"
 	@echo "  make uninstall  - Remove installation"
+	@echo "  make test       - Run tests with pytest"
 	@echo "  make clean      - Clean build artifacts"
 	@echo ""
 	@echo "Override installation directory:"
@@ -23,6 +24,10 @@ help:
 build:
 	@echo "Building portable agfs-shell2 distribution..."
 	@python3 build.py
+
+test:
+	@echo "Running tests with pytest..."
+	@uv run pytest tests/
 
 install: build
 	@echo "Installing agfs-shell2 to $(INSTALL_DIR)..."
