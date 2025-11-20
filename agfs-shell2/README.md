@@ -25,7 +25,7 @@ agfs-shell2 is a simple shell that demonstrates Unix pipeline concepts while int
 - **AGFS Integration**: All file operations use AGFS server (no local filesystem access)
 - **Streaming I/O**: Memory-efficient streaming for large files (8KB chunks)
 - **Stream handling**: Full STDIN/STDOUT/STDERR support
-- **Built-in commands**: cd, pwd, ls, cat, mkdir, rm, stat, echo, grep, wc, head, tail, sort, uniq, tr, export, env, unset, test, [
+- **Built-in commands**: cd, pwd, ls, cat, mkdir, rm, stat, echo, grep, wc, head, tail, sort, uniq, tr, jq, export, env, unset, test, [
 - **Interactive REPL**: Interactive shell mode with dynamic prompt showing current directory
 - **Script execution**: Support for shebang scripts (`#!/usr/bin/env uv run agfs-shell2`)
 - **Non-interactive mode**: Execute commands from command line with `-c` flag
@@ -155,7 +155,7 @@ uv run agfs-shell2 echo hello world
 
 ### Text Processing Commands
 - **echo [args...]** - Print arguments to stdout
-- **grep pattern** - Search for pattern in stdin
+- **grep [OPTIONS] PATTERN [FILE...]** - Search for patterns in files or stdin
 - **wc [-l] [-w] [-c]** - Count lines, words, and bytes
 - **head [-n count]** - Output first N lines (default 10)
 - **tail [-n count]** - Output last N lines (default 10)
@@ -163,10 +163,97 @@ uv run agfs-shell2 echo hello world
 - **uniq** - Remove duplicate adjacent lines
 - **tr set1 set2** - Translate characters
 
+### Pattern Matching with grep
+
+agfs-shell2 includes a powerful **grep** command for searching text:
+
+```bash
+# Basic search
+echo 'hello world' | grep hello
+
+# Search in files
+grep 'error' /local/app.log
+
+# Case-insensitive search (-i)
+grep -i 'ERROR' /local/app.log
+
+# Show line numbers (-n)
+grep -n 'function' /local/code.py
+
+# Count matches (-c)
+grep -c 'TODO' /local/*.py
+
+# Invert match (-v) - show non-matching lines
+grep -v 'debug' /local/app.log
+
+# Show only filenames (-l)
+grep -l 'import' /local/*.py
+
+# Multiple files (auto-shows filenames)
+grep 'pattern' /local/file1.txt /local/file2.txt
+
+# Regular expressions
+grep '^error' /local/app.log          # Lines starting with 'error'
+grep 'error$' /local/app.log          # Lines ending with 'error'
+grep 'er.or' /local/app.log           # Any character between 'er' and 'or'
+
+# Combine options
+grep -in 'error' /local/app.log       # Ignore case + line numbers
+grep -vc 'comment' /local/code.py     # Count non-matching lines
+```
+
+**Supported options:**
+- `-i` - Ignore case distinctions
+- `-v` - Invert match (select non-matching lines)
+- `-n` - Print line numbers with output
+- `-c` - Count matching lines
+- `-l` - Print only names of files with matches
+- `-h` - Suppress filename prefix (default for single file)
+- `-H` - Print filename prefix (default for multiple files)
+
 ### Environment Variables
 - **export [VAR=value ...]** - Set or display environment variables
 - **env** - Display all environment variables
 - **unset VAR [VAR ...]** - Unset environment variables
+
+### JSON Processing
+
+agfs-shell2 includes a built-in **jq** command for processing JSON data:
+
+```bash
+# Basic JSON formatting
+echo '{"name":"Alice","age":30}' | jq .
+
+# Extract specific field
+cat data.json | jq .name
+
+# Array iteration
+echo '{"users":["Alice","Bob"]}' | jq '.users[]'
+
+# Nested field access
+jq '.data.items[0].value' file.json
+
+# Select from array
+echo '[1,2,3,4,5]' | jq '.[]'
+
+# Get object keys
+echo '{"x":1,"y":2}' | jq 'keys'
+```
+
+**Supported operations**:
+- `.` - Identity (pretty-print)
+- `.field` - Field access
+- `.field.nested` - Nested access
+- `.[index]` - Array indexing
+- `.[]` - Array iteration
+- `keys` - Get object keys
+- `length` - Get array/object length
+- And most standard jq operations
+
+**Requirements**: The `jq` library must be installed:
+```bash
+uv pip install jq
+```
 
 ### Conditional Testing
 - **test EXPRESSION** - Evaluate conditional expressions
