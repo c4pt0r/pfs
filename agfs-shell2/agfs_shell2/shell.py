@@ -355,12 +355,10 @@ class Shell:
                         # Expand variables in items string first
                         items_str = self._expand_variables(items_str)
 
-                        # Split items (simple whitespace split for now)
-                        import shlex
-                        try:
-                            result['items'] = shlex.split(items_str)
-                        except:
-                            result['items'] = items_str.split()
+                        # Split items by whitespace
+                        # Use simple split() for word splitting after variable expansion
+                        # This mimics bash's word splitting behavior
+                        result['items'] = items_str.split()
                         first_for_parsed = True
                     else:
                         # Invalid for syntax
@@ -563,7 +561,16 @@ class Shell:
                 var_name = parts[0].strip()
                 # Check if it's a valid variable name (not a command with = in args)
                 if var_name and var_name.replace('_', '').isalnum() and not ' ' in var_name:
-                    var_value = self._expand_variables(parts[1].strip())
+                    var_value = parts[1].strip()
+
+                    # Remove outer quotes if present (both single and double)
+                    if len(var_value) >= 2:
+                        if (var_value[0] == '"' and var_value[-1] == '"') or \
+                           (var_value[0] == "'" and var_value[-1] == "'"):
+                            var_value = var_value[1:-1]
+
+                    # Expand variables after removing quotes
+                    var_value = self._expand_variables(var_value)
                     self.env[var_name] = var_value
                     return 0
 
