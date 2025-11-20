@@ -2,7 +2,7 @@
 
 import sys
 import os
-from typing import Optional
+from typing import Optional, List
 from rich.console import Console
 from .parser import CommandParser
 from .pipeline import Pipeline

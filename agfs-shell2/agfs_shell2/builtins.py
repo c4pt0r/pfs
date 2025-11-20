@@ -1124,26 +1124,12 @@ def cmd_upload(process: Process) -> int:
 def _upload_file(process: Process, local_path: str, agfs_path: str, show_progress: bool = True) -> int:
     """Helper: Upload a single file to AGFS"""
     try:
-        chunk_size = 8192
-        bytes_written = 0
-
         with open(local_path, 'rb') as f:
-            first_chunk = f.read(chunk_size)
-            if not first_chunk:
-                process.filesystem.write_file(agfs_path, b'', append=False)
-            else:
-                process.filesystem.write_file(agfs_path, first_chunk, append=False)
-                bytes_written += len(first_chunk)
-
-                while True:
-                    chunk = f.read(chunk_size)
-                    if not chunk:
-                        break
-                    process.filesystem.write_file(agfs_path, chunk, append=True)
-                    bytes_written += len(chunk)
+            data = f.read()
+            process.filesystem.write_file(agfs_path, data, append=False)
 
         if show_progress:
-            process.stdout.write(f"Uploaded {bytes_written} bytes to {agfs_path}\n")
+            process.stdout.write(f"Uploaded {len(data)} bytes to {agfs_path}\n")
             process.stdout.flush()
         return 0
 
@@ -1410,18 +1396,8 @@ def _cp_upload(process: Process, local_path: str, agfs_path: str, recursive: boo
             process.stdout.flush()
 
             # Upload file
-            chunk_size = 8192
             with open(local_path, 'rb') as f:
-                first_chunk = f.read(chunk_size)
-                if not first_chunk:
-                    process.filesystem.write_file(agfs_path, b'', append=False)
-                else:
-                    process.filesystem.write_file(agfs_path, first_chunk, append=False)
-                    while True:
-                        chunk = f.read(chunk_size)
-                        if not chunk:
-                            break
-                        process.filesystem.write_file(agfs_path, chunk, append=True)
+                process.filesystem.write_file(agfs_path, f.read(), append=False)
             return 0
 
         elif os.path.isdir(local_path):
@@ -1529,17 +1505,9 @@ def _cp_agfs(process: Process, source_path: str, dest_path: str, recursive: bool
             process.stdout.write(f"{source_path} -> {dest_path}\n")
             process.stdout.flush()
 
-            # Copy single file
-            stream = process.filesystem.read_file(source_path, stream=True)
-            first_chunk = True
-            for chunk in stream:
-                if chunk:
-                    process.filesystem.write_file(dest_path, chunk, append=(not first_chunk))
-                    first_chunk = False
-
-            # Handle empty file
-            if first_chunk:
-                process.filesystem.write_file(dest_path, b'', append=False)
+            # Copy single file - read all at once to avoid append overhead
+            data = process.filesystem.read_file(source_path, stream=False)
+            process.filesystem.write_file(dest_path, data, append=False)
 
             return 0
 
@@ -1591,15 +1559,9 @@ def _cp_agfs_dir(process: Process, source_path: str, dest_path: str) -> int:
                 process.stdout.write(f"{src_item} -> {dst_item}\n")
                 process.stdout.flush()
 
-                # Copy file
-                stream = process.filesystem.read_file(src_item, stream=True)
-                first_chunk = True
-                for chunk in stream:
-                    if chunk:
-                        process.filesystem.write_file(dst_item, chunk, append=(not first_chunk))
-                        first_chunk = False
-                if first_chunk:
-                    process.filesystem.write_file(dst_item, b'', append=False)
+                # Copy file - read all at once to avoid append overhead
+                data = process.filesystem.read_file(src_item, stream=False)
+                process.filesystem.write_file(dst_item, data, append=False)
 
         return 0
 
