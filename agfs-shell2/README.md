@@ -15,7 +15,7 @@ agfs-shell2 is a simple shell that demonstrates Unix pipeline concepts while int
 - **Variables**: Shell variable assignment and expansion (`VAR=value`, `$VAR`, `${VAR}`)
 - **Special variables**: `$?` for exit code of last command
 - **Command substitution**: Capture command output with `$(command)` or backticks
-- **Control flow**: if/then/elif/else/fi statements for conditional execution
+- **Control flow**: if/then/elif/else/fi statements and for/in/do/done loops
 - **Conditional testing**: `test` and `[ ]` commands for file, string, integer, and logical tests
 - **Multiline input**: Backslash continuation, unclosed quotes, and bracket matching like bash
 - **Directory navigation**: `cd` command with current working directory tracking
@@ -390,6 +390,58 @@ if [ $count -le 100 ]; then
 fi
 ```
 
+## For Loops (for/in/do/done)
+
+agfs-shell2 supports bash-style for loops to iterate over lists of items.
+
+### Syntax
+
+```bash
+# Basic for loop
+for var in item1 item2 item3; do
+  commands
+done
+
+# Multi-line syntax
+for var in item1 item2 item3
+do
+  commands
+done
+```
+
+### Examples
+
+```bash
+# Loop over numbers
+for i in 1 2 3 4 5; do
+  echo "Number: $i"
+done
+
+# Loop over words
+for fruit in apple banana cherry; do
+  echo "Fruit: $fruit"
+done
+
+# Loop with command substitution
+for file in $(ls /local); do
+  echo "File: $file"
+done
+
+# Loop with variable expansion
+items="red green blue"
+for color in $(echo $items); do
+  echo "Color: $color"
+done
+
+# Using loop variable in commands
+for name in Alice Bob Charlie; do
+  echo "Hello, $name!"
+  if [ "$name" = "Bob" ]; then
+    echo "  Special greeting for Bob"
+  fi
+done
+```
+
 ## Path Support
 
 agfs-shell2 supports both absolute and relative paths:
@@ -562,7 +614,7 @@ This is an experimental/educational project demonstrating:
 3. **Pipeline execution**: How stdout of one process becomes stdin of the next
 4. **I/O Redirection**: Unix-style file redirection with `<`, `>`, and `>>`
 5. **Variables and substitution**: Shell variable expansion, command substitution, and special variables ($?)
-6. **Control flow**: Conditional execution with if/then/elif/else/fi statements
+6. **Control flow**: Conditional execution (if/then/elif/else/fi) and loops (for/in/do/done)
 7. **Conditional testing**: File, string, and integer tests using test and [ ] commands
 8. **Directory navigation**: Working directory concept with relative path resolution
 9. **Tab completion**: Interactive command and path completion using readline
@@ -587,10 +639,11 @@ This is an experimental/educational project demonstrating:
 - ✅ Error redirection (`2>`, `2>>`)
 - ✅ Combining pipelines with redirections
 - ✅ Shell variables (`VAR=value`, `$VAR`, `${VAR}`)
+- ✅ Special variables (`$?` for exit code)
 - ✅ Command substitution (`$(command)`, backticks)
 - ✅ Environment variable management (`export`, `env`, `unset`)
-- ✅ Control flow (`if/then/elif/else/fi` statements)
-- ✅ Conditional testing (`test` and `[ ]` commands with file, string, and logical tests)
+- ✅ Control flow (`if/then/elif/else/fi` statements and `for/in/do/done` loops)
+- ✅ Conditional testing (`test` and `[ ]` commands with file, string, integer, and logical tests)
 - ✅ Directory navigation (`cd` command)
 - ✅ Relative path support (`.`, `..`, relative files)
 - ✅ Tab completion for commands and paths

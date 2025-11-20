@@ -28,16 +28,45 @@ def execute_script_file(shell, script_path):
             try:
                 exit_code = shell.execute(line)
 
+                # Check if for-loop needs to be collected
+                if exit_code == -997:
+                    # Collect for/do/done loop
+                    for_lines = [line]
+                    for_depth = 1  # Track nesting depth
+                    i += 1
+                    while i < len(lines):
+                        next_line = lines[i].strip()
+                        for_lines.append(next_line)
+                        # Count nested for loops
+                        if next_line.startswith('for '):
+                            for_depth += 1
+                        elif next_line == 'done':
+                            for_depth -= 1
+                            if for_depth == 0:
+                                break
+                        i += 1
+
+                    # Execute the for loop
+                    exit_code = shell.execute_for_loop(for_lines)
+                    if exit_code != 0:
+                        sys.stderr.write(f"Error at line {line_num}: for loop failed with exit code {exit_code}\n")
+                        return exit_code
                 # Check if if-statement needs to be collected
-                if exit_code == -998:
-                    # Collect if/then/else/fi statement
+                elif exit_code == -998:
+                    # Collect if/then/else/fi statement with depth tracking
                     if_lines = [line]
+                    if_depth = 1  # Track nesting depth
                     i += 1
                     while i < len(lines):
                         next_line = lines[i].strip()
                         if_lines.append(next_line)
-                        if next_line == 'fi':
-                            break
+                        # Track nested if statements
+                        if next_line.startswith('if '):
+                            if_depth += 1
+                        elif next_line == 'fi':
+                            if_depth -= 1
+                            if if_depth == 0:
+                                break
                         i += 1
 
                     # Execute the if statement
@@ -112,31 +141,39 @@ def main():
                 stdin_data = sys.stdin.buffer.read()
 
         # Check if command contains semicolons (multiple commands)
-        # Split intelligently: respect if/then/else/fi blocks
+        # Split intelligently: respect if/then/else/fi and for/do/done blocks
         if ';' in command:
-            # Split by semicolons but preserve if statements as single units
+            # Split by semicolons but preserve control flow statements as single units
             commands = []
             current_cmd = []
-            in_if_statement = False
+            in_control_flow = False
+            control_flow_type = None  # 'if' or 'for'
 
             for part in command.split(';'):
                 part = part.strip()
                 if not part:
                     continue
 
-                # Check if this part starts an if statement
+                # Check if this part starts a control flow statement
                 if part.startswith('if '):
-                    in_if_statement = True
+                    in_control_flow = True
+                    control_flow_type = 'if'
                     current_cmd.append(part)
-                # Check if we're in an if statement
-                elif in_if_statement:
+                elif part.startswith('for '):
+                    in_control_flow = True
+                    control_flow_type = 'for'
                     current_cmd.append(part)
-                    # Check if this part ends the if statement
-                    if 'fi' in part:
-                        # Complete if statement
+                # Check if we're in a control flow statement
+                elif in_control_flow:
+                    current_cmd.append(part)
+                    # Check if this part ends the control flow statement
+                    if (control_flow_type == 'if' and 'fi' in part) or \
+                       (control_flow_type == 'for' and 'done' in part):
+                        # Complete control flow statement
                         commands.append('; '.join(current_cmd))
                         current_cmd = []
-                        in_if_statement = False
+                        in_control_flow = False
+                        control_flow_type = None
                 else:
                     # Regular command
                     if current_cmd:
@@ -153,7 +190,7 @@ def main():
             for cmd in commands:
                 exit_code = shell.execute(cmd, stdin_data=stdin_data)
                 stdin_data = None  # Only first command gets stdin
-                if exit_code != 0 and exit_code not in [-998, -999]:
+                if exit_code != 0 and exit_code not in [-997, -998, -999]:
                     # Stop on error (unless it's a special code)
                     break
             sys.exit(exit_code)

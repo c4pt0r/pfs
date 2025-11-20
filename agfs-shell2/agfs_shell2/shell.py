@@ -216,6 +216,173 @@ class Shell:
         # Normalize to handle . and ..
         return os.path.normpath(full_path)
 
+    def execute_for_loop(self, lines: List[str]) -> int:
+        """
+        Execute a for/do/done loop
+
+        Args:
+            lines: List of lines making up the for loop
+
+        Returns:
+            Exit code of last executed command
+        """
+        parsed = self._parse_for_loop(lines)
+
+        if not parsed:
+            return 1
+
+        var_name = parsed['var']
+        items = parsed['items']
+        commands = parsed['commands']
+
+        # Execute loop for each item
+        last_exit_code = 0
+        for item in items:
+            # Set loop variable
+            self.env[var_name] = item
+
+            # Execute commands in loop body
+            i = 0
+            while i < len(commands):
+                cmd = commands[i]
+
+                # Check if this is a nested for loop
+                if cmd.strip().startswith('for '):
+                    # Collect the nested for loop
+                    nested_for_lines = [cmd]
+                    for_depth = 1
+                    i += 1
+                    while i < len(commands):
+                        next_cmd = commands[i]
+                        nested_for_lines.append(next_cmd)
+                        if next_cmd.strip().startswith('for '):
+                            for_depth += 1
+                        elif next_cmd.strip() == 'done':
+                            for_depth -= 1
+                            if for_depth == 0:
+                                break
+                        i += 1
+                    # Execute the nested for loop
+                    last_exit_code = self.execute_for_loop(nested_for_lines)
+                # Check if this is a nested if statement
+                elif cmd.strip().startswith('if '):
+                    # Collect the nested if statement with depth tracking
+                    nested_if_lines = [cmd]
+                    if_depth = 1
+                    i += 1
+                    while i < len(commands):
+                        next_cmd = commands[i]
+                        nested_if_lines.append(next_cmd)
+                        # Track nested if statements
+                        if next_cmd.strip().startswith('if '):
+                            if_depth += 1
+                        elif next_cmd.strip() == 'fi':
+                            if_depth -= 1
+                            if if_depth == 0:
+                                break
+                        i += 1
+                    # Execute the nested if statement
+                    last_exit_code = self.execute_if_statement(nested_if_lines)
+                else:
+                    # Regular command
+                    last_exit_code = self.execute(cmd)
+
+                i += 1
+
+        return last_exit_code
+
+    def _parse_for_loop(self, lines: List[str]) -> dict:
+        """
+        Parse a for/in/do/done loop from a list of lines
+
+        Returns:
+            Dict with structure: {
+                'var': variable_name,
+                'items': [list of items],
+                'commands': [list of commands]
+            }
+        """
+        result = {
+            'var': None,
+            'items': [],
+            'commands': []
+        }
+
+        state = 'for'  # States: 'for', 'do'
+        first_for_parsed = False  # Track if we've parsed the first for statement
+
+        i = 0
+        while i < len(lines):
+            line = lines[i].strip()
+            i += 1
+
+            if not line or line.startswith('#'):
+                continue
+
+            if line == 'done':
+                # End of for loop
+                break
+            elif line == 'do':
+                state = 'do'
+            elif line.startswith('do '):
+                # 'do' with command on same line
+                state = 'do'
+                cmd_after_do = line[3:].strip()
+                if cmd_after_do:
+                    result['commands'].append(cmd_after_do)
+            elif line.startswith('for '):
+                # Only parse the FIRST for statement
+                # Nested for loops should be treated as commands
+                if not first_for_parsed:
+                    # Parse: for var in item1 item2 item3
+                    # or: for var in item1 item2 item3; do
+                    parts = line[4:].strip()
+
+                    # Remove trailing '; do' or 'do' if present
+                    if parts.endswith('; do'):
+                        parts = parts[:-4].strip()
+                        state = 'do'
+                    elif parts.endswith(' do'):
+                        parts = parts[:-3].strip()
+                        state = 'do'
+
+                    # Split by 'in' keyword
+                    if ' in ' in parts:
+                        var_and_in = parts.split(' in ', 1)
+                        result['var'] = var_and_in[0].strip()
+                        items_str = var_and_in[1].strip()
+
+                        # Expand variables in items string first
+                        items_str = self._expand_variables(items_str)
+
+                        # Split items (simple whitespace split for now)
+                        import shlex
+                        try:
+                            result['items'] = shlex.split(items_str)
+                        except:
+                            result['items'] = items_str.split()
+                        first_for_parsed = True
+                    else:
+                        # Invalid for syntax
+                        return None
+                else:
+                    # This is a nested for loop - collect it as a single command block
+                    if state == 'do':
+                        result['commands'].append(line)
+                        # Now collect the rest of the nested loop (do...done)
+                        while i < len(lines):
+                            nested_line = lines[i].strip()
+                            result['commands'].append(nested_line)
+                            if nested_line == 'done':
+                                break
+                            i += 1
+            else:
+                # Regular command in loop body
+                if state == 'do':
+                    result['commands'].append(line)
+
+        return result if result['var'] else None
+
     def execute_if_statement(self, lines: List[str]) -> int:
         """
         Execute an if/then/else/fi statement
@@ -357,13 +524,29 @@ class Shell:
         Returns:
             Exit code of the pipeline
         """
+        # Check for for loop (special handling required)
+        if command_line.strip().startswith('for '):
+            # Check if it's a complete single-line for loop
+            # Look for 'done' as a separate word/keyword, not as substring
+            import re
+            if re.search(r'\bdone\b', command_line):
+                # Single-line for loop - parse and execute directly
+                parts = re.split(r';\s*', command_line)
+                lines = [part.strip() for part in parts if part.strip()]
+                return self.execute_for_loop(lines)
+            else:
+                # Multi-line for loop - signal to REPL to collect more lines
+                # Return special code -997 to signal for loop collection needed
+                return -997
+
         # Check for if statement (special handling required)
         if command_line.strip().startswith('if '):
             # Check if it's a complete single-line if statement
-            if 'fi' in command_line:
+            # Look for 'fi' as a separate word/keyword, not as substring
+            import re
+            if re.search(r'\bfi\b', command_line):
                 # Single-line if statement - parse and execute directly
                 # Split by semicolons but preserve the structure
-                import re
                 # Split by '; ' while keeping keywords intact
                 parts = re.split(r';\s*', command_line)
                 lines = [part.strip() for part in parts if part.strip()]
@@ -728,8 +911,38 @@ class Shell:
                 try:
                     exit_code = self.execute(command)
 
+                    # Check if for-loop is needed
+                    if exit_code == -997:
+                        # Collect for/do/done loop
+                        for_lines = [command]
+                        for_depth = 1  # Track nesting depth
+                        try:
+                            while True:
+                                for_line = input("> ")
+                                for_lines.append(for_line)
+                                # Count nested for loops
+                                stripped = for_line.strip()
+                                if stripped.startswith('for '):
+                                    for_depth += 1
+                                elif stripped == 'done':
+                                    for_depth -= 1
+                                    if for_depth == 0:
+                                        break
+                        except EOFError:
+                            # Ctrl+D before done
+                            self.console.print("\nWarning: for-loop ended by end-of-file (wanted `done`)", highlight=False)
+                        except KeyboardInterrupt:
+                            # Ctrl+C during for-loop - cancel
+                            self.console.print("\n^C", highlight=False)
+                            continue
+
+                        # Execute the for loop
+                        exit_code = self.execute_for_loop(for_lines)
+                        # Update $? with the exit code
+                        self.env['?'] = str(exit_code)
+
                     # Check if if-statement is needed
-                    if exit_code == -998:
+                    elif exit_code == -998:
                         # Collect if/then/else/fi statement
                         if_lines = [command]
                         try:
