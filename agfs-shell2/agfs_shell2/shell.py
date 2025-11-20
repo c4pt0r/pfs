@@ -17,10 +17,10 @@ from pyagfs import AGFSClientError
 class Shell:
     """Simple shell with pipeline support"""
 
-    def __init__(self, server_url: str = "http://localhost:8080"):
+    def __init__(self, server_url: str = "http://localhost:8080", timeout: int = 30):
         self.parser = CommandParser()
         self.running = True
-        self.filesystem = AGFSFileSystem(server_url)
+        self.filesystem = AGFSFileSystem(server_url, timeout=timeout)
         self.server_url = server_url
         self.cwd = '/'  # Current working directory
         self.console = Console(highlight=False)  # Rich console for output
@@ -903,13 +903,14 @@ class Shell:
         self.interactive = True
 
         self.console.print("[bold cyan]agfs-shell2[/bold cyan] v0.1.0", highlight=False)
-        self.console.print(f"Connected to AGFS server at [green]{self.server_url}[/green]", highlight=False)
 
-        # Check server connection
+        # Check server connection - exit if failed
         if not self.filesystem.check_connection():
-            self.console.print(f"[yellow]⚠ Warning:[/yellow] Cannot connect to AGFS server at {self.server_url}", highlight=False)
-            self.console.print("  Make sure the server is running. File operations will fail.", highlight=False)
+            self.console.print(f"[red]Error: Cannot connect to AGFS server at {self.server_url}[/red]", highlight=False)
+            self.console.print("Make sure the server is running.", highlight=False)
+            sys.exit(1)
 
+        self.console.print(f"Connected to AGFS server at [green]{self.server_url}[/green]", highlight=False)
         self.console.print("Type [cyan]'help'[/cyan] for help, [cyan]Ctrl+D[/cyan] or [cyan]'exit'[/cyan] to quit", highlight=False)
         self.console.print(highlight=False)
 

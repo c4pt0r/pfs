@@ -104,6 +104,11 @@ def main():
                         dest='agfs_api_url',
                         help='AGFS API URL (default: http://localhost:8080 or $AGFS_API_URL)',
                         default=None)
+    parser.add_argument('--timeout',
+                        dest='timeout',
+                        type=int,
+                        help='Request timeout in seconds (default: 30 or $AGFS_TIMEOUT)',
+                        default=None)
     parser.add_argument('-c',
                         dest='command_string',
                         help='Execute command string',
@@ -121,10 +126,10 @@ def main():
         sys.exit(0)
 
     # Create configuration
-    config = Config.from_args(server_url=args.agfs_api_url)
+    config = Config.from_args(server_url=args.agfs_api_url, timeout=args.timeout)
 
     # Initialize shell with configuration
-    shell = Shell(server_url=config.server_url)
+    shell = Shell(server_url=config.server_url, timeout=config.timeout)
 
     # Determine mode of execution
     # Priority: -c flag > script file > command args > interactive

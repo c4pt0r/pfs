@@ -8,13 +8,15 @@ from pyagfs import AGFSClient, AGFSClientError
 class AGFSFileSystem:
     """Abstraction layer for AGFS file system operations"""
 
-    def __init__(self, server_url: str = "http://localhost:8080", timeout: int = 5):
+    def __init__(self, server_url: str = "http://localhost:8080", timeout: int = 30):
         """
         Initialize AGFS file system
 
         Args:
             server_url: AGFS server URL (default: http://localhost:8080)
-            timeout: Request timeout in seconds (default: 5)
+            timeout: Request timeout in seconds (default: 30)
+                    - Increased from 5 to 30 for better support of large file transfers
+                    - Each 8KB chunk upload/download should complete within this time
         """
         self.server_url = server_url
         self.client = AGFSClient(server_url, timeout=timeout)
@@ -29,7 +31,8 @@ class AGFSFileSystem:
             self.client.health()
             self._connected = True
             return True
-        except AGFSClientError:
+        except Exception:
+            # Catch all exceptions (ConnectionError, AGFSClientError, etc.)
             return False
 
     def read_file(
