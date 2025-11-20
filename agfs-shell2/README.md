@@ -95,10 +95,10 @@ uv run agfs-shell2
 ```
 agfs-shell2 v0.1.0
 Connected to AGFS server at http://localhost:8080
-Type 'exit' or 'quit' to exit, 'help' for help
+Type 'help' for help, Ctrl+D or 'exit' to quit
 
-$ echo hello world | cat > /local/greeting.txt
-$ cat /local/greeting.txt
+agfs:/> echo hello world | cat > /local/greeting.txt
+agfs:/> cat /local/greeting.txt
 hello world
 ```
 
@@ -142,12 +142,89 @@ uv run agfs-shell2 "cat /local/test.txt"
 uv run agfs-shell2 echo hello world
 ```
 
+## Interactive Features
+
+agfs-shell2 provides a rich interactive experience with several productivity features:
+
+### Command History
+
+The shell automatically saves your command history across sessions:
+
+- **History File**: Commands are stored in `~/.agfs_shell_history` (configurable via `HISTFILE` variable)
+- **History Length**: Up to 1000 commands are saved
+- **Automatic Loading**: History is loaded when the shell starts
+- **Automatic Saving**: History is saved when you exit the shell
+
+**Custom history file location**:
+```bash
+# Check current history file
+agfs:/> env | grep HISTFILE
+HISTFILE=/Users/user/.agfs_shell_history
+
+# Change history file location during session
+agfs:/> export HISTFILE=/tmp/my_history.txt
+agfs:/> # All future commands will be saved to /tmp/my_history.txt
+
+# Use project-specific history
+agfs:/> export HISTFILE=~/projects/myapp/.agfs_history
+agfs:/> # History now saved to project directory
+```
+
+**Navigation**:
+- Press **↑** (Up Arrow) to navigate to previous commands
+- Press **↓** (Down Arrow) to navigate to newer commands
+
+**Example workflow**:
+```bash
+agfs:/> echo "test 1"
+agfs:/> ls /local
+agfs:/> pwd
+agfs:/> # Press ↑ to get "pwd"
+agfs:/> # Press ↑↑ to get "ls /local"
+```
+
+### Tab Completion
+
+The shell supports intelligent tab completion:
+
+- **Command Completion**: Press Tab to complete command names
+- **Path Completion**: Press Tab to complete file and directory paths
+- **AGFS Integration**: Tab completion works with AGFS filesystem
+
+**Examples**:
+```bash
+agfs:/> ec<Tab>       # Completes to "echo"
+agfs:/> cat /lo<Tab>  # Completes to "/local/"
+agfs:/> ls /local/te<Tab>  # Completes to "/local/test.txt" (if it exists)
+```
+
+### Multiline Editing
+
+The shell supports multiline commands:
+
+- **Control Structures**: `if`, `for` automatically trigger multiline mode
+- **Line Continuation**: Use `\` at end of line to continue
+- **Here Documents**: Use `<<` for multiline input
+
+**Keyboard Shortcuts** (via readline):
+- **Ctrl-A**: Move to beginning of line
+- **Ctrl-E**: Move to end of line
+- **Ctrl-K**: Delete from cursor to end of line
+- **Ctrl-U**: Delete from cursor to beginning of line
+- **Ctrl-W**: Delete word before cursor
+- **Ctrl-L**: Clear screen (if supported)
+- **Ctrl-D**: Exit shell (when line is empty)
+- **Ctrl-C**: Cancel current input
+
 ## Built-in Commands
 
 ### File System Commands (AGFS)
 - **cd [path]** - Change current directory (supports relative paths: `.`, `..`, etc.)
 - **pwd** - Print current working directory
-- **ls [-l] [path]** - List directory contents (defaults to current directory, -l for long format)
+- **ls [-l] [path]** - List directory contents with color highlighting
+  - Directories shown in **blue**
+  - `-l` for long format with permissions, size, and timestamp
+  - Defaults to current directory
 - **cat [file...]** - Concatenate and print files or stdin
 - **mkdir path** - Create directory
 - **rm [-r] path** - Remove file or directory

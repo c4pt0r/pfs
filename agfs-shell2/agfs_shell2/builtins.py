@@ -539,14 +539,19 @@ def cmd_ls(process: Process) -> int:
                     mtime = '0000-00-00 00:00:00'
 
                 # Format: permissions size date time name
-                output = f"{file_type}{perms} {size:>8} {mtime} {name}"
+                # Add color for directories (blue)
                 if is_dir:
-                    output += "/"
-                output += "\n"
+                    # Blue color for directories
+                    colored_name = f"\033[1;34m{name}/\033[0m"
+                else:
+                    colored_name = name
+
+                output = f"{file_type}{perms} {size:>8} {mtime} {colored_name}\n"
             else:
                 # Simple formatting
                 if is_dir:
-                    output = f"{name}/\n"
+                    # Blue color for directories
+                    output = f"\033[1;34m{name}/\033[0m\n"
                 else:
                     output = f"{name}\n"
 

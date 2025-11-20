@@ -27,6 +27,12 @@ class Shell:
         self.multiline_buffer = []  # Buffer for multiline input
         self.env = {}  # Environment variables
         self.env['?'] = '0'  # Last command exit code
+
+        # Set default history file location
+        import os
+        home = os.path.expanduser("~")
+        self.env['HISTFILE'] = os.path.join(home, ".agfs_shell_history")
+
         self.interactive = False  # Flag to indicate if running in interactive REPL mode
 
     def _execute_command_substitution(self, command: str) -> str:
@@ -907,9 +913,11 @@ class Shell:
         self.console.print("Type [cyan]'help'[/cyan] for help, [cyan]Ctrl+D[/cyan] or [cyan]'exit'[/cyan] to quit", highlight=False)
         self.console.print(highlight=False)
 
-        # Setup tab completion
+        # Setup tab completion and history
+        history_loaded = False
         try:
             import readline
+            import os
             from .completer import ShellCompleter
 
             completer = ShellCompleter(self.filesystem)
@@ -917,17 +925,78 @@ class Shell:
             completer.shell = self
             readline.set_completer(completer.complete)
 
+            # Set up completion display hook for better formatting
+            try:
+                # Try to set display matches hook (GNU readline only)
+                def display_matches(substitution, matches, longest_match_length):
+                    """Display completion matches in a clean format"""
+                    # Print newline before matches
+                    print()
+
+                    # Display matches in columns
+                    if len(matches) <= 10:
+                        # Few matches - display in a single column
+                        for match in matches:
+                            print(f"  {match}")
+                    else:
+                        # Many matches - display in multiple columns
+                        import shutil
+                        term_width = shutil.get_terminal_size((80, 20)).columns
+                        col_width = longest_match_length + 2
+                        num_cols = max(1, term_width // col_width)
+
+                        for i, match in enumerate(matches):
+                            print(f"  {match:<{col_width}}", end='')
+                            if (i + 1) % num_cols == 0:
+                                print()
+                        print()
+
+                    # Re-display prompt
+                    prompt = f"agfs:{self.cwd}> "
+                    print(prompt + readline.get_line_buffer(), end='', flush=True)
+
+                readline.set_completion_display_matches_hook(display_matches)
+            except AttributeError:
+                # libedit doesn't support display matches hook
+                pass
+
             # Different binding for libedit (macOS) vs GNU readline (Linux)
             if 'libedit' in readline.__doc__:
                 # macOS/BSD libedit
                 readline.parse_and_bind("bind ^I rl_complete")
+                # Set completion display to show candidates properly
+                readline.parse_and_bind("set show-all-if-ambiguous on")
+                readline.parse_and_bind("set completion-display-width 0")
             else:
                 # GNU readline
                 readline.parse_and_bind("tab: complete")
+                # Better completion display
+                readline.parse_and_bind("set show-all-if-ambiguous on")
+                readline.parse_and_bind("set completion-display-width 0")
 
             # Configure readline to use space and special chars as delimiters
             # This allows path completion to work properly
             readline.set_completer_delims(' \t\n;|&<>()')
+
+            # Setup history
+            # History file location: use HISTFILE variable (modifiable via export command)
+            # Default: $HOME/.agfs_shell_history
+            history_file = os.path.expanduser(self.env.get('HISTFILE', '~/.agfs_shell_history'))
+
+            # Set history length
+            readline.set_history_length(1000)
+
+            # Try to load existing history
+            try:
+                readline.read_history_file(history_file)
+                history_loaded = True
+            except FileNotFoundError:
+                # History file doesn't exist yet - will be created on exit
+                pass
+            except Exception as e:
+                # Other errors - warn but continue
+                self.console.print(f"[yellow]Warning: Could not load history: {e}[/yellow]", highlight=False)
+
         except ImportError:
             # readline not available (e.g., on Windows without pyreadline)
             pass
@@ -937,7 +1006,7 @@ class Shell:
                 # Read command (possibly multiline)
                 try:
                     # Primary prompt
-                    prompt = f"{self.cwd}> " if self.cwd != '/' else "/> "
+                    prompt = f"agfs:{self.cwd}> "
                     line = input(prompt)
 
                     # Start building the command
@@ -1108,6 +1177,17 @@ class Shell:
                 self.console.print(highlight=False)
                 self.multiline_buffer = []
                 continue
+
+        # Save history before exiting
+        # Use current value of HISTFILE variable (may have been changed during session)
+        if 'HISTFILE' in self.env:
+            try:
+                import readline
+                import os
+                history_file = os.path.expanduser(self.env['HISTFILE'])
+                readline.write_history_file(history_file)
+            except Exception as e:
+                self.console.print(f"[yellow]Warning: Could not save history: {e}[/yellow]", highlight=False)
 
         self.console.print("[cyan]Goodbye![/cyan]", highlight=False)
 
