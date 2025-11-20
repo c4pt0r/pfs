@@ -12,6 +12,7 @@ agfs-shell2 is a simple shell that demonstrates Unix pipeline concepts while int
 
 - **Unix-style pipelines**: Chain commands with `|` operator
 - **I/O Redirection**: Support for `<`, `>`, `>>`, `2>`, `2>>` operators
+- **Heredoc**: Multi-line input with `<<` operator (variable expansion and literal modes)
 - **Glob expansion**: Wildcard patterns (`*.txt`, `file?.dat`, `[abc]`, etc.)
 - **Variables**: Shell variable assignment and expansion (`VAR=value`, `$VAR`, `${VAR}`)
 - **Special variables**: `$?` for exit code of last command
@@ -22,14 +23,21 @@ agfs-shell2 is a simple shell that demonstrates Unix pipeline concepts while int
 - **Directory navigation**: `cd` command with current working directory tracking
 - **Relative paths**: Full support for `.`, `..`, and relative file paths
 - **Tab completion**: Smart completion for commands and paths (both absolute and relative)
+- **Command history**: Persistent command history with navigation (↑/↓ arrows)
 - **AGFS Integration**: All file operations use AGFS server (no local filesystem access)
+- **File transfer**: Upload/download files between local filesystem and AGFS
 - **Streaming I/O**: Memory-efficient streaming for large files (8KB chunks)
 - **Stream handling**: Full STDIN/STDOUT/STDERR support
-- **Built-in commands**: cd, pwd, ls, cat, mkdir, rm, stat, echo, grep, wc, head, tail, sort, uniq, tr, jq, export, env, unset, test, [
+- **Built-in commands**: 24 commands including file operations, text processing, JSON handling, and control flow
+  - File ops: cd, pwd, ls, cat, mkdir, rm, stat, cp, upload, download
+  - Text processing: echo, grep, jq, wc, head, tail, sort, uniq, tr
+  - Variables: export, env, unset
+  - Testing: test, [
+  - Utilities: sleep
 - **Interactive REPL**: Interactive shell mode with dynamic prompt showing current directory
 - **Script execution**: Support for shebang scripts (`#!/usr/bin/env uv run agfs-shell2`)
 - **Non-interactive mode**: Execute commands from command line with `-c` flag
-- **Configurable server**: Support for custom AGFS server URL
+- **Configurable server**: Support for custom AGFS server URL and timeout
 - **Rich output**: Colorized and formatted output using Rich library
 
 ## Prerequisites
@@ -229,6 +237,11 @@ The shell supports multiline commands:
 - **mkdir path** - Create directory
 - **rm [-r] path** - Remove file or directory
 - **stat path** - Display file status and check if file exists
+- **cp [-r] source dest** - Copy files between local filesystem and AGFS
+  - Use `local:path` prefix for local filesystem paths
+  - Supports recursive directory copy with `-r` flag
+- **upload [-r] local_path agfs_path** - Upload files/directories from local to AGFS
+- **download [-r] agfs_path local_path** - Download files/directories from AGFS to local
 
 ### Text Processing Commands
 - **echo [args...]** - Print arguments to stdout
@@ -293,9 +306,45 @@ grep -vc 'comment' /local/code.py     # Count non-matching lines
 - **env** - Display all environment variables
 - **unset VAR [VAR ...]** - Unset environment variables
 
-### JSON Processing
+### Utility Commands
 
-agfs-shell2 includes a built-in **jq** command for processing JSON data:
+**sleep** - Pause execution for specified seconds (supports decimal values)
+
+```bash
+# Basic sleep
+> sleep 1
+> echo "Done"
+
+# Sleep with decimal seconds
+> sleep 0.5
+
+# Use in loops for rate limiting
+> for i in 1 2 3 4 5; do
+    echo "Processing item $i"
+    sleep 1
+  done
+
+# Delay between commands
+> echo "Starting backup..." && sleep 2 && echo "Backup started"
+
+# Rate-limited file processing
+> for file in /local/data/*.txt; do
+    echo "Processing $file"
+    cat $file | grep "ERROR" >> /local/all_errors.txt
+    sleep 0.1  # Small delay between files
+  done
+
+# Progress indicator with sleep
+> for i in 1 2 3 4 5; do
+    echo -n "."
+    sleep 1
+  done
+> echo " Complete!"
+```
+
+### JSON Processing with jq
+
+agfs-shell2 includes a built-in **jq** command for processing JSON data. This allows you to query, filter, and transform JSON files stored in AGFS.
 
 ```bash
 # Basic JSON formatting
@@ -315,6 +364,12 @@ echo '[1,2,3,4,5]' | jq '.[]'
 
 # Get object keys
 echo '{"x":1,"y":2}' | jq 'keys'
+
+# Filter array elements
+cat users.json | jq '.[] | select(.active == true)'
+
+# Transform and map
+echo '[{"id":1},{"id":2}]' | jq '.[] | .id'
 ```
 
 **Supported operations**:
@@ -325,6 +380,7 @@ echo '{"x":1,"y":2}' | jq 'keys'
 - `.[]` - Array iteration
 - `keys` - Get object keys
 - `length` - Get array/object length
+- `select()` - Filter elements
 - And most standard jq operations
 
 **Requirements**: The `jq` library must be installed:
@@ -335,6 +391,178 @@ uv pip install jq
 ### Conditional Testing
 - **test EXPRESSION** - Evaluate conditional expressions
 - **[ EXPRESSION ]** - Alternative syntax for test command
+
+## Advanced Shell Features
+
+### Heredoc (Here Documents)
+
+Heredoc allows you to write multi-line text directly in the shell, useful for creating files with multiple lines or passing multi-line input to commands.
+
+**Variable-expanding heredoc** (variables like `$VAR` are expanded):
+```bash
+# Create a config file with variable expansion
+> export APP_NAME="MyApp"
+> export VERSION="1.0.0"
+> cat << EOF > /local/config.txt
+Application: $APP_NAME
+Version: $VERSION
+Created: $(date)
+EOF
+
+> cat /local/config.txt
+Application: MyApp
+Version: 1.0.0
+Created: Wed Nov 20 12:00:00 2024
+```
+
+**Literal heredoc** (no variable expansion, use quoted delimiter):
+```bash
+# Create a script with literal $ signs
+> cat << 'EOF' > /local/script.sh
+#!/bin/bash
+echo "The price is $100"
+VAR="literal"
+echo $VAR
+EOF
+
+> cat /local/script.sh
+#!/bin/bash
+echo "The price is $100"
+VAR="literal"
+echo $VAR
+```
+
+**Heredoc with commands**:
+```bash
+# Create JSON file with heredoc
+> cat << EOF | jq . > /local/data.json
+{
+  "name": "test",
+  "items": [1, 2, 3]
+}
+EOF
+
+# Multi-line SQL query
+> cat << EOF > /local/query.sql
+SELECT *
+FROM users
+WHERE active = true
+  AND created_at > '2024-01-01'
+ORDER BY name;
+EOF
+```
+
+### Script Files
+
+agfs-shell2 can execute script files with full support for variables, control flow, and all shell features.
+
+**Create a script file**:
+```bash
+# Create process_logs.sh
+cat << 'EOF' > process_logs.sh
+#!/usr/bin/env uv run agfs-shell2
+
+# Process log files and extract errors
+LOG_DIR=/local/logs
+OUTPUT=/local/error_summary.txt
+
+echo "Processing logs in $LOG_DIR..." > $OUTPUT
+echo "================================" >> $OUTPUT
+
+# Count errors in each log file
+for logfile in $LOG_DIR/*.log
+do
+  echo "Checking $logfile..." >&2
+  error_count=$(cat $logfile | grep -i error | wc -l)
+
+  if [ $error_count -gt 0 ]
+  then
+    echo "$logfile: $error_count errors" >> $OUTPUT
+    cat $logfile | grep -i error >> $OUTPUT
+  else
+    echo "$logfile: OK" >> $OUTPUT
+  fi
+done
+
+echo "Done! Summary written to $OUTPUT" >&2
+EOF
+
+# Make it executable and run
+chmod +x process_logs.sh
+./process_logs.sh
+```
+
+**Script with functions and complex logic**:
+```bash
+cat << 'EOF' > backup_system.sh
+#!/usr/bin/env uv run agfs-shell2
+
+# Backup system - copies important files to backup location
+BACKUP_DIR=/local/backups
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+BACKUP_PATH=$BACKUP_DIR/backup_$TIMESTAMP
+
+# Create backup directory
+mkdir $BACKUP_PATH
+
+# List of directories to backup
+DIRS="/local/data /local/config /local/logs"
+
+for dir in $DIRS
+do
+  if [ -d $dir ]
+  then
+    echo "Backing up $dir..."
+    cp -r $dir $BACKUP_PATH/
+  else
+    echo "Warning: $dir not found, skipping"
+  fi
+done
+
+# Create backup manifest
+cat << MANIFEST > $BACKUP_PATH/manifest.txt
+Backup created: $TIMESTAMP
+Directories backed up:
+$DIRS
+MANIFEST
+
+echo "Backup completed: $BACKUP_PATH"
+EOF
+```
+
+**Script with error handling**:
+```bash
+cat << 'EOF' > data_pipeline.sh
+#!/usr/bin/env uv run agfs-shell2
+
+# Data processing pipeline with error handling
+INPUT_FILE=/local/raw_data.json
+PROCESSED=/local/processed_data.json
+ERROR_LOG=/local/pipeline_errors.log
+
+# Clear error log
+echo "Pipeline started at $(date)" > $ERROR_LOG
+
+# Check if input file exists
+if [ ! -f $INPUT_FILE ]
+then
+  echo "ERROR: Input file $INPUT_FILE not found" >> $ERROR_LOG
+  exit 1
+fi
+
+# Process JSON data
+cat $INPUT_FILE | jq '.items[] | select(.active == true)' > $PROCESSED
+
+if [ $? -eq 0 ]
+then
+  echo "SUCCESS: Processed $(cat $PROCESSED | wc -l) items" >> $ERROR_LOG
+  exit 0
+else
+  echo "ERROR: jq processing failed" >> $ERROR_LOG
+  exit 1
+fi
+EOF
+```
 
 ## Glob Expansion
 
@@ -374,20 +602,55 @@ rm /local/test[a-z].log
 3. Matches are sorted alphabetically
 4. Works with any command that accepts file arguments
 
+**Practical glob examples**:
 ```bash
-# Example: Process multiple log files
-for file in /local/*.log
-do
-  echo "Processing $file"
-  cat $file | grep ERROR
-done
+# Process multiple log files
+> for file in /local/*.log; do
+    echo "Processing $file"
+    cat $file | grep ERROR
+  done
 
-# Example: Backup with wildcards
-mkdir /local/backup
-for src in /local/data*.txt
-do
-  cat $src > /local/backup/$src
-done
+# Backup with wildcards
+> mkdir /local/backup
+> for src in /local/data*.txt; do
+    cp $src /local/backup/
+  done
+
+# Count lines in all Python files
+> wc -l /local/src/*.py
+
+# Delete all temporary files
+> rm /local/tmp/*.tmp
+
+# Process files matching specific pattern
+> for file in /local/report_[0-9][0-9][0-9][0-9].txt; do
+    echo "Processing report: $file"
+    cat $file | grep "Total"
+  done
+
+# Combine glob with grep
+> grep "ERROR" /local/logs/app_*.log
+
+# Process files by extension
+> for json in /local/data/*.json; do
+    echo "Validating $json"
+    cat $json | jq . > /dev/null && echo "OK" || echo "Invalid JSON"
+  done
+```
+
+**Glob with variables**:
+```bash
+# Use variables in glob patterns
+> LOG_DIR=/local/logs
+> PATTERN="*.log"
+> for file in $LOG_DIR/$PATTERN; do
+    cat $file | grep -i error
+  done
+
+# Dynamic pattern matching
+> export FILE_PREFIX="data"
+> export FILE_EXT="csv"
+> ls /local/${FILE_PREFIX}*.${FILE_EXT}
 ```
 
 ## Variables and Command Substitution
@@ -458,22 +721,67 @@ error_count=$(cat /local/log.txt | grep ERROR | wc -l)
 echo "Found $error_count errors"
 ```
 
-### Examples
+### Comprehensive Variable Examples
 
 ```bash
+# Basic variable usage
+> NAME="Alice"
+> echo "Hello, $NAME!"
+Hello, Alice!
+
+# Variables in paths
+> DATA_DIR=/local/data
+> LOG_FILE=$DATA_DIR/app.log
+> echo "Starting..." > $LOG_FILE
+
 # Count files in directory
-file_count=$(ls /local | wc -l)
-echo "Found $file_count files"
+> file_count=$(ls /local | wc -l)
+> echo "Found $file_count files"
+Found 5 files
 
 # Process file based on variable
-input_file=/local/input.txt
-output_file=/local/output.txt
-cat $input_file | sort | uniq > $output_file
+> input_file=/local/input.txt
+> output_file=/local/output.txt
+> cat $input_file | sort | uniq > $output_file
 
 # Dynamic path construction
-base=/local
-project=myproject
-echo "Project files:" > $base/$project/info.txt
+> base=/local
+> project=myproject
+> mkdir -p $base/$project
+> echo "Project files:" > $base/$project/info.txt
+
+# Use command output in variables
+> today=$(date +%Y-%m-%d)
+> backup_file=/local/backup_$today.tar
+> echo "Creating backup: $backup_file"
+
+# Combining variables and command substitution
+> LOG_DIR=/local/logs
+> error_count=$(cat $LOG_DIR/*.log | grep -i error | wc -l)
+> if [ $error_count -gt 0 ]; then
+    echo "Found $error_count errors in logs"
+  fi
+
+# Variable in loops
+> FILES="file1.txt file2.txt file3.txt"
+> for file in $FILES; do
+    echo "Processing: $file"
+    cat /local/$file | wc -l
+  done
+
+# Build complex commands with variables
+> SEARCH_TERM="error"
+> INPUT_DIR=/local/logs
+> OUTPUT_FILE=/local/error_report.txt
+> cat $INPUT_DIR/*.log | grep -i "$SEARCH_TERM" > $OUTPUT_FILE
+> echo "Found $(cat $OUTPUT_FILE | wc -l) occurrences of '$SEARCH_TERM'"
+
+# Environment variables
+> export DATABASE_URL="postgres://localhost/mydb"
+> export LOG_LEVEL="debug"
+> env | grep -E "(DATABASE|LOG)"
+DATABASE_URL=postgres://localhost/mydb
+LOG_LEVEL=debug
 ```
 
 ## Control Flow (if/then/else/fi)
@@ -609,6 +917,61 @@ if [ $count -le 100 ]; then
 fi
 ```
 
+**Real-world if/else examples**:
+```bash
+# Validate and process file
+> INPUT=/local/data.json
+> if [ -f $INPUT ]; then
+    echo "File exists, processing..."
+    LINES=$(cat $INPUT | jq '.items | length')
+    if [ $LINES -gt 0 ]; then
+      echo "Processing $LINES items"
+      cat $INPUT | jq '.items[]' > /local/processed.json
+    else
+      echo "File is empty"
+    fi
+  else
+    echo "ERROR: File $INPUT not found"
+    exit 1
+  fi
+
+# Conditional backup
+> SOURCE=/local/important.txt
+> BACKUP=/local/backup/important.txt
+> if [ -f $SOURCE ]; then
+    if [ -f $BACKUP ]; then
+      echo "Backup already exists, creating timestamped backup"
+      TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+      cp $SOURCE /local/backup/important_$TIMESTAMP.txt
+    else
+      echo "Creating initial backup"
+      cp $SOURCE $BACKUP
+    fi
+  fi
+
+# Check file size and act accordingly
+> LOG_FILE=/local/app.log
+> if [ -f $LOG_FILE ]; then
+    SIZE=$(stat $LOG_FILE | grep Size | cut -d: -f2)
+    if [ $SIZE -gt 10000000 ]; then
+      echo "Log file too large, archiving..."
+      cp $LOG_FILE /local/archive/app_$(date +%Y%m%d).log
+      echo "" > $LOG_FILE
+    fi
+  fi
+
+# Multi-condition checks
+> STATUS="running"
+> ERROR_COUNT=$(cat /local/errors.log | wc -l)
+> if [ "$STATUS" = "running" -a $ERROR_COUNT -eq 0 ]; then
+    echo "System healthy"
+  elif [ "$STATUS" = "running" -a $ERROR_COUNT -gt 0 ]; then
+    echo "System running with $ERROR_COUNT errors"
+  else
+    echo "System not running"
+  fi
+```
+
 ## For Loops (for/in/do/done)
 
 agfs-shell2 supports bash-style for loops to iterate over lists of items.
@@ -659,6 +1022,91 @@ for name in Alice Bob Charlie; do
     echo "  Special greeting for Bob"
   fi
 done
+```
+
+**Real-world for loop examples**:
+```bash
+# Process all log files and extract errors
+> for logfile in /local/logs/*.log; do
+    echo "=== Processing $logfile ==="
+    error_count=$(cat $logfile | grep -i error | wc -l)
+    warning_count=$(cat $logfile | grep -i warning | wc -l)
+    echo "Errors: $error_count, Warnings: $warning_count"
+
+    if [ $error_count -gt 0 ]; then
+      cat $logfile | grep -i error > /local/errors_$(basename $logfile)
+    fi
+  done
+
+# Batch file conversion
+> for jsonfile in /local/data/*.json; do
+    echo "Converting $jsonfile..."
+    basename=$(basename $jsonfile .json)
+    cat $jsonfile | jq -r '.[] | [.name, .value] | @csv' > /local/csv/$basename.csv
+    echo "Created /local/csv/$basename.csv"
+  done
+
+# Create multiple backup copies
+> SOURCE=/local/important.txt
+> for i in 1 2 3 4 5; do
+    BACKUP=/local/backup/important_copy_$i.txt
+    cp $SOURCE $BACKUP
+    echo "Created backup $i: $BACKUP"
+  done
+
+# Process files with different operations based on extension
+> for file in /local/data/*; do
+    if echo $file | grep -q ".json$"; then
+      echo "Validating JSON: $file"
+      cat $file | jq . > /dev/null && echo "  ✓ Valid" || echo "  ✗ Invalid"
+    elif echo $file | grep -q ".txt$"; then
+      echo "Counting lines: $file"
+      echo "  $(cat $file | wc -l) lines"
+    else
+      echo "Unknown type: $file"
+    fi
+  done
+
+# Parallel-style processing with status tracking
+> TOTAL=0
+> SUCCESS=0
+> FAILED=0
+> for file in /local/input/*.dat; do
+    TOTAL=$((TOTAL + 1))
+    echo "Processing file $TOTAL: $file"
+
+    if cat $file | sort > /local/output/$(basename $file); then
+      SUCCESS=$((SUCCESS + 1))
+      echo "  ✓ Success"
+    else
+      FAILED=$((FAILED + 1))
+      echo "  ✗ Failed"
+    fi
+  done
+> echo "Summary: Total=$TOTAL, Success=$SUCCESS, Failed=$FAILED"
+
+# Nested loops
+> for dir in /local/projects/*; do
+    if [ -d $dir ]; then
+      echo "Project: $(basename $dir)"
+      for file in $dir/*.txt; do
+        if [ -f $file ]; then
+          lines=$(cat $file | wc -l)
+          echo "  - $(basename $file): $lines lines"
+        fi
+      done
+    fi
+  done
+
+# Loop with command substitution
+> SERVERS="server1 server2 server3"
+> for server in $SERVERS; do
+    LOG_FILE=/local/logs/${server}.log
+    if [ -f $LOG_FILE ]; then
+      echo "=== $server ==="
+      cat $LOG_FILE | tail -n 5
+    fi
+  done
 ```
 
 ## Path Support
@@ -784,6 +1232,34 @@ Using relative paths in commands:
 /local/project > cat ../other_project/file.txt    # Relative path to parent
 ```
 
+### File Transfer Examples
+
+```bash
+# Upload local file to AGFS
+> upload ~/Documents/report.pdf /local/backup/
+
+# Upload directory recursively
+> upload -r ~/Projects/myapp /local/projects/
+
+# Download from AGFS to local
+> download /local/data.json ~/Downloads/
+
+# Download directory recursively
+> download -r /local/logs ~/backup/logs/
+
+# Copy within AGFS
+> cp /local/file.txt /local/backup/file.txt
+
+# Copy from local to AGFS using cp
+> cp local:~/data.csv /local/imports/data.csv
+
+# Copy from AGFS to local using cp
+> cp /local/report.txt local:~/Desktop/report.txt
+
+# Copy directory recursively
+> cp -r /local/project /local/backup/project
+```
+
 ### Testing
 
 Run the integration tests (requires AGFS server):
@@ -866,7 +1342,7 @@ This is an experimental/educational project demonstrating:
 - ✅ Directory navigation (`cd` command)
 - ✅ Relative path support (`.`, `..`, relative files)
 - ✅ Tab completion for commands and paths
-- ✅ 20 built-in commands (cd, pwd, ls, cat, mkdir, rm, stat, echo, grep, wc, head, tail, sort, uniq, tr, export, env, unset, test, [)
+- ✅ 24 built-in commands (cd, pwd, ls, cat, mkdir, rm, stat, cp, upload, download, echo, grep, jq, wc, head, tail, sort, uniq, tr, export, env, unset, test, [, sleep)
 - ✅ Interactive REPL mode with dynamic prompt
 - ✅ Script file execution (shebang support)
 - ✅ Non-interactive command execution (-c flag)

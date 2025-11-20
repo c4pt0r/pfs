@@ -1313,6 +1313,13 @@ class Shell:
   [dim]>[/dim] grep -n "function" code.py
   [dim]>[/dim] grep -r -i "error" *.log | grep -v "debug"
 
+  [dim]# Sleep/delay execution[/dim]
+  [dim]>[/dim] echo "Starting..." && sleep 2 && echo "Done!"
+  [dim]>[/dim] for i in 1 2 3; do echo "Step $i"; sleep 1; done
+
+[bold yellow]Utility Commands:[/bold yellow]
+  [green]sleep[/green] seconds          - Pause execution for specified seconds (supports decimals)
+
 [bold yellow]Special Commands:[/bold yellow]
   [green]help[/green]                   - Show this help
   [green]exit[/green], [green]quit[/green]             - Exit the shell

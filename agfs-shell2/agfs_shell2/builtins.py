@@ -1570,6 +1570,41 @@ def _cp_agfs_dir(process: Process, source_path: str, dest_path: str) -> int:
         return 1
 
 
+@command()
+def cmd_sleep(process: Process) -> int:
+    """
+    Pause execution for specified seconds
+
+    Usage: sleep SECONDS
+
+    Examples:
+        sleep 1      # Sleep for 1 second
+        sleep 0.5    # Sleep for 0.5 seconds
+        sleep 5      # Sleep for 5 seconds
+    """
+    import time
+
+    if not process.args:
+        process.stderr.write("sleep: missing operand\n")
+        process.stderr.write("Usage: sleep SECONDS\n")
+        return 1
+
+    try:
+        seconds = float(process.args[0])
+        if seconds < 0:
+            process.stderr.write("sleep: invalid time interval\n")
+            return 1
+
+        time.sleep(seconds)
+        return 0
+    except ValueError:
+        process.stderr.write(f"sleep: invalid time interval '{process.args[0]}'\n")
+        return 1
+    except KeyboardInterrupt:
+        process.stderr.write("\nsleep: interrupted\n")
+        return 130
+
+
 # Registry of built-in commands
 BUILTINS = {
     'echo': cmd_echo,
@@ -1596,6 +1631,7 @@ BUILTINS = {
     'upload': cmd_upload,
     'download': cmd_download,
     'cp': cmd_cp,
+    'sleep': cmd_sleep,
 }
 
 
