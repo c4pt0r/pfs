@@ -1203,10 +1203,16 @@ class Shell:
   [green]mkdir[/green] path             - Create directory
   [green]rm[/green] [-r] path           - Remove file or directory
   [green]cat[/green] [file...]          - Read and concatenate files
+  [green]stat[/green] path              - Display file status
+  [green]cp[/green] [-r] src dest       - Copy files (local:path for local filesystem)
+  [green]upload[/green] [-r] local agfs - Upload local file/directory to AGFS
+  [green]download[/green] [-r] agfs local - Download AGFS file/directory to local
 
 [bold yellow]Text Processing Commands:[/bold yellow]
   [green]echo[/green] [args...]         - Print arguments to stdout
-  [green]grep[/green] pattern           - Search for pattern in stdin
+  [green]grep[/green] [opts] pattern [files] - Search for pattern
+    Options: -i (ignore case), -v (invert), -n (line numbers), -c (count)
+  [green]jq[/green] filter [files]      - Process JSON data
   [green]wc[/green] [-l] [-w] [-c]      - Count lines, words, and bytes
   [green]head[/green] [-n count]        - Output first N lines (default 10)
   [green]tail[/green] [-n count]        - Output last N lines (default 10)
@@ -1214,14 +1220,46 @@ class Shell:
   [green]uniq[/green]                   - Remove duplicate adjacent lines
   [green]tr[/green] set1 set2           - Translate characters
 
+[bold yellow]Environment Variables:[/bold yellow]
+  [green]export[/green] VAR=value       - Set environment variable
+  [green]env[/green]                    - Display all environment variables
+  [green]unset[/green] VAR              - Remove environment variable
+  $VAR or ${{VAR}}          - Reference variable value
+
+[bold yellow]Control Flow:[/bold yellow]
+  [green]if[/green] condition; then
+    commands
+  elif condition; then
+    commands
+  else
+    commands
+  fi
+
+  [green]for[/green] var in item1 item2 item3; do
+    commands
+  done
+
+  [green]test[/green] or [green][[/green] expr [green]][/green]   - Test conditions
+    File: -f (file), -d (directory), -e (exists)
+    String: -z (empty), -n (non-empty), = (equal), != (not equal)
+    Integer: -eq -ne -gt -lt -ge -le
+
 [bold yellow]Pipeline Syntax:[/bold yellow]
   command1 | command2 | command3
 
-[bold yellow]Multiline Input:[/bold yellow]
+[bold yellow]Multiline Input & Heredoc:[/bold yellow]
   Line ending with \\       - Continue on next line
   Unclosed quotes (" or ')  - Continue until closed
   Unclosed () or {{}}       - Continue until closed
-  Press Ctrl+C to cancel multiline input
+
+  [green]cat << EOF[/green]           - Heredoc (write until EOF marker)
+    Multiple lines of text
+    Variables like $VAR are expanded
+  EOF
+
+  [green]cat << 'EOF'[/green]         - Literal heredoc (no expansion)
+    Text with literal $VAR
+  EOF
 
 [bold yellow]Redirection Operators:[/bold yellow]
   < file                 - Read input from AGFS file
@@ -1237,15 +1275,43 @@ class Shell:
   - Tab completion works for both absolute and relative paths
 
 [bold yellow]Examples:[/bold yellow]
-  [dim]>[/dim] cd /local/mydir      [dim]# Change to /local/mydir[/dim]
-  [dim]>[/dim] pwd                  [dim]# Shows: /local/mydir[/dim]
-  [dim]>[/dim] ls                   [dim]# List current directory[/dim]
-  [dim]>[/dim] cat file.txt         [dim]# Read file from current directory[/dim]
-  [dim]>[/dim] cd subdir            [dim]# Change to /local/mydir/subdir[/dim]
-  [dim]>[/dim] cd ..                [dim]# Go back to /local/mydir[/dim]
-  [dim]>[/dim] cd                   [dim]# Go to root (/)[/dim]
-  [dim]>[/dim] echo "test" > data.txt        [dim]# Create file in current directory[/dim]
-  [dim]>[/dim] cat /local/data.txt | grep "error" > errors.txt
+  [dim]# File operations[/dim]
+  [dim]>[/dim] cd /local/mydir
+  [dim]>[/dim] cat file.txt | grep -i "error" | wc -l
+  [dim]>[/dim] cp local:~/data.txt /local/backup.txt
+
+  [dim]# Variables[/dim]
+  [dim]>[/dim] export NAME="world"
+  [dim]>[/dim] echo "Hello $NAME"
+
+  [dim]# Conditionals[/dim]
+  [dim]>[/dim] if test -f myfile.txt; then
+         echo "File exists"
+       else
+         echo "File not found"
+       fi
+
+  [dim]# Loops[/dim]
+  [dim]>[/dim] for file in *.txt; do
+         echo "Processing $file"
+         cat $file | grep "TODO"
+       done
+
+  [dim]# Heredoc[/dim]
+  [dim]>[/dim] cat << EOF > config.json
+       {
+         "name": "$NAME",
+         "version": "1.0"
+       }
+       EOF
+
+  [dim]# JSON processing with jq[/dim]
+  [dim]>[/dim] echo '{"name":"test","value":42}' | jq '.name'
+  [dim]>[/dim] cat data.json | jq '.items[] | select(.active == true)'
+
+  [dim]# Advanced grep[/dim]
+  [dim]>[/dim] grep -n "function" code.py
+  [dim]>[/dim] grep -r -i "error" *.log | grep -v "debug"
 
 [bold yellow]Special Commands:[/bold yellow]
   [green]help[/green]                   - Show this help
