@@ -139,6 +139,89 @@ class Shell:
 
         return text
 
+    def _expand_globs(self, commands):
+        """
+        Expand glob patterns in command arguments
+
+        Args:
+            commands: List of (cmd, args) tuples
+
+        Returns:
+            List of (cmd, expanded_args) tuples
+        """
+        import fnmatch
+
+        expanded_commands = []
+
+        for cmd, args in commands:
+            expanded_args = []
+
+            for arg in args:
+                # Check if argument contains glob characters
+                if '*' in arg or '?' in arg or '[' in arg:
+                    # Try to expand the glob pattern
+                    matches = self._match_glob_pattern(arg)
+
+                    if matches:
+                        # Expand to matching files
+                        expanded_args.extend(sorted(matches))
+                    else:
+                        # No matches, keep original pattern
+                        expanded_args.append(arg)
+                else:
+                    # Not a glob pattern, keep as is
+                    expanded_args.append(arg)
+
+            expanded_commands.append((cmd, expanded_args))
+
+        return expanded_commands
+
+    def _match_glob_pattern(self, pattern: str):
+        """
+        Match a glob pattern against files in the filesystem
+
+        Args:
+            pattern: Glob pattern (e.g., "*.txt", "/local/*.log")
+
+        Returns:
+            List of matching file paths
+        """
+        import fnmatch
+        import os
+
+        # Resolve the pattern to absolute path
+        if pattern.startswith('/'):
+            # Absolute pattern
+            dir_path = os.path.dirname(pattern) or '/'
+            file_pattern = os.path.basename(pattern)
+        else:
+            # Relative pattern
+            dir_path = self.cwd
+            file_pattern = pattern
+
+        matches = []
+
+        try:
+            # List files in the directory
+            entries = self.filesystem.list_directory(dir_path)
+
+            for entry in entries:
+                # Match against pattern
+                if fnmatch.fnmatch(entry['name'], file_pattern):
+                    # Build full path
+                    if dir_path == '/':
+                        full_path = '/' + entry['name']
+                    else:
+                        full_path = dir_path + '/' + entry['name']
+
+                    matches.append(full_path)
+        except Exception as e:
+            # Directory doesn't exist or other error
+            # Return empty list to keep original pattern
+            pass
+
+        return matches
+
     def _needs_more_input(self, line: str) -> bool:
         """
         Check if the line needs more input (multiline continuation)
@@ -579,6 +662,9 @@ class Shell:
 
         # Parse the command line with redirections
         commands, redirections = self.parser.parse_command_line(command_line)
+
+        # Expand globs in command arguments
+        commands = self._expand_globs(commands)
 
         # If heredoc is detected but no data provided, return special code to signal REPL
         # to read heredoc content

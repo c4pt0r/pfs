@@ -12,6 +12,7 @@ agfs-shell2 is a simple shell that demonstrates Unix pipeline concepts while int
 
 - **Unix-style pipelines**: Chain commands with `|` operator
 - **I/O Redirection**: Support for `<`, `>`, `>>`, `2>`, `2>>` operators
+- **Glob expansion**: Wildcard patterns (`*.txt`, `file?.dat`, `[abc]`, etc.)
 - **Variables**: Shell variable assignment and expansion (`VAR=value`, `$VAR`, `${VAR}`)
 - **Special variables**: `$?` for exit code of last command
 - **Command substitution**: Capture command output with `$(command)` or backticks
@@ -170,6 +171,60 @@ uv run agfs-shell2 echo hello world
 ### Conditional Testing
 - **test EXPRESSION** - Evaluate conditional expressions
 - **[ EXPRESSION ]** - Alternative syntax for test command
+
+## Glob Expansion
+
+agfs-shell2 supports glob patterns for filename expansion, similar to bash:
+
+```bash
+# Match all .txt files in /local
+cat /local/*.txt
+
+# Match files with single character
+ls /local/file?.dat
+
+# Character class - match file1, file2, file3
+echo /local/file[123].txt
+
+# Range - match files a through z
+rm /local/test[a-z].log
+```
+
+### Supported Patterns
+
+- **`*`** - Matches any string (including empty string)
+  - `*.txt` matches `file.txt`, `data.txt`, `test.txt`
+  - `/local/*` matches all files in `/local`
+
+- **`?`** - Matches exactly one character
+  - `file?.txt` matches `file1.txt`, `fileA.txt` but not `file12.txt`
+
+- **`[...]`** - Matches any character in the set
+  - `file[123].txt` matches `file1.txt`, `file2.txt`, `file3.txt`
+  - `test[a-z].dat` matches `testa.dat`, `testb.dat`, ..., `testz.dat`
+
+### How It Works
+
+1. Glob patterns are expanded **after** variable expansion
+2. If no files match the pattern, the literal pattern is kept
+3. Matches are sorted alphabetically
+4. Works with any command that accepts file arguments
+
+```bash
+# Example: Process multiple log files
+for file in /local/*.log
+do
+  echo "Processing $file"
+  cat $file | grep ERROR
+done
+
+# Example: Backup with wildcards
+mkdir /local/backup
+for src in /local/data*.txt
+do
+  cat $src > /local/backup/$src
+done
+```
 
 ## Variables and Command Substitution
 
