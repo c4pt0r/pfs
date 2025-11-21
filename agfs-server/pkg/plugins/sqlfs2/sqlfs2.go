@@ -150,6 +150,26 @@ func (fs *sqlfs2FS) parsePath(path string) (dbName, tableName, operation string,
 	return "", "", "", fmt.Errorf("invalid path: %s", path)
 }
 
+// tableExists checks if a table exists in the specified database
+func (fs *sqlfs2FS) tableExists(dbName, tableName string) (bool, error) {
+	if dbName == "" || tableName == "" {
+		return false, fmt.Errorf("dbName and tableName must not be empty")
+	}
+
+	tables, err := fs.plugin.backend.ListTables(fs.plugin.db, dbName)
+	if err != nil {
+		return false, err
+	}
+
+	for _, t := range tables {
+		if t == tableName {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 func (fs *sqlfs2FS) Read(path string, offset int64, size int64) ([]byte, error) {
 	dbName, tableName, operation, err := fs.parsePath(path)
 	if err != nil {
@@ -585,6 +605,15 @@ func (fs *sqlfs2FS) ReadDir(path string) ([]filesystem.FileInfo, error) {
 
 	// Table level: list operations (schema, execute, query, count, insert_json)
 	if operation == "" {
+		// Check if table exists
+		exists, err := fs.tableExists(dbName, tableName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check table existence: %w", err)
+		}
+		if !exists {
+			return nil, fmt.Errorf("table '%s.%s' does not exist", dbName, tableName)
+		}
+
 		return []filesystem.FileInfo{
 			{
 				Name:    "schema",
@@ -666,6 +695,15 @@ func (fs *sqlfs2FS) Stat(path string) (*filesystem.FileInfo, error) {
 
 	// Table directory
 	if operation == "" {
+		// Check if table exists
+		exists, err := fs.tableExists(dbName, tableName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check table existence: %w", err)
+		}
+		if !exists {
+			return nil, fmt.Errorf("table '%s.%s' does not exist", dbName, tableName)
+		}
+
 		return &filesystem.FileInfo{
 			Name:    tableName,
 			Size:    0,
