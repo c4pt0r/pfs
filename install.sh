@@ -2,13 +2,15 @@
 set -e
 
 # AGFS Installation Script
-# This script downloads and installs the latest daily build of agfs-server and agfs-shell
+# This script downloads and installs the latest daily build of agfs-server, agfs-shell, and agfs-shell2
 
 REPO="c4pt0r/agfs"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 AGFS_SHELL_DIR="${AGFS_SHELL_DIR:-$HOME/.local/agfs}"
+AGFS_SHELL2_DIR="${AGFS_SHELL2_DIR:-$HOME/.local/agfs-shell2}"
 INSTALL_SERVER="${INSTALL_SERVER:-yes}"
 INSTALL_CLIENT="${INSTALL_CLIENT:-yes}"
+INSTALL_SHELL2="${INSTALL_SHELL2:-yes}"
 
 # Detect OS and architecture
 detect_platform() {
@@ -209,6 +211,77 @@ install_client() {
     echo "  Symlink created: $INSTALL_DIR/agfs"
 }
 
+# Install agfs-shell2
+install_shell2() {
+    echo ""
+    echo "Installing agfs-shell2..."
+
+    # Check Python
+    if ! check_python; then
+        echo "Skipping agfs-shell2 installation (Python requirement not met)"
+        return 1
+    fi
+
+    # Only build for supported platforms
+    if [ "$OS" = "windows" ]; then
+        if [ "$ARCH" != "amd64" ] && [ "$ARCH" != "arm64" ]; then
+            echo "Skipping agfs-shell2: Not available for $OS-$ARCH"
+            return 1
+        fi
+        SHELL2_ARCHIVE="agfs-shell2-${OS}-${ARCH}.zip"
+    else
+        if [ "$ARCH" != "amd64" ] && ! { [ "$OS" = "darwin" ] && [ "$ARCH" = "arm64" ]; } && ! { [ "$OS" = "linux" ] && [ "$ARCH" = "arm64" ]; }; then
+            echo "Skipping agfs-shell2: Not available for $OS-$ARCH"
+            return 1
+        fi
+        SHELL2_ARCHIVE="agfs-shell2-${OS}-${ARCH}.tar.gz"
+    fi
+
+    SHELL2_URL="https://github.com/$REPO/releases/download/$LATEST_TAG/$SHELL2_ARCHIVE"
+
+    echo "Downloading from: $SHELL2_URL"
+
+    TMP_DIR=$(mktemp -d)
+    cd "$TMP_DIR"
+
+    if ! curl -fsSL -o "$SHELL2_ARCHIVE" "$SHELL2_URL"; then
+        echo "Warning: Failed to download agfs-shell2, skipping installation"
+        rm -rf "$TMP_DIR"
+        return 1
+    fi
+
+    echo "Extracting archive..."
+    if [ "$OS" = "windows" ]; then
+        unzip -q "$SHELL2_ARCHIVE"
+    else
+        tar -xzf "$SHELL2_ARCHIVE"
+    fi
+
+    if [ ! -d "agfs-shell2-portable" ]; then
+        echo "Error: agfs-shell2-portable directory not found in archive"
+        rm -rf "$TMP_DIR"
+        return 1
+    fi
+
+    # Remove old installation
+    rm -rf "$AGFS_SHELL2_DIR"
+    mkdir -p "$AGFS_SHELL2_DIR"
+
+    # Copy portable directory
+    cp -r agfs-shell2-portable/* "$AGFS_SHELL2_DIR/"
+
+    # Create symlink
+    mkdir -p "$INSTALL_DIR"
+    ln -sf "$AGFS_SHELL2_DIR/agfs-shell2" "$INSTALL_DIR/agfs-shell2"
+
+    # Clean up
+    cd - > /dev/null
+    rm -rf "$TMP_DIR"
+
+    echo "✓ agfs-shell2 installed to $AGFS_SHELL2_DIR"
+    echo "  Symlink created: $INSTALL_DIR/agfs-shell2"
+}
+
 show_completion() {
     echo ""
     echo "----------------------------------"
@@ -231,6 +304,14 @@ show_completion() {
         echo ""
     fi
 
+    if [ "$INSTALL_SHELL2" = "yes" ] && [ -f "$INSTALL_DIR/agfs-shell2" ]; then
+        echo "Shell2: agfs-shell2"
+        echo "  Location: $INSTALL_DIR/agfs-shell2"
+        echo "  Usage: agfs-shell2 --help"
+        echo "  Interactive: agfs-shell2"
+        echo ""
+    fi
+
     # Check if install dir is in PATH
     case ":$PATH:" in
         *":$INSTALL_DIR:"*)
@@ -246,6 +327,7 @@ show_completion() {
     echo "Quick Start:"
     echo "  1. Start server: agfs-server"
     echo "  2. Use client: agfs shell"
+    echo "  3. Use shell2: agfs-shell2"
 }
 
 main() {
@@ -264,6 +346,10 @@ main() {
 
     if [ "$INSTALL_CLIENT" = "yes" ]; then
         install_client || true  # Don't fail if client install fails
+    fi
+
+    if [ "$INSTALL_SHELL2" = "yes" ]; then
+        install_shell2 || true  # Don't fail if shell2 install fails
     fi
 
     show_completion
