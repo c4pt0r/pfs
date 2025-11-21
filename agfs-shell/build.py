@@ -26,54 +26,73 @@ def get_git_hash():
 
 def inject_version_info(script_dir):
     """Inject git hash and build date into __init__.py"""
-    version_file = script_dir / "agfs_shell" / "__init__.py"
-    git_hash = get_git_hash()
-    build_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        version_file = script_dir / "agfs_shell" / "__init__.py"
 
-    # Read current version file
-    with open(version_file, 'r') as f:
-        content = f.read()
+        if not version_file.exists():
+            print(f"Warning: Version file not found at {version_file}")
+            return
 
-    # Add build info if not present
-    if '__git_hash__' not in content:
-        # Find the version line and add build info after it
-        lines = content.split('\n')
-        new_lines = []
-        for line in lines:
-            new_lines.append(line)
-            if line.startswith('__version__'):
-                new_lines.append(f'__git_hash__ = "{git_hash}"')
-                new_lines.append(f'__build_date__ = "{build_date}"')
-        content = '\n'.join(new_lines)
-    else:
-        # Replace placeholders
-        import re
-        content = re.sub(r'__git_hash__ = ".*?"', f'__git_hash__ = "{git_hash}"', content)
-        content = re.sub(r'__build_date__ = ".*?"', f'__build_date__ = "{build_date}"', content)
+        git_hash = get_git_hash()
+        build_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # Write back
-    with open(version_file, 'w') as f:
-        f.write(content)
+        # Read current version file
+        with open(version_file, 'r') as f:
+            content = f.read()
 
-    print(f"Injected version info: git={git_hash}, date={build_date}")
+        # Add build info if not present
+        if '__git_hash__' not in content:
+            # Find the version line and add build info after it
+            lines = content.split('\n')
+            new_lines = []
+            for line in lines:
+                new_lines.append(line)
+                if line.startswith('__version__'):
+                    new_lines.append(f'__git_hash__ = "{git_hash}"')
+                    new_lines.append(f'__build_date__ = "{build_date}"')
+            content = '\n'.join(new_lines)
+        else:
+            # Replace placeholders
+            import re
+            content = re.sub(r'__git_hash__ = ".*?"', f'__git_hash__ = "{git_hash}"', content)
+            content = re.sub(r'__build_date__ = ".*?"', f'__build_date__ = "{build_date}"', content)
+
+        # Write back
+        with open(version_file, 'w') as f:
+            f.write(content)
+
+        print(f"Injected version info: git={git_hash}, date={build_date}")
+    except Exception as e:
+        print(f"Error injecting version info: {e}")
+        raise
 
 def restore_version_file(script_dir):
     """Restore __init__.py to dev state"""
-    version_file = script_dir / "agfs_shell" / "__init__.py"
+    try:
+        version_file = script_dir / "agfs_shell" / "__init__.py"
 
-    with open(version_file, 'r') as f:
-        content = f.read()
+        if not version_file.exists():
+            print(f"Warning: Version file not found at {version_file}")
+            return
 
-    # Remove build info lines or restore to dev placeholders
-    lines = content.split('\n')
-    new_lines = []
-    for line in lines:
-        if '__git_hash__' in line or '__build_date__' in line:
-            continue
-        new_lines.append(line)
+        with open(version_file, 'r') as f:
+            content = f.read()
 
-    with open(version_file, 'w') as f:
-        f.write('\n'.join(new_lines))
+        # Remove build info lines or restore to dev placeholders
+        lines = content.split('\n')
+        new_lines = []
+        for line in lines:
+            if '__git_hash__' in line or '__build_date__' in line:
+                continue
+            new_lines.append(line)
+
+        with open(version_file, 'w') as f:
+            f.write('\n'.join(new_lines))
+
+        print("Restored version file to dev state")
+    except Exception as e:
+        print(f"Warning: Failed to restore version file: {e}")
+        # Don't raise here - we don't want to fail the build if restore fails
 
 
 def main():
@@ -89,9 +108,6 @@ def main():
         shutil.rmtree(portable_dir)
     portable_dir.mkdir(parents=True, exist_ok=True)
 
-    # Inject version information
-    inject_version_info(script_dir)
-
     try:
         # Check if uv is available
         has_uv = shutil.which("uv") is not None
@@ -100,6 +116,9 @@ def main():
             print("Error: uv is required for building")
             print("Install uv: curl -LsSf https://astral.sh/uv/install.sh | sh")
             sys.exit(1)
+
+        # Inject version information (after all prerequisite checks)
+        inject_version_info(script_dir)
 
         print("Installing dependencies to portable directory...")
         # Install dependencies directly to a lib directory (no venv)
@@ -145,7 +164,7 @@ def main():
         launcher_script = portable_dir / "agfs-shell"
         launcher_content = '''#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""AGFS Shell2 Launcher
+"""AGFS Shell Launcher
 Portable launcher script that uses system Python but bundled dependencies
 """
 import sys
@@ -173,7 +192,7 @@ if __name__ == '__main__':
         launcher_bat = portable_dir / "agfs-shell.bat"
         with open(launcher_bat, 'w') as f:
             f.write("""@echo off
-REM AGFS Shell2 Launcher for Windows
+REM AGFS Shell Launcher for Windows
 python "%~dp0agfs-shell" %%*
 """)
 
@@ -181,8 +200,8 @@ python "%~dp0agfs-shell" %%*
         readme = portable_dir / "README.txt"
         version_info = get_version_string()
         with open(readme, 'w') as f:
-            f.write(f"""AGFS Shell2 - Portable Distribution
-====================================
+            f.write(f"""AGFS Shell - Portable Distribution
+===================================
 
 Version: {version_info}
 Built: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
