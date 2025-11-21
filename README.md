@@ -27,130 +27,126 @@ $ docker pull c4pt0r/agfs-server:latest
 ```
 
 ```plain
-$ agfs shell
-    ___   _____________ _____
-   /   | / ____/ ____// ___/
-  / /| |/ / __/ /_   \__ \
- / ___ / /_/ / __/  ___/ /
-/_/  |_\____/_/    /____/
+$ agfs
+     __  __ __
+ /\ / _ |_ (_
+/--\\__)|  __)
 
-Client: agfs-cli 1.0.0 (git: f50d08d, built: 2025-11-16 22:40:49)
-Server: version=nightly-8-g6f26aea-dirty, commit=6f26aea, build=2025-11-17_18:23:32
-Connected to agfs server at http://localhost:8080/api/v1
-press 'help' or '?' for help
+agfs-shell v1.1.0
+Connected to AGFS server at http://localhost:8080
+Type 'help' for help, Ctrl+D or 'exit' to quit
 
-
-// list dir
-
-agfs:/> ls
-drwxr-xr-x        0 2025-11-17 15:20:24 sqlfs2/
-drwxr-xr-x        0 2025-11-17 15:20:24 sqlfs/
-drwxr-xr-x        0 2025-11-17 15:20:24 s3fs/
-drwxr-xr-x        0 2025-11-17 15:20:24 queuefs/
-drwxr-xr-x        0 2025-11-17 15:20:24 local/
-drwxr-xr-x        0 2025-11-17 15:20:24 streamfs/
-drwxr-xr-x        0 2025-11-17 15:20:24 queuefs_mem/
+agfs:/> ls -l
+drwxr-xr-x        0 2025-11-21 13:42:23 queuefs_mem/
+drwxr-xr-x        0 2025-11-21 13:42:23 kvfs/
+drwxr-xr-x        0 2025-11-21 13:42:23 hellofs/
+drwxr-xr-x        0 2025-11-21 13:42:23 local/
+drwxr-xr-x        0 2025-11-21 13:42:23 sqlfs/
+drwxr-xr-x        0 2025-11-21 13:42:23 s3fs/
+drwxr-xr-x        0 2025-11-21 13:42:23 sqlfs2/
+drwxr-xr-x        0 2025-11-21 13:42:23 serverinfofs/
+drwxr-xr-x        0 2025-11-21 13:42:23 heartbeatfs/
+drwxr-xr-x        0 2025-11-21 13:42:23 memfs/
+drwxr-xr-x        0 2025-11-21 13:42:23 streamfs/
 
 
-// using queuefs
-
-agfs:/> cd queuefs_mem/
-agfs:/queuefs_mem> ls
--r--r--r--     3044 2025-11-17 15:20:31 README
-agfs:/queuefs_mem> mkdir test_queue
-agfs:/queuefs_mem> cd test_queue/
-agfs:/queuefs_mem/test_queue> ls
---w--w--w-        0 2025-11-17 15:20:38 enqueue
--r--r--r--        0 2025-11-17 15:20:38 dequeue
--r--r--r--        0 2025-11-17 15:20:38 peek
--r--r--r--        1 2025-11-17 15:20:38 size
---w--w--w-        0 2025-11-17 15:20:38 clear
-agfs:/queuefs_mem/test_queue> echo hello > enqueue
-019a941e-ea7a-7ee0-93af-f96cea484833
-agfs:/queuefs_mem/test_queue> cat dequeue
-{"id":"019a941e-ea7a-7ee0-93af-f96cea484833","data":"hello\n","timestamp":"2025-11-17T15:20:45.434785-08:00"}
-agfs:/queuefs_mem/test_queue>
+# BROWSING YOUR S3 BUCKET
+agfs:/> agfs:/s3fs/aws> ls -l
+drw-r--r--        0 2025-11-21 13:42:51 dongxu/
+-rw-r--r--       12 2025-11-17 23:55:26 hello.txt
+-rw-r--r--    96192 2025-11-17 23:47:31 hellofs-wasm.wasm
 
 
+# SQLFS
 
-// turn a cloud database into a filesystem
+agfs:/sqlfs2/tidb/log/logs> cat schema
+CREATE TABLE `logs` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `name` text DEFAULT NULL,
+  `content` longblob DEFAULT NULL,
+  `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`) /*T![clustered_index] CLUSTERED */
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin AUTO_INCREMENT=90001
+agfs:/sqlfs2/tidb/log/logs>
 
-agfs:/sqlfs2> cd tidb
-agfs:/sqlfs2/tidb> ls
-cdrwxr-xr-x        0 2025-11-17 15:22:47 INFORMATION_SCHEMA/
-drwxr-xr-x        0 2025-11-17 15:22:47 PERFORMANCE_SCHEMA/
-drwxr-xr-x        0 2025-11-17 15:22:47 test/
-agfs:/sqlfs2/tidb> cd test
-agfs:/sqlfs2/tidb/test> ls
-drwxr-xr-x        0 2025-11-17 15:21:51 jobs/
-agfs:/sqlfs2/tidb/test> cd jobs
-agfs:/sqlfs2/tidb/test/jobs> ls
--r--r--r--        0 2025-11-17 15:22:00 schema
--r--r--r--        0 2025-11-17 15:22:00 count
---w--w--w-        0 2025-11-17 15:22:00 query
---w--w--w-        0 2025-11-17 15:22:00 execute
-agfs:/sqlfs2/tidb/test/jobs> cat schema
-CREATE TABLE `jobs` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `name` varchar(255) NOT NULL,
-  `description` text DEFAULT NULL,
-  `schedule` varchar(255) DEFAULT NULL,
-  `body` longtext DEFAULT NULL,
-  `executor` varchar(255) DEFAULT NULL,
-  `meta` text DEFAULT NULL,
-  `last_run_utc` timestamp NULL DEFAULT NULL,
-  `create_time_utc` timestamp DEFAULT CURRENT_TIMESTAMP,
-  `enabled` tinyint(1) DEFAULT '1',
-  `last_run_exit_code` int(11) DEFAULT NULL,
-  `last_run_stdout` longtext DEFAULT NULL,
-  `last_run_stderr` longtext DEFAULT NULL,
-  PRIMARY KEY (`id`) /*T![clustered_index] CLUSTERED */,
-  UNIQUE KEY `name` (`name`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin AUTO_INCREMENT=420001
-agfs:/sqlfs2/tidb/test/jobs> echo 'select 1' > query
+agfs:/> cat << EOF > /sqlfs2/tidb/log/logs/query
+SELECT *
+FROM logs
+LIMIT 1;
+EOF
 [
   {
-    "1": 1
+    "content": "world",
+    "created_at": null,
+    "id": 10,
+    "name": "hello"
   }
 ]
 
 
-// Write your own Filesystem (in Wasm, see more details at agfs-server/examples) and mount it dynamicly
+# QUEUEFS
 
-agfs:/> plugins load pfs://s3fs/aws/hellofs-wasm.wasm
-Reading plugin from AGFS path: /s3fs/aws/hellofs-wasm.wasm
-Downloaded to temporary file: /var/folders/lf/nj7v40x934j5s8f8qmtcsx_m0000gn/T/agfs_plugin_vgcajk57.wasm (96192 bytes)
-Loaded external plugin: hellofs-wasm
-  Source: pfs://s3fs/aws/hellofs-wasm.wasm
-  Temporary file: /var/folders/lf/nj7v40x934j5s8f8qmtcsx_m0000gn/T/agfs_plugin_vgcajk57.wasm
-Cleaned up temporary file: /var/folders/lf/nj7v40x934j5s8f8qmtcsx_m0000gn/T/agfs_plugin_vgcajk57.wasm
-agfs:/> mount hellofs-wasm /hello-wasm
-  plugin mounted
-agfs:/> cd /hello-wasm
-agfs:/hello-wasm> ls
--rw-r--r--       12 0001-01-01 00:00:00 hello.txt
-agfs:/hello-wasm> cat hello.txt
-Hello World
-agfs:/hello-wasm>
+agfs:/queuefs_mem/queue> ls
+enqueue
+dequeue
+peek
+size
+clear
+agfs:/queuefs_mem/queue> echo hello > enqueue
+019aa869-1a20-7ca6-a77a-b081e24c0593
+agfs:/queuefs_mem/queue> cat dequeue
+{"id":"019aa869-1a20-7ca6-a77a-b081e24c0593","data":"hello\n","timestamp":"2025-11-21T13:54:11.616801-08:00"}
+agfs:/queuefs_mem/queue>
 
 
-// Basic pipeline / IO redirect support 
+# HEARTBEATFS
 
-agfs:/s3fs/aws> echo 'hello world' > hello.txt
-Written 12 bytes to hello.txt
-agfs:/s3fs/aws> cat hello.txt | tee -a /sqlfs/tidb/hello_in_database | tee -a /local/hello_in_local
-hello world
-agfs:/s3fs/aws> cat /sqlfs/tidb/hello_in_database
-hello world
-agfs:/s3fs/aws> cat /local/hello_in_local
-hello world
-agfs:/s3fs/aws>
+agfs:/heartbeatfs> mkdir agent-1
+agfs:/heartbeatfs> cd agent-1
+agfs:/heartbeatfs/agent-1> ls
+keepalive
+ctl
+
+agfs:/heartbeatfs/agent-1> touch keepalive
+agfs:/heartbeatfs/agent-1>
+
+agfs:/heartbeatfs/agent-1> cat ctl
+last_heartbeat_ts: 2025-11-21T13:55:45-08:00
+expire_ts: 2025-11-21T13:56:15-08:00
+timeout: 30
+status: alive
+
+agfs:/heartbeatfs/agent-1> sleep 30
+
+# Cleanup by FS
+agfs:/heartbeatfs/agent-1> ls
+ls: /heartbeatfs/agent-1: No such file or directory
+
+
+# Upload/download local file
+
+agfs:/local> cp local:/tmp/test_input.txt ./newfile
+local:/tmp/test_input.txt -> /local/newfile
+
+// recursive upload dir
+agfs:/> cp -r local:./agfscli ./local/
+Uploaded 2098 bytes to /local/agfscli/__pycache__/decorators.cpython-312.pyc
+Uploaded 26197 bytes to /local/agfscli/__pycache__/cli.cpython-312.pyc
+Uploaded 25802 bytes to /local/agfscli/__pycache__/cli.cpython-313.pyc
+Uploaded 88764 bytes to /local/agfscli/__pycache__/commands.cpython-312.pyc
+Uploaded 51420 bytes to /local/agfscli/__pycache__/cli_commands.cpython-312.pyc
+Uploaded 88244 bytes to /local/agfscli/__pycache__/commands.cpython-313.pyc
+Uploaded 611 bytes to /local/agfscli/__pycache__/version.cpython-312.pyc
+Uploaded 237 bytes to /local/agfscli/__pycache__/__init__.cpython-312.pyc
+agfs:/>
+
 ```
 
 
 See more details in:
 - [agfs-shell/README.md](https://github.com/c4pt0r/agfs/blob/master/agfs-shell/README.md)
 - [agfs-server/README.md](https://github.com/c4pt0r/agfs/blob/master/agfs-server/README.md)
+
 
 
 
