@@ -1,4 +1,4 @@
-# agfs-shell2
+# agfs-shell
 
 DO NOT USE IT NOW, UNDER CONSTRUCTION
 
@@ -6,7 +6,7 @@ Experimental agfs shell implementation with Unix-style pipeline support and **AG
 
 ## Overview
 
-agfs-shell2 is a simple shell that demonstrates Unix pipeline concepts while integrating with the AGFS (Aggregated File System) server. All file operations go through AGFS, allowing you to work with multiple backend filesystems (local, S3, SQL, etc.) through a unified interface.
+agfs-shell is a simple shell that demonstrates Unix pipeline concepts while integrating with the AGFS (Aggregated File System) server. All file operations go through AGFS, allowing you to work with multiple backend filesystems (local, S3, SQL, etc.) through a unified interface.
 
 ## Features
 
@@ -35,7 +35,7 @@ agfs-shell2 is a simple shell that demonstrates Unix pipeline concepts while int
   - Testing: test, [
   - Utilities: sleep
 - **Interactive REPL**: Interactive shell mode with dynamic prompt showing current directory
-- **Script execution**: Support for shebang scripts (`#!/usr/bin/env uv run agfs-shell2`)
+- **Script execution**: Support for shebang scripts (`#!/usr/bin/env uv run agfs-shell`)
 - **Non-interactive mode**: Execute commands from command line with `-c` flag
 - **Configurable server**: Support for custom AGFS server URL and timeout
 - **Rich output**: Colorized and formatted output using Rich library
@@ -44,7 +44,7 @@ agfs-shell2 is a simple shell that demonstrates Unix pipeline concepts while int
 
 **AGFS Server must be running!**
 
-Start the AGFS server before using agfs-shell2:
+Start the AGFS server before using agfs-shell:
 
 ```bash
 # Option 1: Run from source
@@ -58,7 +58,7 @@ docker run -p 8080:8080 c4pt0r/agfs-server:latest
 ## Installation
 
 ```bash
-cd agfs-shell2
+cd agfs-shell
 uv sync
 ```
 
@@ -79,29 +79,29 @@ The shell is built with several key components:
 
 ### Configure Server (Optional)
 
-By default, agfs-shell2 connects to `http://localhost:8080`. You can configure a different server:
+By default, agfs-shell connects to `http://localhost:8080`. You can configure a different server:
 
 ```bash
 # Via command line argument
-uv run agfs-shell2 --agfs-api-url http://192.168.1.100:8080
+uv run agfs-shell --agfs-api-url http://192.168.1.100:8080
 
 # Via environment variable (AGFS_API_URL is preferred)
 export AGFS_API_URL=http://192.168.1.100:8080
-uv run agfs-shell2
+uv run agfs-shell
 
 # Backward compatibility with AGFS_SERVER_URL
 export AGFS_SERVER_URL=http://192.168.1.100:8080
-uv run agfs-shell2
+uv run agfs-shell
 ```
 
 ### Interactive REPL Mode
 
 ```bash
-uv run agfs-shell2
+uv run agfs-shell
 ```
 
 ```
-agfs-shell2 v0.1.0
+agfs-shell v0.1.0
 Connected to AGFS server at http://localhost:8080
 Type 'help' for help, Ctrl+D or 'exit' to quit
 
@@ -122,37 +122,37 @@ If the server is not running, you'll see a warning:
 
 ```bash
 # Execute a command string
-uv run agfs-shell2 -c "echo 'hello world' > /local/test.txt"
+uv run agfs-shell -c "echo 'hello world' > /local/test.txt"
 
 # Read from AGFS
-uv run agfs-shell2 -c "cat /local/test.txt"
+uv run agfs-shell -c "cat /local/test.txt"
 
 # Use with shell pipes
-echo "test data" | uv run agfs-shell2 -c "cat | grep test > /local/results.txt"
+echo "test data" | uv run agfs-shell -c "cat | grep test > /local/results.txt"
 
 # Complex pipelines with AGFS
-uv run agfs-shell2 -c "cat /local/input.txt | sort | uniq > /local/output.txt"
+uv run agfs-shell -c "cat /local/input.txt | sort | uniq > /local/output.txt"
 
 # Multiple commands in one script
-uv run agfs-shell2 -c "ls / | grep local"
+uv run agfs-shell -c "ls / | grep local"
 ```
 
 #### Using positional arguments (also works)
 
 ```bash
 # Write to AGFS
-uv run agfs-shell2 "echo 'hello world' > /local/test.txt"
+uv run agfs-shell "echo 'hello world' > /local/test.txt"
 
 # Read from AGFS
-uv run agfs-shell2 "cat /local/test.txt"
+uv run agfs-shell "cat /local/test.txt"
 
 # Without quotes (splits on spaces)
-uv run agfs-shell2 echo hello world
+uv run agfs-shell echo hello world
 ```
 
 ## Interactive Features
 
-agfs-shell2 provides a rich interactive experience with several productivity features:
+agfs-shell provides a rich interactive experience with several productivity features:
 
 ### Command History
 
@@ -255,7 +255,7 @@ The shell supports multiline commands:
 
 ### Pattern Matching with grep
 
-agfs-shell2 includes a powerful **grep** command for searching text:
+agfs-shell includes a powerful **grep** command for searching text:
 
 ```bash
 # Basic search
@@ -344,7 +344,7 @@ grep -vc 'comment' /local/code.py     # Count non-matching lines
 
 ### JSON Processing with jq
 
-agfs-shell2 includes a built-in **jq** command for processing JSON data. This allows you to query, filter, and transform JSON files stored in AGFS.
+agfs-shell includes a built-in **jq** command for processing JSON data. This allows you to query, filter, and transform JSON files stored in AGFS.
 
 ```bash
 # Basic JSON formatting
@@ -454,13 +454,13 @@ EOF
 
 ### Script Files
 
-agfs-shell2 can execute script files with full support for variables, control flow, and all shell features.
+agfs-shell can execute script files with full support for variables, control flow, and all shell features.
 
 **Create a script file**:
 ```bash
 # Create process_logs.sh
 cat << 'EOF' > process_logs.sh
-#!/usr/bin/env uv run agfs-shell2
+#!/usr/bin/env uv run agfs-shell
 
 # Process log files and extract errors
 LOG_DIR=/local/logs
@@ -495,7 +495,7 @@ chmod +x process_logs.sh
 **Script with functions and complex logic**:
 ```bash
 cat << 'EOF' > backup_system.sh
-#!/usr/bin/env uv run agfs-shell2
+#!/usr/bin/env uv run agfs-shell
 
 # Backup system - copies important files to backup location
 BACKUP_DIR=/local/backups
@@ -533,7 +533,7 @@ EOF
 **Script with error handling**:
 ```bash
 cat << 'EOF' > data_pipeline.sh
-#!/usr/bin/env uv run agfs-shell2
+#!/usr/bin/env uv run agfs-shell
 
 # Data processing pipeline with error handling
 INPUT_FILE=/local/raw_data.json
@@ -566,7 +566,7 @@ EOF
 
 ## Glob Expansion
 
-agfs-shell2 supports glob patterns for filename expansion, similar to bash:
+agfs-shell supports glob patterns for filename expansion, similar to bash:
 
 ```bash
 # Match all .txt files in /local
@@ -655,7 +655,7 @@ rm /local/test[a-z].log
 
 ## Variables and Command Substitution
 
-agfs-shell2 supports shell variables and command substitution, allowing you to capture command output and reuse it.
+agfs-shell supports shell variables and command substitution, allowing you to capture command output and reuse it.
 
 ### Special Variables
 
@@ -786,7 +786,7 @@ LOG_LEVEL=debug
 
 ## Control Flow (if/then/else/fi)
 
-agfs-shell2 supports bash-style if statements for conditional execution.
+agfs-shell supports bash-style if statements for conditional execution.
 
 ### Syntax
 
@@ -974,7 +974,7 @@ fi
 
 ## For Loops (for/in/do/done)
 
-agfs-shell2 supports bash-style for loops to iterate over lists of items.
+agfs-shell supports bash-style for loops to iterate over lists of items.
 
 ### Syntax
 
@@ -1111,7 +1111,7 @@ done
 
 ## Path Support
 
-agfs-shell2 supports both absolute and relative paths:
+agfs-shell supports both absolute and relative paths:
 
 - **Absolute paths**: Start with `/` (e.g., `/local/file.txt`, `/s3fs/bucket/data.csv`)
 - **Relative paths**: Resolved from current directory (e.g., `file.txt`, `../parent/file.txt`)
@@ -1133,20 +1133,20 @@ Run the examples script:
 
 ```bash
 # Basic pipeline
-uv run agfs-shell2 "echo hello world | grep hello"
+uv run agfs-shell "echo hello world | grep hello"
 
 # Word count
-uv run agfs-shell2 "echo hello world | wc -w"
+uv run agfs-shell "echo hello world | wc -w"
 
 # Character translation
-uv run agfs-shell2 "echo hello | tr h H"
+uv run agfs-shell "echo hello | tr h H"
 
 # Sort and unique
-printf "apple\nbanana\napple\ncherry\n" | uv run agfs-shell2 "cat | sort | uniq"
+printf "apple\nbanana\napple\ncherry\n" | uv run agfs-shell "cat | sort | uniq"
 
 # Complex pipeline
 printf "apple pie\nbanana split\napple juice\ncherry pie\n" | \
-  uv run agfs-shell2 "cat | grep pie | sort | wc -l"
+  uv run agfs-shell "cat | grep pie | sort | wc -l"
 ```
 
 ### AGFS File Operations
@@ -1155,23 +1155,23 @@ All file operations automatically use AGFS paths. AGFS paths typically start wit
 
 ```bash
 # Write to local filesystem via AGFS
-uv run agfs-shell2 "echo 'Hello AGFS!' > /local/hello.txt"
+uv run agfs-shell "echo 'Hello AGFS!' > /local/hello.txt"
 
 # Read from AGFS
-uv run agfs-shell2 "cat /local/hello.txt"
+uv run agfs-shell "cat /local/hello.txt"
 
 # Append to AGFS file
-uv run agfs-shell2 "echo 'Line 2' >> /local/hello.txt"
+uv run agfs-shell "echo 'Line 2' >> /local/hello.txt"
 
 # Input redirection from AGFS
-uv run agfs-shell2 "wc -l < /local/hello.txt"
+uv run agfs-shell "wc -l < /local/hello.txt"
 
 # Cross-filesystem operations (if you have multiple mounts)
-uv run agfs-shell2 "cat /local/data.txt > /s3fs/backup.txt"
-uv run agfs-shell2 "cat /sqlfs/query_results.txt | grep ERROR > /local/errors.txt"
+uv run agfs-shell "cat /local/data.txt > /s3fs/backup.txt"
+uv run agfs-shell "cat /sqlfs/query_results.txt | grep ERROR > /local/errors.txt"
 
 # Complex pipeline with AGFS
-uv run agfs-shell2 "cat /local/access.log | grep 404 | sort | uniq > /local/404_urls.txt"
+uv run agfs-shell "cat /local/access.log | grep 404 | sort | uniq > /local/404_urls.txt"
 ```
 
 ### Using cd and Relative Paths
@@ -1179,9 +1179,9 @@ uv run agfs-shell2 "cat /local/access.log | grep 404 | sort | uniq > /local/404_
 Interactive mode with directory navigation:
 
 ```bash
-$ uv run agfs-shell2
+$ uv run agfs-shell
 
-agfs-shell2 v0.1.0
+agfs-shell v0.1.0
 Connected to AGFS server at http://localhost:8080
 Type 'exit' or 'quit' to exit, 'help' for help
 
@@ -1278,8 +1278,8 @@ This will test:
 ## Project Structure
 
 ```
-agfs-shell2/
-├── agfs_shell2/
+agfs-shell/
+├── agfs_shell/
 │   ├── __init__.py      # Package initialization
 │   ├── streams.py       # Stream classes (InputStream, OutputStream, ErrorStream)
 │   ├── process.py       # Process class for command execution with filesystem access

@@ -1,4 +1,4 @@
-"""Command metadata and decorator system for agfs-shell2"""
+"""Command metadata and decorator system for agfs-shell"""
 
 from functools import wraps
 from typing import Optional, Set, Callable

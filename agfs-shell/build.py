@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Build script for agfs-shell2
+Build script for agfs-shell
 Creates a portable distribution with embedded dependencies using virtual environment
 Requires Python 3.8+ on target system, but includes all dependencies
 """
@@ -26,7 +26,7 @@ def get_git_hash():
 
 def inject_version_info(script_dir):
     """Inject git hash and build date into __init__.py"""
-    version_file = script_dir / "agfs_shell2" / "__init__.py"
+    version_file = script_dir / "agfs_shell" / "__init__.py"
     git_hash = get_git_hash()
     build_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -59,7 +59,7 @@ def inject_version_info(script_dir):
 
 def restore_version_file(script_dir):
     """Restore __init__.py to dev state"""
-    version_file = script_dir / "agfs_shell2" / "__init__.py"
+    version_file = script_dir / "agfs_shell" / "__init__.py"
 
     with open(version_file, 'r') as f:
         content = f.read()
@@ -80,9 +80,9 @@ def main():
     # Get the directory containing this script
     script_dir = Path(__file__).parent.absolute()
     dist_dir = script_dir / "dist"
-    portable_dir = dist_dir / "agfs-shell2-portable"
+    portable_dir = dist_dir / "agfs-shell-portable"
 
-    print("Building portable agfs-shell2 distribution...")
+    print("Building portable agfs-shell distribution...")
 
     # Clean previous builds
     if portable_dir.exists():
@@ -122,7 +122,7 @@ def main():
         else:
             print(f"Warning: pyagfs SDK not found at {pyagfs_src_dir}")
 
-        # Then install agfs-shell2 and remaining dependencies
+        # Then install agfs-shell and remaining dependencies
         subprocess.check_call([
             "uv", "pip", "install",
             "--target", str(lib_dir),
@@ -131,7 +131,7 @@ def main():
             str(script_dir)
         ], cwd=str(script_dir))
 
-        # Install all agfs-shell2 dependencies from pyproject.toml (excluding pyagfs which we already copied)
+        # Install all agfs-shell dependencies from pyproject.toml (excluding pyagfs which we already copied)
         subprocess.check_call([
             "uv", "pip", "install",
             "--target", str(lib_dir),
@@ -142,7 +142,7 @@ def main():
 
         # Create launcher script
         print("Creating launcher scripts...")
-        launcher_script = portable_dir / "agfs-shell2"
+        launcher_script = portable_dir / "agfs-shell"
         launcher_content = '''#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """AGFS Shell2 Launcher
@@ -160,7 +160,7 @@ lib_dir = os.path.join(script_dir, 'lib')
 sys.path.insert(0, lib_dir)
 
 # Run the CLI
-from agfs_shell2.cli import main
+from agfs_shell.cli import main
 
 if __name__ == '__main__':
     main()
@@ -170,11 +170,11 @@ if __name__ == '__main__':
         os.chmod(launcher_script, 0o755)
 
         # Create Windows launcher
-        launcher_bat = portable_dir / "agfs-shell2.bat"
+        launcher_bat = portable_dir / "agfs-shell.bat"
         with open(launcher_bat, 'w') as f:
             f.write("""@echo off
 REM AGFS Shell2 Launcher for Windows
-python "%~dp0agfs-shell2" %%*
+python "%~dp0agfs-shell" %%*
 """)
 
         # Create README
@@ -188,7 +188,7 @@ Version: {version_info}
 Built: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 Git: {get_git_hash()}
 
-This is a portable distribution of agfs-shell2 that includes all dependencies
+This is a portable distribution of agfs-shell that includes all dependencies
 in a bundled library directory.
 
 Requirements:
@@ -196,17 +196,17 @@ Requirements:
 - No additional Python packages needed
 
 Usage:
-  ./agfs-shell2
+  ./agfs-shell
 
 Installation:
-  You can move this entire directory anywhere and run ./agfs-shell2 directly.
-  Optionally, add it to your PATH or symlink ./agfs-shell2 to /usr/local/bin/agfs-shell2
+  You can move this entire directory anywhere and run ./agfs-shell directly.
+  Optionally, add it to your PATH or symlink ./agfs-shell to /usr/local/bin/agfs-shell
 
 Environment Variables:
   AGFS_API_URL - Override default API endpoint (default: http://localhost:8080/api/v1)
 
 Example:
-  AGFS_API_URL=http://remote-server:8080/api/v1 ./agfs-shell2
+  AGFS_API_URL=http://remote-server:8080/api/v1 ./agfs-shell
 """)
 
         # Calculate size
@@ -216,7 +216,7 @@ Example:
         print(f"Portable directory: {portable_dir}")
         print(f"Size: {total_size / 1024 / 1024:.2f} MB")
         print(f"\nUsage:")
-        print(f"  {portable_dir}/agfs-shell2")
+        print(f"  {portable_dir}/agfs-shell")
         print(f"\nTo install, run: make install")
 
     finally:
@@ -227,7 +227,7 @@ def get_version_string():
     """Get version string for README"""
     try:
         # Read from __init__.py
-        version_file = Path(__file__).parent / "agfs_shell2" / "__init__.py"
+        version_file = Path(__file__).parent / "agfs_shell" / "__init__.py"
         namespace = {}
         with open(version_file) as f:
             exec(f.read(), namespace)

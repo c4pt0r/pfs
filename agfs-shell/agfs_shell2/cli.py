@@ -1,4 +1,4 @@
-"""Main CLI entry point for agfs-shell2"""
+"""Main CLI entry point for agfs-shell"""
 
 import sys
 import os
@@ -86,10 +86,10 @@ def execute_script_file(shell, script_path):
 
         return exit_code
     except FileNotFoundError:
-        sys.stderr.write(f"agfs-shell2: {script_path}: No such file or directory\n")
+        sys.stderr.write(f"agfs-shell: {script_path}: No such file or directory\n")
         return 127
     except Exception as e:
-        sys.stderr.write(f"agfs-shell2: {script_path}: {str(e)}\n")
+        sys.stderr.write(f"agfs-shell: {script_path}: {str(e)}\n")
         return 1
 
 
@@ -97,7 +97,7 @@ def main():
     """Main entry point for the shell"""
     # Parse command line arguments
     parser = argparse.ArgumentParser(
-        description='agfs-shell2 - Experimental shell with AGFS integration',
+        description='agfs-shell - Experimental shell with AGFS integration',
         add_help=False  # We'll handle help ourselves
     )
     parser.add_argument('--agfs-api-url',

@@ -1,4 +1,4 @@
-"""Tab completion support for agfs-shell2"""
+"""Tab completion support for agfs-shell"""
 
 import os
 from typing import List, Optional

@@ -1,11 +1,11 @@
 .PHONY: build install clean uninstall test help
 
 # Installation directory (can be overridden)
-INSTALL_DIR ?= $(HOME)/.local/agfs-shell2
+INSTALL_DIR ?= $(HOME)/.local/agfs-shell
 BIN_LINK_DIR ?= $(HOME)/.local/bin
 
 help:
-	@echo "agfs-shell2 build and installation"
+	@echo "agfs-shell build and installation"
 	@echo ""
 	@echo "Available targets:"
 	@echo "  make build      - Build portable distribution with uv"
@@ -15,14 +15,14 @@ help:
 	@echo "  make clean      - Clean build artifacts"
 	@echo ""
 	@echo "Override installation directory:"
-	@echo "  make install INSTALL_DIR=/opt/agfs-shell2"
+	@echo "  make install INSTALL_DIR=/opt/agfs-shell"
 	@echo ""
 	@echo "Requirements:"
 	@echo "  - Python 3.8+"
 	@echo "  - uv package manager"
 
 build:
-	@echo "Building portable agfs-shell2 distribution..."
+	@echo "Building portable agfs-shell distribution..."
 	@python3 build.py
 
 test:
@@ -30,22 +30,22 @@ test:
 	@uv run pytest tests/
 
 install: build
-	@echo "Installing agfs-shell2 to $(INSTALL_DIR)..."
+	@echo "Installing agfs-shell to $(INSTALL_DIR)..."
 	@rm -rf $(INSTALL_DIR)
 	@mkdir -p $(INSTALL_DIR)
-	@cp -r dist/agfs-shell2-portable/* $(INSTALL_DIR)/
+	@cp -r dist/agfs-shell-portable/* $(INSTALL_DIR)/
 	@mkdir -p $(BIN_LINK_DIR)
-	@ln -sf $(INSTALL_DIR)/agfs-shell2 $(BIN_LINK_DIR)/agfs-shell2
+	@ln -sf $(INSTALL_DIR)/agfs-shell $(BIN_LINK_DIR)/agfs-shell
 	@echo "✓ Installed successfully"
 	@echo "  Install dir: $(INSTALL_DIR)"
-	@echo "  Symlink: $(BIN_LINK_DIR)/agfs-shell2"
+	@echo "  Symlink: $(BIN_LINK_DIR)/agfs-shell"
 	@echo ""
-	@echo "Run 'agfs-shell2 --help' to get started"
+	@echo "Run 'agfs-shell --help' to get started"
 
 uninstall:
-	@echo "Removing agfs-shell2 installation..."
+	@echo "Removing agfs-shell installation..."
 	@rm -rf $(INSTALL_DIR)
-	@rm -f $(BIN_LINK_DIR)/agfs-shell2
+	@rm -f $(BIN_LINK_DIR)/agfs-shell
 	@echo "✓ Uninstalled successfully"
 
 clean:

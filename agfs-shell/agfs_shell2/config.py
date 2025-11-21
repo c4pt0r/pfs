@@ -1,4 +1,4 @@
-"""Configuration management for agfs-shell2"""
+"""Configuration management for agfs-shell"""
 
 import os
 

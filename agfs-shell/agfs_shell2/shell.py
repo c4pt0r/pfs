@@ -1197,7 +1197,7 @@ class Shell:
 
     def show_help(self):
         """Show help message"""
-        help_text = """[bold cyan]agfs-shell2[/bold cyan] - Experimental shell with AGFS integration
+        help_text = """[bold cyan]agfs-shell[/bold cyan] - Experimental shell with AGFS integration
 
 [bold yellow]File System Commands (AGFS):[/bold yellow]
   [green]cd[/green] [path]              - Change current directory (supports relative paths)

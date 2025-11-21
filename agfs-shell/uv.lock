@@ -8,7 +8,7 @@ resolution-markers = [
 ]
 
 [[package]]
-name = "agfs-shell2"
+name = "agfs-shell"
 version = "1.0.0"
 source = { editable = "." }
 dependencies = [

@@ -1,5 +1,5 @@
 import unittest
-from agfs_shell2.parser import CommandParser
+from agfs_shell.parser import CommandParser
 
 class TestCommandParser(unittest.TestCase):
     def test_parse_pipeline_simple(self):

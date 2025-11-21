@@ -1,9 +1,9 @@
 import unittest
 import tempfile
 import os
-from agfs_shell2.builtins import BUILTINS
-from agfs_shell2.process import Process
-from agfs_shell2.streams import InputStream, OutputStream, ErrorStream
+from agfs_shell.builtins import BUILTINS
+from agfs_shell.process import Process
+from agfs_shell.streams import InputStream, OutputStream, ErrorStream
 
 class TestBuiltins(unittest.TestCase):
     def create_process(self, command, args, input_data=""):

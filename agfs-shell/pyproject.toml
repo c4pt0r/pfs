@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "agfs-shell2"
+name = "agfs-shell"
 version = "1.0.0"
 description = "Experimental shell with Unix-style pipeline support"
 readme = "README.md"
@@ -21,10 +21,10 @@ dependencies = [
 pyagfs = { path = "../agfs-sdk/python", editable = true }
 
 [project.scripts]
-agfs-shell2 = "agfs_shell2.cli:main"
+agfs-shell = "agfs_shell.cli:main"
 
 [tool.uv]
 dev-dependencies = []
 
 [tool.hatch.build.targets.wheel]
-packages = ["agfs_shell2"]
+packages = ["agfs_shell"]
