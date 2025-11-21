@@ -901,8 +901,11 @@ class Shell:
         """Run interactive REPL"""
         # Set interactive mode flag
         self.interactive = True
-
-        self.console.print("[bold cyan]agfs-shell2[/bold cyan] v0.1.0", highlight=False)
+        self.console.print("""     __  __ __ 
+ /\\ / _ |_ (_  
+/--\\\\__)|  __) 
+        """)
+        self.console.print("[bold cyan]agfs-shell[/bold cyan] v1.0.0", highlight=False)
 
         # Check server connection - exit if failed
         if not self.filesystem.check_connection():

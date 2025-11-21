@@ -475,21 +475,51 @@ def cmd_tr(process: Process) -> int:
     return 0
 
 
+def _human_readable_size(size: int) -> str:
+    """Convert size in bytes to human-readable format"""
+    units = ['B', 'K', 'M', 'G', 'T', 'P']
+    unit_index = 0
+    size_float = float(size)
+
+    while size_float >= 1024.0 and unit_index < len(units) - 1:
+        size_float /= 1024.0
+        unit_index += 1
+
+    if unit_index == 0:
+        # Bytes - no decimal
+        return f"{int(size_float)}{units[unit_index]}"
+    elif size_float >= 10:
+        # >= 10 - no decimal places
+        return f"{int(size_float)}{units[unit_index]}"
+    else:
+        # < 10 - one decimal place
+        return f"{size_float:.1f}{units[unit_index]}"
+
+
 @command(needs_path_resolution=True)
 def cmd_ls(process: Process) -> int:
     """
     List directory contents
 
-    Usage: ls [-l] [path]
+    Usage: ls [-l] [-h] [path]
+
+    Options:
+        -l    Use long listing format
+        -h    Print human-readable sizes (e.g., 1K, 234M, 2G)
     """
     # Parse arguments
     long_format = False
+    human_readable = False
     path = None
 
     for arg in process.args:
-        if arg == '-l':
-            long_format = True
-        elif not arg.startswith('-'):
+        if arg.startswith('-') and arg != '-':
+            # Handle combined flags like -lh
+            if 'l' in arg:
+                long_format = True
+            if 'h' in arg:
+                human_readable = True
+        else:
             path = arg
 
     # Default to current working directory if no path specified
@@ -546,7 +576,13 @@ def cmd_ls(process: Process) -> int:
                 else:
                     colored_name = name
 
-                output = f"{file_type}{perms} {size:>8} {mtime} {colored_name}\n"
+                # Format size based on human_readable flag
+                if human_readable:
+                    size_str = f"{_human_readable_size(size):>8}"
+                else:
+                    size_str = f"{size:>8}"
+
+                output = f"{file_type}{perms} {size_str} {mtime} {colored_name}\n"
             else:
                 # Simple formatting
                 if is_dir:
@@ -1605,6 +1641,258 @@ def cmd_sleep(process: Process) -> int:
         return 130
 
 
+@command()
+def cmd_plugins(process: Process) -> int:
+    """
+    Manage external plugins
+
+    Usage: plugins <subcommand> [arguments]
+
+    Subcommands:
+        load <path>       Load external plugin from AGFS or HTTP(S)
+        unload <path>     Unload external plugin
+        list              List loaded external plugins
+
+    Path formats for load:
+        <agfs_path>        - Load from AGFS (default)
+        http(s)://<url>    - Load from HTTP(S) URL
+
+    Examples:
+        plugins list                                  # List loaded external plugins
+        plugins load /mnt/plugins/myplugin.so         # Load from AGFS
+        plugins load https://example.com/myplugin.so  # Load from HTTP(S)
+        plugins unload /mnt/plugins/myplugin.so       # Unload plugin
+    """
+    if not process.filesystem:
+        process.stderr.write("plugins: filesystem not available\n")
+        return 1
+
+    # No arguments - show usage
+    if len(process.args) == 0:
+        process.stderr.write("Usage: plugins <subcommand> [arguments]\n")
+        process.stderr.write("\nSubcommands:\n")
+        process.stderr.write("  load <path>    - Load external plugin\n")
+        process.stderr.write("  unload <path>  - Unload external plugin\n")
+        process.stderr.write("  list           - List loaded external plugins\n")
+        process.stderr.write("\nPath formats for load:\n")
+        process.stderr.write("  <agfs_path>      - Load from AGFS (default)\n")
+        process.stderr.write("  http(s)://<url>  - Load from HTTP(S) URL\n")
+        process.stderr.write("\nExamples:\n")
+        process.stderr.write("  plugins list\n")
+        process.stderr.write("  plugins load /mnt/plugins/myplugin.so\n")
+        process.stderr.write("  plugins load https://example.com/myplugin.so\n")
+        return 1
+
+    # Handle plugin subcommands
+    subcommand = process.args[0].lower()
+
+    if subcommand == "load":
+        if len(process.args) < 2:
+            process.stderr.write("Usage: plugins load <path>\n")
+            process.stderr.write("\nPath formats:\n")
+            process.stderr.write("  <agfs_path>      - Load from AGFS (default)\n")
+            process.stderr.write("  http(s)://<url>  - Load from HTTP(S) URL\n")
+            process.stderr.write("\nExamples:\n")
+            process.stderr.write("  plugins load /mnt/plugins/myplugin.so        # From AGFS\n")
+            process.stderr.write("  plugins load https://example.com/myplugin.so # From HTTP(S)\n")
+            return 1
+
+        path = process.args[1]
+
+        # Determine path type
+        is_http = path.startswith('http://') or path.startswith('https://')
+
+        # Process path based on type
+        if is_http:
+            # HTTP(S) URL: use as-is, server will download it
+            library_path = path
+        else:
+            # Default: treat as AGFS path, add agfs:// prefix
+            library_path = f"agfs://{path}"
+
+        try:
+            # Load the plugin
+            result = process.filesystem.client.load_plugin(library_path)
+            plugin_name = result.get("plugin_name", "unknown")
+            process.stdout.write(f"Loaded external plugin: {plugin_name}\n")
+            process.stdout.write(f"  Source: {path}\n")
+            return 0
+        except Exception as e:
+            error_msg = str(e)
+            process.stderr.write(f"plugins load: {error_msg}\n")
+            return 1
+
+    elif subcommand == "unload":
+        if len(process.args) < 2:
+            process.stderr.write("Usage: plugins unload <library_path>\n")
+            return 1
+
+        library_path = process.args[1]
+
+        try:
+            process.filesystem.client.unload_plugin(library_path)
+            process.stdout.write(f"Unloaded external plugin: {library_path}\n")
+            return 0
+        except Exception as e:
+            error_msg = str(e)
+            process.stderr.write(f"plugins unload: {error_msg}\n")
+            return 1
+
+    elif subcommand == "list":
+        try:
+            plugins = process.filesystem.client.list_plugins()
+
+            if not plugins:
+                process.stdout.write("No external plugins loaded\n")
+                return 0
+
+            # Get mount information to correlate with loaded plugins
+            try:
+                mounts = process.filesystem.client.mounts()
+                # Build a map of plugin names to mount points
+                plugin_mounts = {}
+                for mount in mounts:
+                    plugin_name = mount.get('pluginName', '')
+                    if plugin_name:
+                        if plugin_name not in plugin_mounts:
+                            plugin_mounts[plugin_name] = []
+                        plugin_mounts[plugin_name].append(mount.get('path', ''))
+            except:
+                plugin_mounts = {}
+
+            process.stdout.write(f"Loaded External Plugins: ({len(plugins)})\n")
+            for plugin_path in plugins:
+                # Extract just the filename for display
+                filename = os.path.basename(plugin_path)
+                process.stdout.write(f"  {filename}\n")
+
+                # Try to show which plugin types are available from this file
+                # by checking if any mounts use a plugin with similar name
+                found_mounts = False
+                for plugin_name, mount_paths in plugin_mounts.items():
+                    # Check if this plugin_name might come from this file
+                    # (simple heuristic: check if filename contains plugin name or vice versa)
+                    if plugin_name.lower() in filename.lower() or filename.lower().replace('.wasm', '').replace('.so', '').replace('.dylib', '') in plugin_name.lower():
+                        process.stdout.write(f"    Plugin type: {plugin_name}\n")
+                        if mount_paths:
+                            process.stdout.write(f"    Mounted at: {', '.join(mount_paths)}\n")
+                        found_mounts = True
+
+                if not found_mounts:
+                    process.stdout.write(f"    (Not currently mounted)\n")
+
+            return 0
+        except Exception as e:
+            error_msg = str(e)
+            process.stderr.write(f"plugins list: {error_msg}\n")
+            return 1
+
+    else:
+        process.stderr.write(f"plugins: unknown subcommand: {subcommand}\n")
+        process.stderr.write("\nUsage:\n")
+        process.stderr.write("  plugins load <library_path|url|pfs://..> - Load external plugin\n")
+        process.stderr.write("  plugins unload <library_path>            - Unload external plugin\n")
+        process.stderr.write("  plugins list                             - List loaded external plugins\n")
+        return 1
+
+
+@command()
+def cmd_mount(process: Process) -> int:
+    """
+    Mount a plugin dynamically or list mounted filesystems
+
+    Usage: mount [<fstype> <path> [key=value ...]]
+
+    Without arguments: List all mounted filesystems
+    With arguments: Mount a new filesystem
+
+    Examples:
+        mount                    # List all mounted filesystems
+        mount memfs /test/mem
+        mount sqlfs /test/db backend=sqlite db_path=/tmp/test.db
+        mount s3fs /test/s3 bucket=my-bucket region=us-west-1 access_key_id=xxx secret_access_key=yyy
+    """
+    if not process.filesystem:
+        process.stderr.write("mount: filesystem not available\n")
+        return 1
+
+    # No arguments - list mounted filesystems
+    if len(process.args) == 0:
+        try:
+            mounts_list = process.filesystem.client.mounts()
+
+            if not mounts_list:
+                process.stdout.write("No plugins mounted\n")
+                return 0
+
+            # Print mounts in Unix mount style: <fstype> on <mountpoint> (options...)
+            for mount in mounts_list:
+                path = mount.get("path", "")
+                plugin = mount.get("pluginName", "")
+                config = mount.get("config", {})
+
+                # Build options string from config
+                options = []
+                for key, value in config.items():
+                    # Hide sensitive keys
+                    if key in ["secret_access_key", "password", "token"]:
+                        options.append(f"{key}=***")
+                    else:
+                        # Convert value to string, truncate if too long
+                        value_str = str(value)
+                        if len(value_str) > 50:
+                            value_str = value_str[:47] + "..."
+                        options.append(f"{key}={value_str}")
+
+                # Format output line
+                if options:
+                    options_str = ", ".join(options)
+                    process.stdout.write(f"{plugin} on {path} (plugin: {plugin}, {options_str})\n")
+                else:
+                    process.stdout.write(f"{plugin} on {path} (plugin: {plugin})\n")
+
+            return 0
+        except Exception as e:
+            error_msg = str(e)
+            process.stderr.write(f"mount: {error_msg}\n")
+            return 1
+
+    # With arguments - mount a new filesystem
+    if len(process.args) < 2:
+        process.stderr.write("mount: missing operands\n")
+        process.stderr.write("Usage: mount <fstype> <path> [key=value ...]\n")
+        process.stderr.write("\nExamples:\n")
+        process.stderr.write("  mount memfs /test/mem\n")
+        process.stderr.write("  mount sqlfs /test/db backend=sqlite db_path=/tmp/test.db\n")
+        process.stderr.write("  mount s3fs /test/s3 bucket=my-bucket region=us-west-1\n")
+        return 1
+
+    fstype = process.args[0]
+    path = process.args[1]
+    config_args = process.args[2:] if len(process.args) > 2 else []
+
+    # Parse key=value config arguments
+    config = {}
+    for arg in config_args:
+        if '=' in arg:
+            key, value = arg.split('=', 1)
+            config[key.strip()] = value.strip()
+        else:
+            process.stderr.write(f"mount: invalid config argument: {arg}\n")
+            process.stderr.write("Config arguments must be in key=value format\n")
+            return 1
+
+    try:
+        # Use AGFS client to mount the plugin
+        process.filesystem.client.mount(fstype, path, config)
+        process.stdout.write(f"Mounted {fstype} at {path}\n")
+        return 0
+    except Exception as e:
+        error_msg = str(e)
+        process.stderr.write(f"mount: {error_msg}\n")
+        return 1
+
+
 # Registry of built-in commands
 BUILTINS = {
     'echo': cmd_echo,
@@ -1632,6 +1920,8 @@ BUILTINS = {
     'download': cmd_download,
     'cp': cmd_cp,
     'sleep': cmd_sleep,
+    'plugins': cmd_plugins,
+    'mount': cmd_mount,
 }
 
 
