@@ -717,6 +717,40 @@ func (mfs *MountableFS) Chmod(path string, mode uint32) error {
 	return filesystem.NewNotFoundError("chmod", path)
 }
 
+// Touch implements filesystem.Toucher interface
+func (mfs *MountableFS) Touch(path string) error {
+	mfs.mu.RLock()
+	mount, relPath, found := mfs.findMount(path)
+	mfs.mu.RUnlock()
+
+	if found {
+		fs := mount.Plugin.GetFileSystem()
+		// Check if the underlying filesystem implements Toucher
+		if toucher, ok := fs.(filesystem.Toucher); ok {
+			return toucher.Touch(relPath)
+		}
+		// Fallback: inefficient implementation - read and write back
+		info, err := fs.Stat(relPath)
+		if err == nil {
+			// File exists - read current content and write it back
+			if !info.IsDir {
+				data, readErr := fs.Read(relPath, 0, -1)
+				if readErr != nil {
+					return readErr
+				}
+				_, writeErr := fs.Write(relPath, data)
+				return writeErr
+			}
+			return fmt.Errorf("cannot touch directory")
+		} else {
+			// File doesn't exist - create with empty content
+			_, err := fs.Write(relPath, []byte{})
+			return err
+		}
+	}
+	return filesystem.NewNotFoundError("touch", path)
+}
+
 func (mfs *MountableFS) Open(path string) (io.ReadCloser, error) {
 	mfs.mu.RLock()
 	mount, relPath, found := mfs.findMount(path)

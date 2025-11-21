@@ -2828,6 +2828,7 @@ BUILTINS = {
     'pwd': cmd_pwd,
     'cd': cmd_cd,
     'mkdir': cmd_mkdir,
+    'touch': cmd_touch,
     'rm': cmd_rm,
     'mv': cmd_mv,
     'export': cmd_export,
