@@ -86,7 +86,7 @@ class AGFSFileSystem:
         path: str,
         data: Union[bytes, Iterator[bytes], BinaryIO],
         append: bool = False,
-    ) -> None:
+    ) -> Optional[str]:
         """
         Write data to file in AGFS
 
@@ -94,6 +94,9 @@ class AGFSFileSystem:
             path: File path in AGFS
             data: Data to write (bytes, iterator of bytes, or file-like object)
             append: If True, append to file; if False, overwrite
+
+        Returns:
+            Response message from server (if any)
 
         Raises:
             AGFSClientError: If file cannot be written
@@ -124,7 +127,8 @@ class AGFSFileSystem:
 
             # Write to AGFS - SDK now supports streaming data directly
             # Use max_retries=0 for shell operations (fail fast)
-            self.client.write(path, data, max_retries=0)
+            response = self.client.write(path, data, max_retries=0)
+            return response
         except AGFSClientError as e:
             # SDK error already includes path, don't duplicate it
             raise AGFSClientError(str(e))

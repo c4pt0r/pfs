@@ -1,8 +1,62 @@
 # agfs-shell
 
-DO NOT USE IT NOW, UNDER CONSTRUCTION
-
 Experimental agfs shell implementation with Unix-style pipeline support and **AGFS integration** in pure Python.
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Prerequisites](#prerequisites)
+- [Installation](#installation)
+- [Architecture](#architecture)
+- [Usage](#usage)
+  - [Configure Server](#configure-server-optional)
+  - [Interactive REPL Mode](#interactive-repl-mode)
+  - [Non-Interactive Mode](#non-interactive-mode)
+- [Interactive Features](#interactive-features)
+  - [Command History](#command-history)
+  - [Tab Completion](#tab-completion)
+  - [Multiline Editing](#multiline-editing)
+- [Quick Syntax Reference](#quick-syntax-reference)
+- [Built-in Commands](#built-in-commands)
+  - [File System Commands](#file-system-commands-agfs)
+  - [Text Processing Commands](#text-processing-commands)
+  - [Pattern Matching with grep](#pattern-matching-with-grep)
+  - [JSON Processing with jq](#json-processing-with-jq)
+  - [Environment Variables](#environment-variables)
+  - [AGFS Management Commands](#agfs-management-commands)
+  - [Utility Commands](#utility-commands)
+  - [Conditional Testing](#conditional-testing)
+- [Advanced Shell Features](#advanced-shell-features)
+  - [Heredoc](#heredoc-here-documents)
+  - [Script Files](#script-files)
+- [Glob Expansion](#glob-expansion)
+- [Advanced Text Processing](#advanced-text-processing)
+  - [Using cut Command](#using-cut-command)
+  - [Using rev Command](#using-rev-command)
+  - [Using tree Command](#using-tree-command)
+  - [Using mv Command](#using-mv-command)
+  - [Using touch Command](#using-touch-command)
+- [Variables and Command Substitution](#variables-and-command-substitution)
+- [Control Flow](#control-flow-ifthenelsefi)
+- [For Loops](#for-loops-forindodone)
+- [Path Support](#path-support)
+- [Examples](#examples)
+  - [Pipeline Examples](#pipeline-examples)
+  - [AGFS File Operations](#agfs-file-operations)
+  - [Using cd and Relative Paths](#using-cd-and-relative-paths)
+  - [File Transfer Examples](#file-transfer-examples)
+- [Real-World Usage Examples](#real-world-usage-examples)
+  - [Data Processing Pipeline](#data-processing-pipeline)
+  - [Log Analysis and Monitoring](#log-analysis-and-monitoring)
+  - [JSON Data Processing](#json-data-processing)
+  - [Backup and Synchronization](#backup-and-synchronization)
+  - [Directory Organization and Maintenance](#directory-organization-and-maintenance)
+  - [Multi-Environment Configuration](#multi-environment-configuration)
+  - [Text Report Generation](#text-report-generation)
+- [Testing](#testing)
+- [Project Structure](#project-structure)
+- [Design Notes](#design-notes)
 
 ## Overview
 
@@ -28,12 +82,12 @@ agfs-shell is a simple shell that demonstrates Unix pipeline concepts while inte
 - **File transfer**: Upload/download files between local filesystem and AGFS
 - **Streaming I/O**: Memory-efficient streaming for large files (8KB chunks)
 - **Stream handling**: Full STDIN/STDOUT/STDERR support
-- **Built-in commands**: 24 commands including file operations, text processing, JSON handling, and control flow
-  - File ops: cd, pwd, ls, cat, mkdir, rm, stat, cp, upload, download
-  - Text processing: echo, grep, jq, wc, head, tail, sort, uniq, tr
+- **Built-in commands**: 30 commands including file operations, text processing, JSON handling, and control flow
+  - File ops: cd, pwd, ls, tree, cat, mkdir, touch, rm, mv, stat, cp, upload, download
+  - Text processing: echo, grep, jq, wc, head, tail, sort, uniq, tr, rev, cut
   - Variables: export, env, unset
   - Testing: test, [
-  - Utilities: sleep
+  - Utilities: sleep, plugins, mount, help, ?
 - **Interactive REPL**: Interactive shell mode with dynamic prompt showing current directory
 - **Script execution**: Support for shebang scripts (`#!/usr/bin/env uv run agfs-shell`)
 - **Non-interactive mode**: Execute commands from command line with `-c` flag
@@ -112,7 +166,7 @@ hello world
 
 If the server is not running, you'll see a warning:
 ```
-⚠ Warning: Cannot connect to AGFS server at http://localhost:8080
+Warning: Cannot connect to AGFS server at http://localhost:8080
   Make sure the server is running. File operations will fail.
 ```
 
@@ -224,6 +278,74 @@ The shell supports multiline commands:
 - **Ctrl-D**: Exit shell (when line is empty)
 - **Ctrl-C**: Cancel current input
 
+## Quick Syntax Reference
+
+```bash
+# Pipelines
+command1 | command2 | command3
+
+# Redirection
+command < input.txt          # Input from file
+command > output.txt         # Output to file (overwrite)
+command >> output.txt        # Append to file
+command 2> errors.txt        # Redirect stderr
+command 2>> errors.txt       # Append stderr
+
+# Heredoc
+cat << EOF > file.txt        # Heredoc with variable expansion
+text with $VARIABLES
+EOF
+
+cat << 'EOF' > file.txt      # Literal heredoc (no expansion)
+text with literal $VARIABLES
+EOF
+
+# Variables
+VAR=value                    # Assignment
+echo $VAR                    # Simple expansion
+echo ${VAR}                  # Braced expansion
+result=$(command)            # Command substitution
+result=`command`             # Backtick substitution
+echo $?                      # Last exit code
+
+# Glob patterns
+*.txt                        # All .txt files
+file?.dat                    # file followed by any single character
+file[123].txt                # file1.txt, file2.txt, or file3.txt
+file[a-z].log                # file with single letter a-z
+
+# Control flow
+if [ condition ]; then
+  commands
+elif [ condition ]; then
+  commands
+else
+  commands
+fi
+
+for item in list; do
+  commands
+done
+
+# Test conditions
+[ -f file ]                  # File exists
+[ -d dir ]                   # Directory exists
+[ -z "$str" ]                # String is empty
+[ "$a" = "$b" ]              # Strings equal
+[ $a -eq $b ]                # Numbers equal
+[ $a -gt $b ]                # a greater than b
+[ $a -lt $b ]                # a less than b
+
+# Paths
+/local/file.txt              # Absolute path
+file.txt                     # Relative to current directory
+../file.txt                  # Parent directory
+./file.txt                   # Current directory
+
+# Special prefixes
+local:~/file.txt             # Local filesystem (for cp, mv, upload, download)
+```
+
 ## Built-in Commands
 
 ### File System Commands (AGFS)
@@ -233,9 +355,18 @@ The shell supports multiline commands:
   - Directories shown in **blue**
   - `-l` for long format with permissions, size, and timestamp
   - Defaults to current directory
+- **tree [OPTIONS] [path]** - Display directory tree structure
+  - `-L depth` - Maximum depth to traverse (default: unlimited)
+  - `-d` - List directories only
+  - `-a` - Show hidden files (starting with .)
+  - `-h` - Print sizes in human-readable format
 - **cat [file...]** - Concatenate and print files or stdin
 - **mkdir path** - Create directory
+- **touch path** - Create empty file or update timestamp
 - **rm [-r] path** - Remove file or directory
+- **mv source dest** - Move/rename files or directories
+  - Supports local:path prefix for local filesystem
+  - Can move between AGFS and local filesystem
 - **stat path** - Display file status and check if file exists
 - **cp [-r] source dest** - Copy files between local filesystem and AGFS
   - Use `local:path` prefix for local filesystem paths
@@ -252,6 +383,12 @@ The shell supports multiline commands:
 - **sort [-r]** - Sort lines (use -r for reverse)
 - **uniq** - Remove duplicate adjacent lines
 - **tr set1 set2** - Translate characters
+- **rev** - Reverse each line character by character
+- **cut [OPTIONS]** - Extract sections from each line
+  - `-f fields` - Select only specified fields (use with `-d`)
+  - `-d delim` - Field delimiter (default: TAB)
+  - `-c chars` - Select only specified character positions
+  - Supports ranges: `1`, `1-3`, `1,3,5`, `1-`, `-3`
 
 ### Pattern Matching with grep
 
@@ -305,6 +442,40 @@ grep -vc 'comment' /local/code.py     # Count non-matching lines
 - **export [VAR=value ...]** - Set or display environment variables
 - **env** - Display all environment variables
 - **unset VAR [VAR ...]** - Unset environment variables
+
+### AGFS Management Commands
+
+**plugins** - List all mounted AGFS plugins
+
+```bash
+# List all mounted plugins with details
+> plugins
+Plugin: localfs
+  Mount Point: /local
+  Type: localfs
+  Description: Local file system plugin
+
+Plugin: heartbeatfs
+  Mount Point: /heartbeat
+  Type: heartbeatfs
+  Description: Heartbeat-based file system plugin
+
+# Use in scripts to check available plugins
+> plugins | grep s3fs
+```
+
+**mount [PLUGIN] [PATH] [OPTIONS]** - Mount a new AGFS plugin
+
+```bash
+# Mount a new S3 filesystem plugin
+> mount s3fs /s3-backup bucket=my-backup-bucket,region=us-west-2
+
+# Mount a SQL-based filesystem
+> mount sqlfs /sqldb connection=postgresql://localhost/mydb
+
+# Mount custom plugin with options
+> mount customfs /custom option1=value1,option2=value2
+```
 
 ### Utility Commands
 
@@ -651,6 +822,196 @@ rm /local/test[a-z].log
 > export FILE_PREFIX="data"
 > export FILE_EXT="csv"
 > ls /local/${FILE_PREFIX}*.${FILE_EXT}
+```
+
+## Advanced Text Processing
+
+### Using cut Command
+
+The `cut` command extracts specific fields or character positions from text:
+
+```bash
+# Extract fields from CSV file
+> echo "John,Doe,30,Engineer" > /local/data.csv
+> cat /local/data.csv | cut -f 1,2 -d ','
+John,Doe
+
+# Extract specific columns from tab-separated data
+> echo -e "Name\tAge\tCity\nAlice\t25\tNY\nBob\t30\tLA" | cut -f 1,3
+Name    City
+Alice   NY
+Bob     LA
+
+# Extract character positions
+> echo "Hello World" | cut -c 1-5
+Hello
+
+# Extract from position to end
+> echo "2024-01-15" | cut -c 6-
+01-15
+
+# Process log files to extract timestamps
+> cat /local/app.log | cut -c 1-19
+2024-01-15 10:23:45
+2024-01-15 10:24:12
+2024-01-15 10:25:03
+
+# Extract username from /etc/passwd style format
+> echo "root:x:0:0:root:/root:/bin/bash" | cut -f 1,7 -d ':'
+root:/bin/bash
+
+# Combine with other commands
+> cat /local/sales.csv | cut -f 2,4 -d ',' | sort | uniq
+```
+
+### Using rev Command
+
+The `rev` command reverses each line character by character:
+
+```bash
+# Reverse a string
+> echo "hello world" | rev
+dlrow olleh
+
+# Reverse filenames to sort by extension
+> ls /local/*.txt | rev | sort | rev
+/local/data.txt
+/local/notes.txt
+/local/readme.txt
+
+# Process palindromes
+> echo "racecar" | rev
+racecar
+
+# Reverse DNS names for better sorting
+> echo "www.example.com" | rev | sort
+moc.elpmaxe.www
+
+# Use with cut to extract from the end
+> echo "filename.backup.tar.gz" | rev | cut -d '.' -f 1 | rev
+gz
+```
+
+### Using tree Command
+
+The `tree` command displays directory structure in a hierarchical view:
+
+```bash
+# Basic tree view
+> tree /local/project
+/local/project
+├── README.md
+├── src
+│   ├── main.py
+│   └── utils.py
+└── tests
+    └── test_main.py
+
+# Limit depth
+> tree -L 2 /local
+/local
+├── project
+│   ├── README.md
+│   ├── src
+│   └── tests
+└── data
+    ├── input.json
+    └── output.json
+
+# Show directories only
+> tree -d /local
+/local
+├── project
+│   ├── src
+│   └── tests
+└── data
+
+# Show hidden files
+> tree -a /local/config
+/local/config
+├── .env
+├── .gitignore
+└── settings.json
+
+# Human-readable sizes
+> tree -h /local/data
+/local/data
+├── large_file.dat (15.2M)
+├── medium.json (342K)
+└── small.txt (1.2K)
+
+# Combine options
+> tree -L 2 -d -a /local
+```
+
+### Using mv Command
+
+The `mv` command moves or renames files and directories:
+
+```bash
+# Simple rename
+> mv /local/old_name.txt /local/new_name.txt
+
+# Move file to directory
+> mv /local/file.txt /local/backup/
+
+# Rename directory
+> mv /local/old_dir /local/new_dir
+
+# Move multiple files with glob
+> for file in /local/temp/*.txt; do
+    mv $file /local/archive/
+  done
+
+# Move from local filesystem to AGFS
+> mv local:~/Downloads/data.csv /local/imports/
+
+# Move from AGFS to local filesystem
+> mv /local/reports/monthly.pdf local:~/Documents/
+
+# Rename with timestamp
+> TIMESTAMP=$(date +%Y%m%d)
+> mv /local/log.txt /local/log_$TIMESTAMP.txt
+
+# Batch rename with pattern
+> for file in /local/*.tmp; do
+    basename=$(basename $file .tmp)
+    mv $file /local/${basename}.bak
+  done
+```
+
+### Using touch Command
+
+The `touch` command creates empty files or updates timestamps:
+
+```bash
+# Create an empty file
+> touch /local/newfile.txt
+
+# Create multiple files
+> touch /local/file1.txt /local/file2.txt /local/file3.txt
+
+# Update timestamp of existing file
+> touch /local/existing.txt
+
+# Create placeholder files in a loop
+> for i in 1 2 3 4 5; do
+    touch /local/data_$i.json
+  done
+
+# Create marker files
+> touch /local/.initialized
+> if [ -f /local/.initialized ]; then
+    echo "System is initialized"
+  fi
+
+# Create lock files for synchronization
+> if [ ! -f /local/.lock ]; then
+    touch /local/.lock
+    echo "Lock acquired, processing..."
+    # ... do work ...
+    rm /local/.lock
+  fi
 ```
 
 ## Variables and Command Substitution
@@ -1058,7 +1419,7 @@ done
 > for file in /local/data/*; do
     if echo $file | grep -q ".json$"; then
       echo "Validating JSON: $file"
-      cat $file | jq . > /dev/null && echo "  ✓ Valid" || echo "  ✗ Invalid"
+      cat $file | jq . > /dev/null && echo "  [OK] Valid" || echo "  [ERROR] Invalid"
     elif echo $file | grep -q ".txt$"; then
       echo "Counting lines: $file"
       echo "  $(cat $file | wc -l) lines"
@@ -1077,10 +1438,10 @@ done
 
     if cat $file | sort > /local/output/$(basename $file); then
       SUCCESS=$((SUCCESS + 1))
-      echo "  ✓ Success"
+      echo "  [OK] Success"
     else
       FAILED=$((FAILED + 1))
-      echo "  ✗ Failed"
+      echo "  [ERROR] Failed"
     fi
   done
 > echo "Summary: Total=$TOTAL, Success=$SUCCESS, Failed=$FAILED"
@@ -1275,6 +1636,300 @@ This will test:
 - Input/output redirections
 - Complex pipelines
 
+## Real-World Usage Examples
+
+### Data Processing Pipeline
+
+Process CSV files, extract specific fields, and generate reports:
+
+```bash
+# Download sales data and process it
+> download /s3fs/sales/2024/january.csv local:~/data/
+> upload local:~/data/january.csv /local/sales/
+
+# Extract product names and prices (columns 2 and 4)
+> cat /local/sales/january.csv | cut -f 2,4 -d ',' | tail -n +2 > /local/sales/products.txt
+
+# Find top 10 most expensive items
+> cat /local/sales/products.txt | sort -t ',' -k 2 -rn | head -n 10
+
+# Count unique products
+> cat /local/sales/products.txt | cut -f 1 -d ',' | sort | uniq | wc -l
+
+# Generate summary report
+> cat << EOF > /local/sales/report.txt
+Sales Report - January 2024
+============================
+Total Records: $(cat /local/sales/january.csv | wc -l)
+Unique Products: $(cat /local/sales/products.txt | cut -f 1 -d ',' | sort | uniq | wc -l)
+Generated: $(date)
+EOF
+```
+
+### Log Analysis and Monitoring
+
+Analyze application logs across multiple servers:
+
+```bash
+# Set up directory structure
+> mkdir -p /local/logs/analysis
+> mkdir -p /local/logs/archive
+
+# Download logs from multiple sources
+> for server in web1 web2 web3; do
+    download /s3fs/logs/$server/app.log /local/logs/$server.log
+  done
+
+# Find all errors across all logs
+> cat /local/logs/*.log | grep -i error > /local/logs/analysis/all_errors.txt
+
+# Count errors by server
+> for server in web1 web2 web3; do
+    count=$(cat /local/logs/$server.log | grep -i error | wc -l)
+    echo "$server: $count errors"
+  done > /local/logs/analysis/error_summary.txt
+
+# Extract unique error messages
+> cat /local/logs/analysis/all_errors.txt | \
+  cut -c 21- | \
+  sort | \
+  uniq -c | \
+  sort -rn > /local/logs/analysis/unique_errors.txt
+
+# Find critical errors (contains "critical" or "fatal")
+> cat /local/logs/*.log | grep -iE "(critical|fatal)" > /local/logs/analysis/critical.txt
+
+# Archive old logs
+> for log in /local/logs/*.log; do
+    TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+    mv $log /local/logs/archive/$(basename $log .log)_$TIMESTAMP.log
+  done
+```
+
+### JSON Data Processing
+
+Work with JSON APIs and data:
+
+```bash
+# Fetch and process API response (simulated)
+> cat << 'EOF' > /local/api_response.json
+{
+  "users": [
+    {"id": 1, "name": "Alice", "active": true, "role": "admin"},
+    {"id": 2, "name": "Bob", "active": false, "role": "user"},
+    {"id": 3, "name": "Charlie", "active": true, "role": "user"},
+    {"id": 4, "name": "Diana", "active": true, "role": "admin"}
+  ]
+}
+EOF
+
+# Extract active users
+> cat /local/api_response.json | jq '.users[] | select(.active == true)' > /local/active_users.json
+
+# Get list of admin users
+> cat /local/api_response.json | jq '.users[] | select(.role == "admin") | .name'
+
+# Count users by role
+> cat /local/api_response.json | jq '.users | group_by(.role) | map({role: .[0].role, count: length})'
+
+# Generate CSV from JSON
+> cat /local/api_response.json | \
+  jq -r '.users[] | [.id, .name, .active, .role] | @csv' > /local/users.csv
+
+# Validate multiple JSON files
+> for jsonfile in /local/data/*.json; do
+    if cat $jsonfile | jq . > /dev/null 2>&1; then
+      echo "[OK] $(basename $jsonfile): Valid"
+    else
+      echo "[ERROR] $(basename $jsonfile): Invalid JSON"
+    fi
+  done
+```
+
+### Backup and Synchronization
+
+Automated backup workflows:
+
+```bash
+# Daily backup script
+> cat << 'EOF' > /local/scripts/daily_backup.sh
+#!/usr/bin/env uv run agfs-shell
+
+# Configuration
+BACKUP_ROOT=/local/backups
+SOURCE_DIRS="/local/data /local/config /local/logs"
+DATE=$(date +%Y-%m-%d)
+BACKUP_DIR=$BACKUP_ROOT/$DATE
+
+# Create backup directory
+mkdir -p $BACKUP_DIR
+
+# Backup each source directory
+for src in $SOURCE_DIRS; do
+  if [ -d $src ]; then
+    dest_name=$(basename $src)
+    echo "Backing up $src to $BACKUP_DIR/$dest_name"
+    cp -r $src $BACKUP_DIR/$dest_name
+  else
+    echo "Warning: $src not found, skipping"
+  fi
+done
+
+# Create manifest
+cat << MANIFEST > $BACKUP_DIR/manifest.txt
+Backup Date: $DATE
+Backup Time: $(date +%H:%M:%S)
+Source Directories: $SOURCE_DIRS
+MANIFEST
+
+# Compress and upload to S3
+tree -h $BACKUP_DIR > $BACKUP_DIR/contents.txt
+echo "Backup completed: $BACKUP_DIR"
+
+# Clean old backups (keep last 7 days)
+export KEEP_DAYS=7
+for old_backup in $BACKUP_ROOT/*; do
+  backup_date=$(basename $old_backup)
+  # Simple cleanup logic here
+  echo "Keeping: $backup_date"
+done
+EOF
+
+# Make executable and run
+> chmod +x /local/scripts/daily_backup.sh
+> /local/scripts/daily_backup.sh
+```
+
+### Directory Organization and Maintenance
+
+Organize and clean up file structures:
+
+```bash
+# Organize files by extension
+> mkdir -p /local/organized/{images,documents,videos,code,other}
+
+> for file in /local/downloads/*; do
+    if echo $file | grep -qE "\.(jpg|png|gif)$"; then
+      mv $file /local/organized/images/
+    elif echo $file | grep -qE "\.(pdf|doc|txt)$"; then
+      mv $file /local/organized/documents/
+    elif echo $file | grep -qE "\.(mp4|avi|mkv)$"; then
+      mv $file /local/organized/videos/
+    elif echo $file | grep -qE "\.(py|js|go)$"; then
+      mv $file /local/organized/code/
+    else
+      mv $file /local/organized/other/
+    fi
+  done
+
+# Find and remove duplicate files based on size
+> cat /local/files/*.txt | sort | uniq -d > /local/duplicates.txt
+
+# Generate directory size report
+> for dir in /local/projects/*; do
+    if [ -d $dir ]; then
+      files=$(tree $dir | tail -1 | cut -d ' ' -f 1)
+      echo "$(basename $dir): $files files"
+    fi
+  done | sort -t ':' -k 2 -rn > /local/project_sizes.txt
+
+# Find large files
+> tree -h /local | grep -E "([0-9]+\.?[0-9]*[MG])" | sort
+```
+
+### Multi-Environment Configuration
+
+Manage configurations across different environments:
+
+```bash
+# Set up environment-specific configs
+> export ENV=production
+
+> cat << EOF > /local/config/$ENV.env
+DATABASE_URL=postgres://prod-db:5432/myapp
+API_KEY=prod-key-12345
+LOG_LEVEL=warning
+MAX_CONNECTIONS=100
+EOF
+
+# Load configuration
+> for line in $(cat /local/config/$ENV.env); do
+    export $line
+  done
+
+# Verify configuration
+> env | grep -E "(DATABASE|API|LOG|MAX)"
+
+# Deploy configuration to different filesystems
+> for mount in /local /s3fs /sqlfs; do
+    if [ -d $mount/config ]; then
+      cp /local/config/$ENV.env $mount/config/current.env
+      echo "Deployed to $mount"
+    fi
+  done
+
+# Generate deployment manifest
+> cat << EOF > /local/deployment_manifest.txt
+Deployment Manifest
+==================
+Environment: $ENV
+Date: $(date)
+Configuration:
+$(cat /local/config/$ENV.env)
+
+Mounted Filesystems:
+$(plugins | grep "Mount Point")
+EOF
+```
+
+### Text Report Generation
+
+Generate formatted reports from data:
+
+```bash
+# Generate system status report
+> cat << 'EOF' > /local/reports/system_status.sh
+#!/usr/bin/env uv run agfs-shell
+
+REPORT=/local/reports/status_$(date +%Y%m%d).txt
+
+cat << REPORT > $REPORT
+System Status Report
+====================
+Generated: $(date)
+
+Mounted Filesystems:
+$(plugins)
+
+Directory Usage:
+$(for dir in /local /heartbeat; do
+    if [ -d $dir ]; then
+      files=$(ls $dir 2>/dev/null | wc -l)
+      echo "$dir: $files items"
+    fi
+  done)
+
+Recent Errors (last 24h):
+$(if [ -f /local/logs/app.log ]; then
+    cat /local/logs/app.log | grep -i error | tail -20
+  else
+    echo "No error log found"
+  fi)
+
+Active Processes:
+$(env | grep -E "^[A-Z]" | head -10)
+
+End of Report
+REPORT
+
+echo "Report generated: $REPORT"
+cat $REPORT
+EOF
+
+> chmod +x /local/reports/system_status.sh
+> /local/reports/system_status.sh
+```
+
 ## Project Structure
 
 ```
@@ -1332,19 +1987,31 @@ This is an experimental/educational project demonstrating:
 - ✅ Output redirection (`>`)
 - ✅ Append redirection (`>>`)
 - ✅ Error redirection (`2>`, `2>>`)
+- ✅ Heredoc support (`<<` with variable expansion and literal modes)
 - ✅ Combining pipelines with redirections
 - ✅ Shell variables (`VAR=value`, `$VAR`, `${VAR}`)
 - ✅ Special variables (`$?` for exit code)
 - ✅ Command substitution (`$(command)`, backticks)
+- ✅ Glob expansion (`*.txt`, `file?.dat`, `[abc]`)
 - ✅ Environment variable management (`export`, `env`, `unset`)
 - ✅ Control flow (`if/then/elif/else/fi` statements and `for/in/do/done` loops)
 - ✅ Conditional testing (`test` and `[ ]` commands with file, string, integer, and logical tests)
 - ✅ Directory navigation (`cd` command)
 - ✅ Relative path support (`.`, `..`, relative files)
 - ✅ Tab completion for commands and paths
-- ✅ 24 built-in commands (cd, pwd, ls, cat, mkdir, rm, stat, cp, upload, download, echo, grep, jq, wc, head, tail, sort, uniq, tr, export, env, unset, test, [, sleep)
-- ✅ Interactive REPL mode with dynamic prompt
+- ✅ Command history with persistent storage
+- ✅ Multiline input support (backslash continuation, unclosed quotes, bracket matching)
+- ✅ 30 built-in commands:
+  - File operations: cd, pwd, ls, tree, cat, mkdir, touch, rm, mv, stat, cp, upload, download
+  - Text processing: echo, grep, jq, wc, head, tail, sort, uniq, tr, rev, cut
+  - Environment: export, env, unset
+  - Testing: test, [
+  - AGFS management: plugins, mount
+  - Utilities: sleep, help, ?
+- ✅ Interactive REPL mode with dynamic prompt and Rich formatting
 - ✅ Script file execution (shebang support)
 - ✅ Non-interactive command execution (-c flag)
+- ✅ Streaming I/O for large files (8KB chunks)
+- ✅ Cross-filesystem operations (local ↔ AGFS)
 
 The implementation uses in-memory buffers for streams, making it suitable for learning but not for production use.

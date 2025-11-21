@@ -789,6 +789,7 @@ class Shell:
                 chunk_size = 8192  # 8KB chunks
                 total_bytes = 0
                 is_first_chunk = True
+                write_response = None
 
                 while True:
                     chunk = sys.stdin.buffer.read(chunk_size)
@@ -800,9 +801,13 @@ class Shell:
                     append = (mode == 'append') or (not is_first_chunk)
 
                     # Write chunk immediately (separate HTTP request per chunk)
-                    self.filesystem.write_file(output_file, chunk, append=append)
+                    write_response = self.filesystem.write_file(output_file, chunk, append=append)
                     total_bytes += len(chunk)
                     is_first_chunk = False
+
+                # Display write response if it contains data
+                if write_response and write_response != "OK":
+                    self.console.print(write_response, highlight=False)
 
                 exit_code = 0
                 stderr_data = b''
@@ -829,7 +834,10 @@ class Shell:
                 append = (mode == 'append')
                 try:
                     # Use AGFS to write output file
-                    self.filesystem.write_file(output_file, stdout_data, append=append)
+                    write_response = self.filesystem.write_file(output_file, stdout_data, append=append)
+                    # Display write response if it contains data
+                    if write_response and write_response != "OK":
+                        self.console.print(write_response, highlight=False)
                 except AGFSClientError as e:
                     error_msg = self.filesystem.get_error_message(e)
                     self.console.print(f"[red]shell: {error_msg}[/red]", highlight=False)
@@ -875,7 +883,10 @@ class Shell:
             append = (mode == 'append')
             try:
                 # Use AGFS to write error file
-                self.filesystem.write_file(error_file, stderr_data, append=append)
+                write_response = self.filesystem.write_file(error_file, stderr_data, append=append)
+                # Display write response if it contains data
+                if write_response and write_response != "OK":
+                    self.console.print(write_response, highlight=False)
             except AGFSClientError as e:
                 error_msg = self.filesystem.get_error_message(e)
                 self.console.print(f"[red]shell: {error_msg}[/red]", highlight=False)
