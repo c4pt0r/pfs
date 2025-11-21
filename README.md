@@ -123,7 +123,7 @@ agfs:/heartbeatfs/agent-1> ls
 ls: /heartbeatfs/agent-1: No such file or directory
 
 
-# Upload/download local file
+# Upload/download local file, you can also use cp to copy files between FS!
 
 agfs:/local> cp local:/tmp/test_input.txt ./newfile
 local:/tmp/test_input.txt -> /local/newfile
@@ -140,12 +140,14 @@ Uploaded 611 bytes to /local/agfscli/__pycache__/version.cpython-312.pyc
 Uploaded 237 bytes to /local/agfscli/__pycache__/__init__.cpython-312.pyc
 agfs:/>
 
+
 ```
 
 
 See more details in:
 - [agfs-shell/README.md](https://github.com/c4pt0r/agfs/blob/master/agfs-shell/README.md)
 - [agfs-server/README.md](https://github.com/c4pt0r/agfs/blob/master/agfs-server/README.md)
+
 
 
 
