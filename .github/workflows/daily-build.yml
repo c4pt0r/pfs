@@ -22,7 +22,7 @@ jobs:
             runner: ubuntu-latest
           - os: linux
             arch: arm64
-            runner: ubuntu-latest
+            runner: ubuntu-24.04-arm
 
           # macOS builds
           - os: darwin
