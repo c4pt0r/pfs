@@ -109,50 +109,11 @@ jobs:
           if [ "${{ matrix.os }}" = "windows" ]; then
             # For Windows, create zip
             cd dist
-            powershell Compress-Archive -Path agfs-portable -DestinationPath "../../build/${ARCHIVE_NAME}.zip"
+            powershell Compress-Archive -Path agfs-shell-portable -DestinationPath "../../build/${ARCHIVE_NAME}.zip"
           else
             # For Unix, create tar.gz
             cd dist
-            tar -czf "../../build/${ARCHIVE_NAME}.tar.gz" agfs-portable/
-          fi
-
-      - name: Build agfs-shell2 (portable)
-        if: matrix.arch == 'amd64' || matrix.arch == 'arm64'
-        shell: bash
-        run: |
-          cd agfs-shell2
-
-          # Find uv command
-          if command -v uv &> /dev/null; then
-            UV_CMD="uv"
-          elif [ -f "$HOME/.cargo/bin/uv" ]; then
-            UV_CMD="$HOME/.cargo/bin/uv"
-          else
-            echo "Error: uv not found"
-            exit 1
-          fi
-
-          echo "Using uv: $UV_CMD"
-          $UV_CMD --version
-
-          # Sync dependencies
-          $UV_CMD sync
-
-          # Build portable distribution
-          python3 build.py
-
-          # Create archive name
-          ARCHIVE_NAME="agfs-shell2-${{ matrix.os }}-${{ matrix.arch }}"
-
-          # Package the portable distribution
-          if [ "${{ matrix.os }}" = "windows" ]; then
-            # For Windows, create zip
-            cd dist
-            powershell Compress-Archive -Path agfs-shell2-portable -DestinationPath "../../build/${ARCHIVE_NAME}.zip"
-          else
-            # For Unix, create tar.gz
-            cd dist
-            tar -czf "../../build/${ARCHIVE_NAME}.tar.gz" agfs-shell2-portable/
+            tar -czf "../../build/${ARCHIVE_NAME}.tar.gz" agfs-shell-portable/
           fi
 
       - name: Create archive (Unix)
@@ -178,8 +139,6 @@ jobs:
             build/agfs-${{ matrix.os }}-${{ matrix.arch }}-*.zip
             build/agfs-shell-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
             build/agfs-shell-${{ matrix.os }}-${{ matrix.arch }}.zip
-            build/agfs-shell2-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
-            build/agfs-shell2-${{ matrix.os }}-${{ matrix.arch }}.zip
           retention-days: 90
 
   create-release:
@@ -232,8 +191,7 @@ jobs:
 
             This release contains:
             - **agfs-server**: Go binary (server)
-            - **agfs-shell**: Python portable CLI client (requires Python 3.10+, includes all dependencies)
-            - **agfs-shell2**: Experimental shell with Unix-style pipeline support (requires Python 3.8+, includes all dependencies)
+            - **agfs-shell**: Python portable CLI with Unix-style pipeline support (requires Python 3.8+, includes all dependencies)
 
             ### Downloads
 
@@ -244,17 +202,12 @@ jobs:
             - **macOS AMD64**: `agfs-darwin-amd64-${{ steps.version.outputs.date }}.tar.gz`
             - **macOS ARM64 (Apple Silicon)**: `agfs-darwin-arm64-${{ steps.version.outputs.date }}.tar.gz`
 
-            #### CLI Client (Portable, Python 3.10+ required)
+            #### CLI Client (Portable, Python 3.8+ required)
 
             - **Linux AMD64**: `agfs-shell-linux-amd64.tar.gz`
+            - **Linux ARM64**: `agfs-shell-linux-arm64.tar.gz`
             - **macOS AMD64**: `agfs-shell-darwin-amd64.tar.gz`
             - **macOS ARM64**: `agfs-shell-darwin-arm64.tar.gz`
-
-            #### Shell2 - Experimental Unix-style Pipeline Shell (Portable, Python 3.8+ required)
-
-            - **Linux AMD64**: `agfs-shell2-linux-amd64.tar.gz`
-            - **macOS AMD64**: `agfs-shell2-darwin-amd64.tar.gz`
-            - **macOS ARM64**: `agfs-shell2-darwin-arm64.tar.gz`
 
             ### Installation
 
@@ -289,22 +242,10 @@ jobs:
             tar -xzf agfs-shell-<os>-<arch>.tar.gz
 
             # Run directly
-            ./agfs-portable/agfs --help
-
-            # Or install to system
-            cd agfs-portable && ./install.sh
-            ```
-
-            **Shell2 (Linux/macOS):**
-            ```bash
-            # Extract
-            tar -xzf agfs-shell2-<os>-<arch>.tar.gz
-
-            # Run directly
-            ./agfs-shell2-portable/agfs-shell2
+            ./agfs-shell-portable/agfs-shell
 
             # Or add to PATH
-            export PATH=$PATH:$(pwd)/agfs-shell2-portable
+            export PATH=$PATH:$(pwd)/agfs-shell-portable
             ```
 
             ### Quick Start
@@ -313,13 +254,8 @@ jobs:
             # Start the server
             agfs-server
 
-            # In another terminal, use CLI
-            agfs shell
-            agfs ls /
-            agfs tree /
-
-            # Or use shell2 with Unix-style pipelines
-            agfs-shell2
+            # In another terminal, use CLI with Unix-style pipelines
+            agfs-shell
             # Then run commands like:
             # cat /etc/hosts | grep localhost
             # ls / | grep etc
