@@ -905,7 +905,7 @@ class Shell:
  /\\ / _ |_ (_  
 /--\\\\__)|  __) 
         """)
-        self.console.print("[bold cyan]agfs-shell[/bold cyan] v1.0.0", highlight=False)
+        self.console.print("[bold cyan]agfs-shell[/bold cyan] v1.1.0", highlight=False)
 
         # Check server connection - exit if failed
         if not self.filesystem.check_connection():
