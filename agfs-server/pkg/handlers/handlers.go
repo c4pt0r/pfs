@@ -514,6 +514,65 @@ func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, response)
 }
 
+// Touch handles POST /touch?path=<path>
+// Updates file timestamp without changing content
+// If file doesn't exist, creates it with empty content
+func (h *Handler) Touch(w http.ResponseWriter, r *http.Request) {
+	path := r.URL.Query().Get("path")
+	if path == "" {
+		writeError(w, http.StatusBadRequest, "path parameter is required")
+		return
+	}
+
+	// Check if filesystem implements efficient Touch
+	if toucher, ok := h.fs.(filesystem.Toucher); ok {
+		// Use efficient touch implementation
+		err := toucher.Touch(path)
+		if err != nil {
+			status := mapErrorToStatus(err)
+			writeError(w, status, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, SuccessResponse{Message: "touched"})
+		return
+	}
+
+	// Fallback: inefficient implementation for filesystems without Touch
+	// Check if file exists
+	info, err := h.fs.Stat(path)
+	if err == nil {
+		// File exists - read current content and write it back to update timestamp
+		if !info.IsDir {
+			data, readErr := h.fs.Read(path, 0, -1)
+			if readErr != nil {
+				status := mapErrorToStatus(readErr)
+				writeError(w, status, readErr.Error())
+				return
+			}
+			_, writeErr := h.fs.Write(path, data)
+			if writeErr != nil {
+				status := mapErrorToStatus(writeErr)
+				writeError(w, status, writeErr.Error())
+				return
+			}
+		} else {
+			// Can't touch a directory
+			writeError(w, http.StatusBadRequest, "cannot touch directory")
+			return
+		}
+	} else {
+		// File doesn't exist - create with empty content
+		_, err := h.fs.Write(path, []byte{})
+		if err != nil {
+			status := mapErrorToStatus(err)
+			writeError(w, status, err.Error())
+			return
+		}
+	}
+
+	writeJSON(w, http.StatusOK, SuccessResponse{Message: "touched"})
+}
+
 // SetupRoutes sets up all HTTP routes with /api/v1 prefix
 func (h *Handler) SetupRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/health", h.Health)
@@ -577,6 +636,13 @@ func (h *Handler) SetupRoutes(mux *http.ServeMux) {
 			return
 		}
 		h.Digest(w, r)
+	})
+	mux.HandleFunc("/api/v1/touch", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		h.Touch(w, r)
 	})
 }
 

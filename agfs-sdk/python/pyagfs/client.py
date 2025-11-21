@@ -319,6 +319,19 @@ class AGFSClient:
         except Exception as e:
             self._handle_request_error(e)
 
+    def touch(self, path: str) -> Dict[str, Any]:
+        """Touch a file (update timestamp by writing empty content)"""
+        try:
+            response = self.session.post(
+                f"{self.api_base}/touch",
+                params={"path": path},
+                timeout=self.timeout
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            self._handle_request_error(e)
+
     def mounts(self) -> List[Dict[str, Any]]:
         """List all mounted plugins"""
         try:

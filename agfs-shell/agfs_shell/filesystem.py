@@ -200,6 +200,22 @@ class AGFSFileSystem:
             # SDK error already includes path, don't duplicate it
             raise AGFSClientError(str(e))
 
+    def touch_file(self, path: str) -> None:
+        """
+        Touch a file (update timestamp by writing empty content)
+
+        Args:
+            path: File path in AGFS
+
+        Raises:
+            AGFSClientError: If file cannot be touched
+        """
+        try:
+            self.client.touch(path)
+        except AGFSClientError as e:
+            # SDK error already includes path, don't duplicate it
+            raise AGFSClientError(str(e))
+
     def get_error_message(self, error: Exception) -> str:
         """
         Get user-friendly error message

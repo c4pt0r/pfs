@@ -11,6 +11,7 @@ import (
 	"github.com/c4pt0r/agfs/agfs-server/pkg/handlers"
 	"github.com/c4pt0r/agfs/agfs-server/pkg/mountablefs"
 	"github.com/c4pt0r/agfs/agfs-server/pkg/plugin"
+	"github.com/c4pt0r/agfs/agfs-server/pkg/plugins/heartbeatfs"
 	"github.com/c4pt0r/agfs/agfs-server/pkg/plugins/hellofs"
 	"github.com/c4pt0r/agfs/agfs-server/pkg/plugins/httpfs"
 	"github.com/c4pt0r/agfs/agfs-server/pkg/plugins/kvfs"
@@ -43,6 +44,7 @@ var availablePlugins = map[string]PluginFactory{
 	"queuefs":      func() plugin.ServicePlugin { return queuefs.NewQueueFSPlugin() },
 	"kvfs":         func() plugin.ServicePlugin { return kvfs.NewKVFSPlugin() },
 	"hellofs":      func() plugin.ServicePlugin { return hellofs.NewHelloFSPlugin() },
+	"heartbeatfs":  func() plugin.ServicePlugin { return heartbeatfs.NewHeartbeatFSPlugin() },
 	"httpfs":       func() plugin.ServicePlugin { return httpfs.NewHTTPFSPlugin() },
 	"proxyfs":      func() plugin.ServicePlugin { return proxyfs.NewProxyFSPlugin("") },
 	"s3fs":         func() plugin.ServicePlugin { return s3fs.NewS3FSPlugin() },

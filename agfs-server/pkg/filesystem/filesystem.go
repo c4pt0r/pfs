@@ -88,3 +88,12 @@ type Streamer interface {
 	// Multiple readers can open the same stream for fanout/broadcast scenarios
 	OpenStream(path string) (StreamReader, error)
 }
+
+// Toucher is implemented by file systems that support efficient touch operations
+// Touch updates the modification time without reading/writing the entire file content
+type Toucher interface {
+	// Touch updates the modification time of a file
+	// If the file doesn't exist, it should be created as an empty file
+	// Returns error if the operation fails
+	Touch(path string) error
+}
